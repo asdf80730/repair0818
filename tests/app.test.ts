@@ -1,7 +1,7 @@
 // tests/app.test.ts — app 組裝與 middleware 掛載順序（§1.3）
 // 在真實 workerd runtime 跑（@cloudflare/vitest-pool-workers），D1 用 miniflare
 // 0.5.41 新版：用 SELF（cloudflare:test）呼叫 main worker
-import { SELF } from 'cloudflare:test'
+import { SELF, env } from 'cloudflare:test'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
 const worker = SELF
@@ -174,13 +174,28 @@ describe('§10 回歸斷言', () => {
     expect(body.data.display_name).toBeTruthy()
   })
 
-  it.skip('無 Cookie 帶有效 sig 打 /api/exports/tickets.csv → 200', async () => {
-    // M5 後：用 JWT_SECRET 簽出有效 sig → 帶 query 打 CSV 端點
-    const r = await worker.fetch('http://example.com/api/exports/tickets.csv?uid=1&exp=9999999999&sig=valid')
+  it('無 Cookie 帶有效 sig 打 /api/exports/tickets.csv → 200', async () => {
+    // 先 seed 一個 manager user（軌B 需要 manager/admin + active=1）
+    await env.DB.prepare(
+      "INSERT INTO users (line_user_id, display_name, role, active, created_at) VALUES ('U-csv-mgr', 'CSV管理', 'manager', 1, '2026-01-01T00:00:00.000Z')",
+    ).run()
+    const mgr = await env.DB.prepare("SELECT id FROM users WHERE line_user_id = 'U-csv-mgr'").first<{ id: number }>()
+    if (!mgr) throw new Error('CSV manager seed 失敗')
+    const uid = mgr.id
+
+    // 用 JWT_SECRET 簽出有效 sig（對應 vitest.config 的 JWT_SECRET=test-secret）
+    const secret = 'test-secret'
+    const exp = Math.floor(Date.now() / 1000) + 300
+    const msg = [uid, exp, '', '', ''].join('|')
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('export:v1|' + msg))
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+    const r = await worker.fetch(`http://example.com/api/exports/tickets.csv?uid=${uid}&exp=${exp}&sig=${sig}`)
     expect(r.status).toBe(200)
   })
 
-  it.skip('無 Cookie 且 sig 錯誤打 /api/exports/tickets.csv → 401', async () => {
+  it('無 Cookie 且 sig 錯誤打 /api/exports/tickets.csv → 401', async () => {
     const r = await worker.fetch('http://example.com/api/exports/tickets.csv?uid=1&exp=9999999999&sig=wrong')
     expect(r.status).toBe(401)
   })
