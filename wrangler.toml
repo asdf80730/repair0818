@@ -9,11 +9,11 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "repair-db"
-database_id = "<id>"
+database_id = "99a4f274-d68c-4ad6-b382-6a6e449cf0ed"
 
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "repair-photos"
 
 [vars]
-LINE_CHANNEL_ID = "<channel id>"
+LINE_CHANNEL_ID = "2008484338"
