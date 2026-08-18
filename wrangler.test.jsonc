@@ -1,26 +1,30 @@
 // wrangler.test.jsonc — vitest-pool-workers 測試專用設定
 // 提供 D1/R2/vars binding 給測試的 main worker（tests/worker.ts，包 Hono app）
-// 參考官方 D1 fixture：wrangler.jsonc（d1_databases 透過 configPath 提供）
+// 參考官方 D1 fixture：binding 放 env.production，config 指定 environment: production
 {
   "name": "repair-system-test",
   "main": "tests/worker.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "test-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+  "env": {
+    "production": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "test-db",
+          "database_id": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PHOTOS",
+          "bucket_name": "test-photos"
+        }
+      ],
+      "vars": {
+        "LINE_CHANNEL_ID": "test-channel",
+        "JWT_SECRET": "test-secret"
+      }
     }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "PHOTOS",
-      "bucket_name": "test-photos"
-    }
-  ],
-  "vars": {
-    "LINE_CHANNEL_ID": "test-channel",
-    "JWT_SECRET": "test-secret"
   }
 }

@@ -20,6 +20,7 @@ export default defineWorkersConfig(async () => {
           // main 由 wrangler.test.jsonc 指定（tests/worker.ts，包 Hono app）
           wrangler: {
             configPath: './wrangler.test.jsonc',
+            environment: 'production',
           },
           miniflare: {
             // 測試專用 TEST_MIGRATIONS binding（供 applyD1Migrations 使用）
