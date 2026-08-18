@@ -20,6 +20,7 @@
 | v1.1.2 | 三次評審修訂：回歸修復（補回 share 照片端點、P0 畫面、users 防呆、compatibility_date）＋決策補登（D5–D7）＋安全加強（CSV domain separation、5 分鐘效期、CHECK 約束等） |
 | v1.1.3 | 四次評審修訂：**修復 middleware 順序架構錯誤**（`/auth` 與 CSV 下載移到全域 requireAuth 之上、`lib/auth.ts` 拆 `resolveUser`/`requireAuth`）＋補回 §7 官方帳號三步＋快取標頭修正（share 照片改 private、內部照片補回）＋CHECK 約束涵蓋 note＋CSV 欄位精簡＋P1 tab 改名 |
 | v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
+| v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -375,10 +376,11 @@ export function requireAuth(opts?: {
 
 ### 3.6 權限矩陣
 
-| 功能 | committee 管委會 | manager 管理公司 | admin 管理員 |
+| 功能 | committee 委員 | manager 保全/秘書 | admin 主管 |
 |---|:-:|:-:|:-:|
 | 查看案件、建單、留言（D1）、上傳照片、複製分享連結 | ✓ | ✓ | ✓ |
 | 編輯案件（D7） | **僅自己建的單** | ✓ 全部 | ✓ 全部 |
+| 指派廠商（v1.1.5：僅編輯頁內，保全/秘書層級） | ✗ | ✓ | ✓ |
 | 回報、結案、作廢、重新產生分享連結 | ✗ | ✓ | ✓ |
 | **統計摘要（D6）** | **✓** | ✓ | ✓ |
 | CSV 匯出（D3） | ✗ | ✓ | ✓ |
@@ -387,6 +389,8 @@ export function requireAuth(opts?: {
 | reopen 重新開啟（D2） | ✗ | ✗ | ✓ |
 | pending 或 active=0 | 所有 API 除 `/api/auth/*`（me/logout 需 allowPending）一律 `403 PENDING` / `403 DISABLED` | | |
 
+> **權限層級（v1.1.5 定案）**：主管（admin）> 保全/秘書（manager）> 委員（committee）。v1.1.4 曾誤將 admin 標為「保全/秘書」、manager 標為「主管」，已修正。
+>
 > **註記（非漏洞，勿誤判修掉）**：committee 在案件列表與詳情**看得到 `vendor_name`**（可知道誰在修），但 `GET /api/vendors` 限 manager/admin（不可指派、不可管理廠商資料）。這是刻意設計。
 
 ---
@@ -697,7 +701,7 @@ WHERE kind = 'status' AND status = 'done'
 ### 5.2 P2 建單
 
 - **類別下拉、地點下拉**（GET /api/options；v1.1.4 起由 chips 改下拉式，選項多時才選得到）
-- **常用說明 chips**：點擊將文字**附加**至 textarea，已有內容時以「、」串接；可連點多個 chip；同一 chip 不重複附加
+- **常用說明下拉＋附加按鈕**（v1.1.5）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
 - 送出 → POST /api/tickets → 跳 P3
@@ -705,12 +709,12 @@ WHERE kind = 'status' AND status = 'done'
 ### 5.3 P3 案件詳情
 
 - 案件資訊、照片牆、分享連結（複製按鈕，**不彈確認框**；v1.1.4）
-- **指派廠商下拉**（manager/admin，open/in_progress；v1.1.4 起詳情頁可直接指派）
 - **時間軸依 `kind` 三種樣式**：狀態回報（狀態徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
-- **底部留言框（三角色）＋狀態更新合一**（v1.1.4）：manager/admin 可選「僅留言／標記處理中／標記完成並結案」，committee 僅留言；管理公司另有「新增回報」主按鈕
+- **底部留言框（三角色）＋狀態更新合一**（v1.1.4）：manager/admin 可選「僅留言／標記處理中／標記完成並結案」，committee 僅留言；**v1.1.5 移除獨立「新增回報」按鈕**，回報統一走此留言框
 - **⋮ 選單**：編輯（**D7：committee 僅自己建的單；manager/admin 全部**，open/in_progress）、作廢（manager/admin，二次確認彈窗含選填原因）、重新開啟（**僅 admin 且 done/void** → **modal 選單**選「待處理／處理中」＋備註，v1.1.4 起不用 prompt）、重新產生分享連結（manager/admin，**不彈框、直接更新輸入框**，v1.1.4）
 - 🟢 完成（P4 回報選 done）同樣需二次確認彈窗
 - **縮圖點開放大**（lightbox，v1.1.4）
+- **指派廠商在編輯頁內**（v1.1.5：保全/秘書層級，不再塞列表/詳情頁）
 
 ### 5.4 P4 新增回報
 
@@ -724,7 +728,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.6 P6 成員管理（admin）
 
-- **權限分級中文化**（v1.1.4）：主管（manager）／保全秘書（admin）／委員（committee）／待開通（pending）
+- **權限分級中文化**（v1.1.5 定案）：主管（admin）／保全秘書（manager）／委員（committee）／待開通（pending）
 - **篩選**（v1.1.4）：全部成員／待開通／已開通／已停用
 - 成員列表：改角色、停用／啟用（**停用紅、啟用藍**，v1.1.4）、改名
 - **防呆提示**：停用自己或最後一位 admin 時，後端回 `ADMIN_LOCKED`，前端顯示對應訊息
