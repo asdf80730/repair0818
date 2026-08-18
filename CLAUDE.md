@@ -9,6 +9,10 @@
 - 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN。
 - 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression。
 - 禁止：Node.js 專屬 API 或套件（jsonwebtoken, bcrypt, fs, multer, sharp, crypto.createHmac）。
+- 測試：@cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock）。
+  ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
+  GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
+  測試設定見 vitest.config.ts（main=Pages Functions build + ASSETS binding + D1 migrations）。
 
 ## 硬性規則
 1. SQL 一律 env.DB.prepare(...).bind(...)，禁止字串拼接；

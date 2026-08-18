@@ -6,6 +6,7 @@ node_modules/
 
 # 建置／輸出
 dist/
+dist-functions/
 .wrangler/
 .vercel/
 
