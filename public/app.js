@@ -28,6 +28,10 @@ const mockOptions = {
 const mockUsers = [
   { id: 1, display_name: '測試用戶', role: 'admin', active: 1 },
   { id: 2, display_name: '王任鋒', role: 'admin', active: 1 },
+  { id: 3, display_name: '陳秘書', role: 'manager', active: 1 },
+  { id: 4, display_name: '李委員', role: 'committee', active: 1 },
+  { id: 5, display_name: '待開通者', role: 'pending', active: 1 },
+  { id: 6, display_name: '已停用者', role: 'committee', active: 0 },
 ]
 const mockVendors = [{ id: 1, name: '測試廠商', phone: '0912345678', active: 1 }]
 
@@ -84,6 +88,13 @@ function mockApi(path, options = {}) {
   // vendors
   if (pathname === '/api/vendors' && method === 'GET') {
     return { ok: true, data: mockVendors }
+  }
+  // 重新產生分享連結（v1.1.5：回傳新 share_url）
+  const reshareMatch = pathname.match(/^\/api\/tickets\/(\d+)\/share-token$/)
+  if (reshareMatch && method === 'POST') {
+    const t = mockTickets.find(x => x.id === Number(reshareMatch[1]))
+    const token = 'mock-token-' + (t ? t.id : 'new')
+    return { ok: true, data: { share_url: '/share.html?token=' + token } }
   }
   // 其他 mutation 一律成功
   if (method !== 'GET') {

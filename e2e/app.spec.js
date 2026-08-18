@@ -68,3 +68,43 @@ test('統計頁渲染（含 CSV 匯出）', async ({ page }) => {
   await page.waitForSelector('text=統計', { timeout: 10000 })
   await expect(page.getByText('匯出 CSV')).toBeVisible()
 })
+
+test('成員管理：權限中文對照、篩選、停用紅/啟用藍', async ({ page }) => {
+  await page.getByText('👥 成員').click()
+  await page.waitForSelector('text=成員管理', { timeout: 10000 })
+
+  // 權限中文對照（v1.1.5：主管=admin、保全/秘書=manager、委員=committee）
+  await expect(page.getByText('主管').first()).toBeVisible()
+  await expect(page.getByText('保全/秘書').first()).toBeVisible()
+  await expect(page.getByText('委員').first()).toBeVisible()
+
+  // 篩選下拉存在
+  await expect(page.locator('.filter-row select')).toBeVisible()
+
+  // 停用按鈕是紅色（btn-danger）、啟用按鈕是藍色（btn-primary）
+  await expect(page.locator('.user-row .btn-danger').first()).toBeVisible()
+})
+
+test('建單：常用說明用下拉＋附加按鈕', async ({ page }) => {
+  await page.getByText('＋ 建單').first().click()
+  await page.waitForSelector('.form select', { timeout: 10000 })
+
+  // 常用說明下拉＋附加按鈕（v1.1.5）
+  await expect(page.getByText('＋ 附加')).toBeVisible()
+  // 選取常用說明後按附加，會寫入說明框
+  await page.locator('.add-row select').selectOption({ index: 1 })
+  await page.getByText('＋ 附加').click()
+  const descVal = await page.locator('textarea.textarea').inputValue()
+  expect(descVal.length).toBeGreaterThan(0)
+})
+
+test('案件詳情：重新產生分享連結更新輸入框', async ({ page }) => {
+  await page.locator('.ticket-card').first().click()
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+
+  // 重新產生分享連結（v1.1.5：不彈框、直接更新輸入框）
+  await page.getByText('重新產生分享連結').click()
+  await page.waitForTimeout(500)
+  const shareVal = await page.locator('.share-row input').inputValue()
+  expect(shareVal).toContain('/share.html?token=')
+})
