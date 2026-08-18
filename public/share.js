@@ -5,6 +5,7 @@
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined) continue // 跳過 null/undefined
     if (k === 'class') node.className = v
     else if (k === 'text') node.textContent = v
     else node.setAttribute(k, v)

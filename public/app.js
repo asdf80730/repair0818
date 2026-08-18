@@ -92,8 +92,10 @@ async function compressPhoto(file) {
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined) continue // 跳過 null/undefined
     if (k === 'class') node.className = v
     else if (k === 'text') node.textContent = v
+    else if (k === 'selected') node.selected = !!v
     else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
     else node.setAttribute(k, v)
   }
@@ -191,12 +193,12 @@ pages.list = function () {
     tabBar.appendChild(el('button', {
       class: 'tab' + (val === currentStatus ? ' active' : ''),
       text: label,
-      onclick: () => {
+      onclick: (e) => {
         currentStatus = val
         page = 1
         listEl.innerHTML = ''
         for (const b of tabBar.children) b.classList.remove('active')
-        event.currentTarget.classList.add('active')
+        e.currentTarget.classList.add('active')
         load()
       },
     }))
@@ -204,7 +206,7 @@ pages.list = function () {
   root.appendChild(tabBar)
 
   // 類別篩選
-  const catSelect = el('select', { class: 'select', onchange: () => { currentCategory = event.target.value; page = 1; listEl.innerHTML = ''; load() } })
+  const catSelect = el('select', { class: 'select', onchange: (e) => { currentCategory = e.target.value; page = 1; listEl.innerHTML = ''; load() } })
   catSelect.appendChild(el('option', { value: '', text: '全部分類' }))
   api('/api/options?type=category').then((b) => {
     for (const o of b.data) catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
@@ -235,10 +237,10 @@ pages.new = function () {
     for (const o of b.data) {
       catChips.appendChild(el('button', {
         class: 'chip', text: o.label,
-        onclick: () => {
+        onclick: (e) => {
           selectedCat = o.id
           for (const c of catChips.children) c.classList.remove('active')
-          event.currentTarget.classList.add('active')
+          e.currentTarget.classList.add('active')
         },
       }))
     }
@@ -251,10 +253,10 @@ pages.new = function () {
     for (const o of b.data) {
       locChips.appendChild(el('button', {
         class: 'chip', text: o.label,
-        onclick: () => {
+        onclick: (e) => {
           selectedLoc = o.id
           for (const c of locChips.children) c.classList.remove('active')
-          event.currentTarget.classList.add('active')
+          e.currentTarget.classList.add('active')
         },
       }))
     }
@@ -664,10 +666,10 @@ pages.admin = function () {
     tabBar.appendChild(el('button', {
       class: 'tab' + (val === currentType ? ' active' : ''),
       text: label,
-      onclick: () => {
+      onclick: (e) => {
         currentType = val
         for (const b of tabBar.children) b.classList.remove('active')
-        event.currentTarget.classList.add('active')
+        e.currentTarget.classList.add('active')
         renderOptions()
       },
     }))
