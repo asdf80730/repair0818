@@ -28,7 +28,12 @@ export default defineWorkersConfig(async () => {
               ASSETS: await buildPagesASSETSBinding(assetsPath),
             },
             d1Databases: { DB: '00000000-0000-0000-0000-000000000000' },
-            bindings: { TEST_MIGRATIONS: migrations },
+            r2Buckets: { PHOTOS: 'test-photos' },
+            bindings: {
+              TEST_MIGRATIONS: migrations,
+              LINE_CHANNEL_ID: 'test-channel',
+              JWT_SECRET: 'test-secret',
+            },
           },
         },
       },
