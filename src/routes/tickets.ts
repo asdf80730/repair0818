@@ -473,6 +473,19 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('
 
 // POST /api/tickets/:id/share-token — manager/admin（§4.3）
 ticketRoutes.post('/:id/share-token', requireAuth({ roles: ['manager', 'admin'] }), async (c) => {
-  // TODO: 重新產生 share_token（M6）— 舊連結立即失效
-  return fail(c, 501, 'INTERNAL', '尚未實作（M6）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id FROM tickets WHERE id = ?',
+  ).bind(id).first<{ id: number }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // 重新產生 share_token，舊連結立即失效（§4.3）
+  const newToken = crypto.randomUUID()
+  await c.env.DB.prepare(
+    'UPDATE tickets SET share_token = ? WHERE id = ?',
+  ).bind(newToken, id).run()
+
+  return ok(c, { share_url: `/api/share/${newToken}` })
 })
