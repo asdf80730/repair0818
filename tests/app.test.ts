@@ -1,11 +1,10 @@
 // tests/app.test.ts — app 組裝與 middleware 掛載順序（§1.3）
 // 在真實 workerd runtime 跑（@cloudflare/vitest-pool-workers），D1 用 miniflare
-// 參考官方 fixture：pages-functions-unit-integration-self/test/integration-self.test.ts
-import { exports } from 'cloudflare:workers'
+// 0.5.41 新版：用 SELF（cloudflare:test）呼叫 main worker
+import { SELF } from 'cloudflare:test'
 import { describe, it, expect } from 'vitest'
 
-// `exports.default` 指向目前 isolate 內跑的 Worker（main 選項指定）
-const worker = exports.default
+const worker = SELF
 
 describe('app 組裝與 middleware 掛載順序（§1.3）', () => {
   it('未登入 GET /api/tickets → 401（全域 requireAuth 擋下）', async () => {
