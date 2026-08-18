@@ -1,0 +1,28 @@
+{
+  "name": "repair-system",
+  "version": "1.1.3",
+  "private": true,
+  "description": "社區修繕管理系統 — Cloudflare Pages + Hono + D1 + R2 + LINE LIFF",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "db:migrate:local": "wrangler d1 migrations apply repair-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply repair-db --remote",
+    "db:seed:remote": "wrangler d1 execute repair-db --remote --file=seed.sql",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.4.1",
+    "hono": "^4.6.0",
+    "jose": "^5.9.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "@cloudflare/workers-types": "^5.20260818.1",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.123.0"
+  }
+}

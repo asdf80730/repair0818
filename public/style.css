@@ -1,0 +1,20 @@
+/* 社區修繕系統 — 全域樣式（前端骨架佔位，P0–P7 實作時擴充） */
+:root {
+  --red: #e5484d;
+  --yellow: #f5a524;
+  --green: #30a46c;
+  --black: #222;
+  --gray: #6f6f6f;
+  --border: #e4e4e7;
+  --bg: #fafafa;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg);
+  color: var(--black);
+  font-size: 16px; /* 內文字級 ≥ 16px（§5.0） */
+}
+input, textarea, select, button { font-size: 16px; } /* input 也 16px，避免 iOS 自動縮放 */

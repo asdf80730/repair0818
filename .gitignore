@@ -1,0 +1,17 @@
+# 依賴
+node_modules/
+
+# 本機開發環境變數（含 JWT_SECRET，不進版控，見 §8.4）
+.dev.vars
+
+# 建置／輸出
+dist/
+.wrangler/
+.vercel/
+
+# 測試
+coverage/
+
+# 系統
+.DS_Store
+*.log

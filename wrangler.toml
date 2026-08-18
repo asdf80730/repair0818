@@ -1,0 +1,19 @@
+# 社區修繕管理系統 — Wrangler 設定（§8.1）
+# 注意：database_id / bucket_name / LINE_CHANNEL_ID 為佔位，需以實際資源填入
+name = "repair-system"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "public"
+# compatibility_flags = ["nodejs_compat"] 目前刻意不開；
+# hono/jose/zod 皆 Web API 原生，日後引入 Node 相依再開
+
+[[d1_databases]]
+binding = "DB"
+database_name = "repair-db"
+database_id = "<id>"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "repair-photos"
+
+[vars]
+LINE_CHANNEL_ID = "<channel id>"
