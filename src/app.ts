@@ -24,6 +24,7 @@ export const app = new Hono<Env>().basePath('/api')
 
 app.route('/share', shareRoutes)              // 公開唯讀：無 auth、無 csrf
 app.get('/exports/tickets.csv', csvDownload)  // 雙軌自驗：軌A Cookie / 軌B 簽名（§4.8）
+app.get('/hello', (c) => c.json({ ok: true, data: 'hello' })) // M1 部署打通驗證
 app.use('/*', csrfGuard())                      // 所有 mutation 驗 CSRF（GET/HEAD 直接放行）
 app.route('/auth', authRoutes)   // session 不需登入；me / logout 內部各自掛 requireAuth({ allowPending: true })
 app.use('/*', requireAuth())     // ⚠ 以下全部需已開通；此行之上的路由必須自驗權限
