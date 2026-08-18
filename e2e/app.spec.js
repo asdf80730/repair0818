@@ -41,7 +41,7 @@ test('案件詳情：分享連結格式正確、指派廠商下拉存在、可�
   expect(shareVal).toContain('/share.html?token=')
 
   // 指派廠商下拉存在（問題3，admin 可指派）
-  await expect(page.getByText('指派廠商')).toBeVisible()
+  await expect(page.locator('.form label', { hasText: '指派廠商' })).toBeVisible()
 
   // 編輯按鈕可進編輯頁（問題5）
   await page.getByText('編輯').first().click()
