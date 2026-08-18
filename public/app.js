@@ -801,7 +801,7 @@ async function boot() {
   if (isMock) {
     // 測試模式：直接設假 me（不跳 LINE 登入），後續 API 靠注入的 test cookie
     me = { id: 1, display_name: '測試用戶', role: 'admin' }
-    render()
+    router()
     return
   }
 
