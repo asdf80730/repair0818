@@ -772,7 +772,8 @@ async function boot() {
   const isMock = new URLSearchParams(window.location.search).get('mock') === 'true'
   if (isMock && window.liff && window.liffMock) {
     try {
-      liff.use(new window.liffMock.LiffMockPlugin())
+      // window.liffMock 本身就是 LiffMockPlugin 類別（UMD 掛載）
+      liff.use(new window.liffMock())
       await liff.init({ liffId: LIFF_ID, mock: true })
       liffReady = true
       // 注入假使用者（可被測試覆寫）
