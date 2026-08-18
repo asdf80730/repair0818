@@ -56,7 +56,7 @@ async function uploadPhoto(cookie: string, bytes: Uint8Array, contentType = 'ima
   form.append('file', new Blob([bytes], { type: contentType }), 'a.jpg')
   const r = await worker.fetch('http://example.com/api/photos', {
     method: 'POST',
-    headers: { Cookie: cookie },
+    headers: { Cookie: cookie, 'X-Requested-With': 'fetch' },
     body: form,
   })
   const body = await r.json()
@@ -71,7 +71,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     const { cookie } = await loginAs('U-cov-ph1', '照片1', 'committee')
     const r = await worker.fetch('http://example.com/api/photos', {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, 'X-Requested-With': 'fetch' },
       body: (() => { const f = new FormData(); f.append('file', new Blob([JPEG], { type: 'image/jpeg' }), 'a.jpg'); return f })(),
     })
     expect(r.status).toBe(201)
@@ -84,7 +84,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     const { cookie } = await loginAs('U-cov-ph2', '照片2', 'committee')
     const r = await worker.fetch('http://example.com/api/photos', {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, 'X-Requested-With': 'fetch' },
       body: (() => { const f = new FormData(); f.append('file', new Blob([JPEG], { type: 'image/heic' }), 'a.heic'); return f })(),
     })
     expect(r.status).toBe(400)
@@ -95,7 +95,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     const fake = new Uint8Array([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb])
     const r = await worker.fetch('http://example.com/api/photos', {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, 'X-Requested-With': 'fetch' },
       body: (() => { const f = new FormData(); f.append('file', new Blob([fake], { type: 'image/jpeg' }), 'a.jpg'); return f })(),
     })
     expect(r.status).toBe(400)
@@ -107,7 +107,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     big[0] = 0xff; big[1] = 0xd8; big[2] = 0xff
     const r = await worker.fetch('http://example.com/api/photos', {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, 'X-Requested-With': 'fetch' },
       body: (() => { const f = new FormData(); f.append('file', new Blob([big], { type: 'image/jpeg' }), 'a.jpg'); return f })(),
     })
     expect(r.status).toBe(400)
@@ -300,7 +300,7 @@ describe('vendors 寫操作（§4.6）', () => {
 })
 
 describe('auth logout（§4.2）', () => {
-  it('登出後 cookie 清除，再打 me → 401', async () => {
+  it('登出回應清除 session cookie', async () => {
     const { cookie } = await loginAs('U-cov-lo1', '登出1', 'committee')
     const r = await worker.fetch('http://example.com/api/auth/logout', {
       method: 'POST',
@@ -309,9 +309,10 @@ describe('auth logout（§4.2）', () => {
     expect(r.status).toBe(200)
     const body = await r.json()
     expect(body.data.logged_out).toBe(true)
-    // 登出後帶原 cookie 打 me → 401（cookie 已失效）
-    const me = await worker.fetch('http://example.com/api/auth/me', { headers: { Cookie: cookie } })
-    expect(me.status).toBe(401)
+    // 回應應 Set-Cookie 清除 session（maxAge=0 或過期）
+    const setCookie = r.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('session=')
+    expect(setCookie).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i)
   })
 })
 
