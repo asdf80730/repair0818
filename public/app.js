@@ -48,8 +48,8 @@ async function silentRelogin(path, options, headers) {
   if (!liffReady || !window.liff) return null
   try {
     if (!liff.isLoggedIn()) {
-      await new Promise((resolve) => liff.login({ redirectUri: window.location.href }))
-      // login 會跳轉，這裡不會繼續
+      // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL（避免部署網域變動造成不符）
+      liff.login()
       return null
     }
     const idToken = liff.getIDToken()
@@ -804,7 +804,8 @@ async function boot() {
           }
         }
       } else if (liffReady) {
-        liff.login({ redirectUri: location.href })
+        // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL
+        liff.login()
         return
       } else {
         root.innerHTML = ''
