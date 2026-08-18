@@ -19,6 +19,7 @@
 | v1.1.1 | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等 |
 | v1.1.2 | 三次評審修訂：回歸修復（補回 share 照片端點、P0 畫面、users 防呆、compatibility_date）＋決策補登（D5–D7）＋安全加強（CSV domain separation、5 分鐘效期、CHECK 約束等） |
 | v1.1.3 | 四次評審修訂：**修復 middleware 順序架構錯誤**（`/auth` 與 CSV 下載移到全域 requireAuth 之上、`lib/auth.ts` 拆 `resolveUser`/`requireAuth`）＋補回 §7 官方帳號三步＋快取標頭修正（share 照片改 private、內部照片補回）＋CHECK 約束涵蓋 note＋CSV 欄位精簡＋P1 tab 改名 |
+| v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -366,6 +367,8 @@ export function requireAuth(opts?: {
 4. 重送後仍 401 → 顯示「請重新從 LINE 圖文選單開啟本系統」，**不再重試**
 5. `403 DISABLED` / `403 PENDING` 不觸發重登（避免停用帳號無限重登迴圈），直接顯示對應訊息
 
+**非手機／外部瀏覽器登入（v1.1.4）**：不禁止非手機使用。`liff.init` 失敗時仍嘗試用既有 cookie 登入；若無 cookie 且 LIFF SDK 在，重試 init 後登入；完全無 LIFF 環境顯示提示＋重新整理按鈕。
+
 ### 3.5 登出
 
 `POST /api/auth/logout` 清除 Cookie（Max-Age=0）。非必要功能，但保留端點。
@@ -472,7 +475,7 @@ export function requireAuth(opts?: {
 - 案件本體＋`photos`（target_type='ticket' 的 url 陣列，格式 `/api/photos/{id}`）＋`updates` 時間軸
 - `updates` 每筆：`{ id, kind, status, note, display_name, created_at, photo_urls }`（`status` 可為 NULL）
 - 廠商已停用時 `vendor_name` 後綴「（已停用）」
-- `share_url` 三角色皆回傳（僅查看／複製；重新產生限 manager/admin）
+- `share_url` 三角色皆回傳（僅查看／複製；重新產生限 manager/admin）。**格式 `/share.html?token={share_token}`**（指向人類可讀公開頁；v1.1.4 起，原先指向 JSON API `/api/share/{token}`）
 
 **PATCH `/api/tickets/:id`**（**D7：committee 僅自己建的單；manager/admin 全部**）
 
@@ -527,7 +530,7 @@ export function requireAuth(opts?: {
 
 **POST `/api/tickets/:id/share-token`**（manager/admin）
 
-- 重新產生 `share_token`，舊連結立即失效，回傳新 `share_url`
+- 重新產生 `share_token`，舊連結立即失效，回傳新 `share_url`（格式 `/share.html?token={token}`）
 
 ### 4.4 Photos
 
@@ -687,12 +690,13 @@ WHERE kind = 'status' AND status = 'done'
 
 - 狀態篩選 tabs：**未結案（=active，預設）／待處理（open）／處理中（in_progress）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應，避免「進行中／處理中」混淆；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
+- **列表卡片可直接指派廠商**（manager/admin，open/in_progress；v1.1.4）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
 - 分頁：依 `has_more` 顯示「載入更多」
 
 ### 5.2 P2 建單
 
-- 類別 chips、地點 chips（GET /api/options）
+- **類別下拉、地點下拉**（GET /api/options；v1.1.4 起由 chips 改下拉式，選項多時才選得到）
 - **常用說明 chips**：點擊將文字**附加**至 textarea，已有內容時以「、」串接；可連點多個 chip；同一 chip 不重複附加
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
@@ -700,11 +704,13 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.3 P3 案件詳情
 
-- 案件資訊、照片牆、分享連結（複製按鈕）
+- 案件資訊、照片牆、分享連結（複製按鈕，**不彈確認框**；v1.1.4）
+- **指派廠商下拉**（manager/admin，open/in_progress；v1.1.4 起詳情頁可直接指派）
 - **時間軸依 `kind` 三種樣式**：狀態回報（狀態徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
-- **底部留言框**（三角色可見）：輸入框＋選填照片＋「送出留言」；管理公司另有「新增回報」主按鈕，兩者視覺區隔
-- **⋮ 選單**：編輯（**D7：committee 僅自己建的單；manager/admin 全部**，open/in_progress）、作廢（manager/admin，二次確認彈窗含選填原因）、重新開啟（**僅 admin 且 done/void** → 彈窗選「待處理／處理中」＋備註）、重新產生分享連結（manager/admin）
+- **底部留言框（三角色）＋狀態更新合一**（v1.1.4）：manager/admin 可選「僅留言／標記處理中／標記完成並結案」，committee 僅留言；管理公司另有「新增回報」主按鈕
+- **⋮ 選單**：編輯（**D7：committee 僅自己建的單；manager/admin 全部**，open/in_progress）、作廢（manager/admin，二次確認彈窗含選填原因）、重新開啟（**僅 admin 且 done/void** → **modal 選單**選「待處理／處理中」＋備註，v1.1.4 起不用 prompt）、重新產生分享連結（manager/admin，**不彈框、直接更新輸入框**，v1.1.4）
 - 🟢 完成（P4 回報選 done）同樣需二次確認彈窗
+- **縮圖點開放大**（lightbox，v1.1.4）
 
 ### 5.4 P4 新增回報
 
@@ -713,22 +719,25 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.5 P5 統計（**三角色皆可**，D6）
 
-- 四個數字卡片：待處理、處理中、本月新增、本月完成
+- 六個數字卡片（v1.1.4）：待處理、處理中、**未結案總數**、本月新增、本月完成、**本月完成率**（= 本月完成/本月新增）
 - 「匯出 CSV」按鈕＋固定提示「將於外部瀏覽器開啟下載」（流程見 §4.8）——**僅 manager/admin 可見**（D3）
 
 ### 5.6 P6 成員管理（admin）
 
-- 待審核區：核准並指派角色（committee／manager／admin）
-- 成員列表：改角色、停用／啟用、改名
+- **權限分級中文化**（v1.1.4）：主管（manager）／保全秘書（admin）／委員（committee）／待開通（pending）
+- **篩選**（v1.1.4）：全部成員／待開通／已開通／已停用
+- 成員列表：改角色、停用／啟用（**停用紅、啟用藍**，v1.1.4）、改名
 - **防呆提示**：停用自己或最後一位 admin 時，後端回 `ADMIN_LOCKED`，前端顯示對應訊息
 
 ### 5.7 P7 管理（manager/admin，D5）
 
-- 選項管理三個 tab：**類別／地點／常用說明**（新增、改名、排序、停用）
-- 廠商管理：新增、修改、停用
+- 選項管理 tab：**類別／地點／常用說明／廠商**（v1.1.4 起廠商獨立成 tab，不再每個類別都顯示在最底部）
+- 選項：新增、改名、排序、停用（停用紅）
+- 廠商：新增、修改、停用（停用紅／啟用藍）
 
 ### 5.8 share.html（公開）
 
+- 進入方式：**`/share.html?token={share_token}`**（v1.1.4 起；share.js 從 query 取 token，相容從 pathname 取）
 - 顯示白名單欄位＋照片（照片 url 指向 `/api/share/{token}/photos/{id}`）
 - 顯示「狀態更新於 {last_activity_at 換算台灣時間}」（此為 share 回傳 last_activity_at 的用途）
 - token 無效顯示「連結已失效，請向管理公司索取新連結」
