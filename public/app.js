@@ -71,7 +71,7 @@ function mockApi(path, options = {}) {
   if (detailMatch && method === 'GET') {
     const t = mockTickets.find(x => x.id === Number(detailMatch[1]))
     if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
-    return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/api/share/mock', updates: [] } }
+    return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/share.html?token=mock-token-' + t.id, updates: [] } }
   }
   // 統計
   if (pathname === '/api/stats/summary') {

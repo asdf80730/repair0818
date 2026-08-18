@@ -31,6 +31,30 @@ test('建單完整流程：選類別→地點→填說明→送出→跳詳情�
   await expect(page.getByText('案件詳情')).toBeVisible()
 })
 
+test('案件詳情：分享連結格式正確、指派廠商下拉存在、可進編輯頁', async ({ page }) => {
+  // 點進第一張單
+  await page.locator('.ticket-card').first().click()
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+
+  // 分享連結格式：指向人類頁面 /share.html?token=（問題7）
+  const shareVal = await page.locator('.share-row input').inputValue()
+  expect(shareVal).toContain('/share.html?token=')
+
+  // 指派廠商下拉存在（問題3，admin 可指派）
+  await expect(page.getByText('指派廠商')).toBeVisible()
+
+  // 編輯按鈕可進編輯頁（問題5）
+  await page.getByText('編輯').first().click()
+  await page.waitForSelector('text=編輯案件', { timeout: 10000 })
+  await expect(page.getByText('儲存')).toBeVisible()
+})
+
+test('列表卡片可直接指派廠商（manager/admin）', async ({ page }) => {
+  // 列表卡片內嵌廠商下拉（問題3）
+  await page.waitForSelector('.vendor-inline', { timeout: 10000 })
+  await expect(page.locator('.vendor-inline').first()).toBeVisible()
+})
+
 test('切換狀態 tab 篩選', async ({ page }) => {
   await page.locator('.tab', { hasText: '已完成' }).click()
   await page.waitForTimeout(500)
