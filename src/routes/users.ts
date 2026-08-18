@@ -20,6 +20,46 @@ userRoutes.get('/', requireAuth({ roles: ['admin'] }), async (c) => {
 
 // PATCH /api/users/:id — admin，防呆規則見 §4.6（ADMIN_LOCKED）
 userRoutes.patch('/:id', requireAuth({ roles: ['admin'] }), zValidator('json', updateUserSchema), async (c) => {
-  // TODO: 改 role/active/display_name（M2）— 防呆：不可停用自己、不可對自己降權、至少保留一位 admin
-  return fail(c, 501, 'INTERNAL', '尚未實作（M2）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的成員 id')
+  const me = c.get('user')
+  const body = c.req.valid('json')
+
+  const target = await c.env.DB.prepare(
+    'SELECT id, role, active FROM users WHERE id = ?',
+  ).bind(id).first<{ id: number; role: string; active: number }>()
+  if (!target) return fail(c, 404, 'NOT_FOUND', '成員不存在')
+
+  // 防呆規則（§4.6）
+  // 1. 不可停用自己
+  if (id === me.id && body.active === 0) {
+    return fail(c, 400, 'ADMIN_LOCKED', '不可停用自己')
+  }
+  // 2. 不可對自己降權
+  if (id === me.id && body.role !== undefined && body.role !== 'admin') {
+    return fail(c, 400, 'ADMIN_LOCKED', '不可對自己降權')
+  }
+  // 3. 至少保留一位 admin（操作後 active=1 AND role='admin' 人數須 ≥ 1）
+  const newRole = body.role ?? target.role
+  const newActive = body.active ?? target.active
+  if (target.role === 'admin' && target.active === 1 && (newRole !== 'admin' || newActive === 0)) {
+    const adminCount = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1",
+    ).first<{ n: number }>()
+    if ((adminCount?.n ?? 0) <= 1) {
+      return fail(c, 400, 'ADMIN_LOCKED', '系統至少需保留一位管理員')
+    }
+  }
+
+  // 動態組 UPDATE
+  const sets: string[] = []
+  const binds: unknown[] = []
+  if (body.role !== undefined) { sets.push('role = ?'); binds.push(body.role) }
+  if (body.active !== undefined) { sets.push('active = ?'); binds.push(body.active) }
+  if (body.display_name !== undefined) { sets.push('display_name = ?'); binds.push(body.display_name) }
+  if (sets.length === 0) return ok(c, { id, updated: false })
+
+  binds.push(id)
+  await c.env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  return ok(c, { id, updated: true })
 })
