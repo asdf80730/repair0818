@@ -16,7 +16,7 @@ test('案件列表渲染（含 mock 資料）', async ({ page }) => {
   await expect(page.getByText('👥 成員')).toBeVisible()
 })
 
-test('建單完整流程：選類別→地點→填說明→送出→列表新增', async ({ page }) => {
+test('建單完整流程：選類別→地點→填說明→送出→跳詳情頁', async ({ page }) => {
   await page.getByText('＋ 建單').first().click()
   await page.waitForSelector('.chips .chip', { timeout: 10000 })
 
@@ -25,8 +25,9 @@ test('建單完整流程：選類別→地點→填說明→送出→列表新�
   await page.locator('textarea.textarea').fill('門禁感應不良')
   await page.getByText('送出建單').click()
 
-  await page.waitForSelector('.ticket-card', { timeout: 10000 })
-  await expect(page.getByText(/門禁－大廳 #\d+/)).toBeVisible()
+  // 建單成功後跳詳情頁
+  await page.waitForURL(/#\/ticket\/\d+/, { timeout: 10000 })
+  await expect(page.getByText('案件詳情')).toBeVisible()
 })
 
 test('切換狀態 tab 篩選', async ({ page }) => {
