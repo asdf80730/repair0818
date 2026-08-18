@@ -24,7 +24,7 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-  # E2E 對已部署的 Pages 網域跑（部署由 Cloudflare Pages 的 GitHub 整合負責，見 README）
+  # E2E 對已部署的 Pages 網域跑（部署由 Cloudflare GitHub 整合負責）
   e2e:
     runs-on: ubuntu-latest
     needs: test
@@ -40,6 +40,16 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+
+      # 等 Cloudflare 部署完成（輪詢正式網域，最多 5 分鐘）
+      - name: Wait for Cloudflare deployment
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://repair-system-4re.pages.dev/api/hello || true)
+            if [ "$code" = "200" ]; then echo "部署已就緒"; break; fi
+            echo "等待部署 ($i/60)..."
+            sleep 5
+          done
 
       - name: Run E2E tests
         run: npx playwright test
