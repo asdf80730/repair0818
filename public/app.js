@@ -768,8 +768,25 @@ async function boot() {
   root.innerHTML = ''
   root.appendChild(el('p', { class: 'loading', text: '載入中…' }))
 
-  // LIFF init
-  if (window.liff) {
+  // 測試模式：?mock=true 時用 liff-mock 插件（§1.2，繞過真實 LINE 登入）
+  const isMock = new URLSearchParams(window.location.search).get('mock') === 'true'
+  if (isMock && window.liff && window.liffMock) {
+    try {
+      liff.use(new window.liffMock.LiffMockPlugin())
+      await liff.init({ liffId: LIFF_ID, mock: true })
+      liffReady = true
+      // 注入假使用者（可被測試覆寫）
+      if (liff.$mock) {
+        liff.$mock.set({
+          getProfile: { userId: 'U-mock-user', displayName: '測試用戶', statusMessage: '' },
+          getIDToken: () => 'mock-id-token',
+          isLoggedIn: () => true,
+        })
+      }
+    } catch (e) {
+      console.warn('LIFF mock init failed', e)
+    }
+  } else if (window.liff) {
     try {
       await liff.init({ liffId: LIFF_ID })
       liffReady = true
@@ -780,6 +797,13 @@ async function boot() {
   }
 
   // 取 me
+  if (isMock) {
+    // 測試模式：直接設假 me（不跳 LINE 登入），後續 API 靠注入的 test cookie
+    me = { id: 1, display_name: '測試用戶', role: 'admin' }
+    render()
+    return
+  }
+
   try {
     const body = await api('/api/auth/me')
     me = body.data
