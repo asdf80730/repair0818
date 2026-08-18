@@ -1,10 +1,10 @@
-// playwright.config.js — 前端互動 E2E 測試設定
+// playwright.config.js — 前端互動 E2E 測試設定（ESM）
 // 用 mock 模式繞過 LINE 登入，對已部署的 Pages 網域跑
-const { defineConfig } = require('@playwright/test')
+import { defineConfig } from '@playwright/test'
 
 const BASE = process.env.E2E_BASE_URL || 'https://repair-system-4re.pages.dev'
 
-module.exports = defineConfig({
+export default defineConfig({
   testDir: './e2e',
   timeout: 30000,
   retries: 0,
