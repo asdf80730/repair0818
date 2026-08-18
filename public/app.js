@@ -34,18 +34,19 @@ const mockVendors = [{ id: 1, name: '測試廠商', phone: '0912345678', active:
 function mockApi(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase()
   const url = new URL(path, window.location.origin)
+  const pathname = url.pathname // 去 query 比對
 
   // auth/me
-  if (path === '/api/auth/me') {
+  if (pathname === '/api/auth/me') {
     return { ok: true, data: { id: 1, display_name: '測試用戶', role: 'admin' } }
   }
   // options
-  if (path.startsWith('/api/options')) {
+  if (pathname === '/api/options') {
     const type = url.searchParams.get('type')
     return { ok: true, data: mockOptions[type] || [] }
   }
   // tickets 列表
-  if (path === '/api/tickets' && method === 'GET') {
+  if (pathname === '/api/tickets' && method === 'GET') {
     const status = url.searchParams.get('status') || 'active'
     let items = mockTickets
     if (status === 'active') items = mockTickets.filter(t => t.status === 'open' || t.status === 'in_progress')
@@ -53,7 +54,7 @@ function mockApi(path, options = {}) {
     return { ok: true, data: { items, page: 1, limit: 20, has_more: false } }
   }
   // 建單
-  if (path === '/api/tickets' && method === 'POST') {
+  if (pathname === '/api/tickets' && method === 'POST') {
     const body = JSON.parse(options.body || '{}')
     const cat = mockOptions.category.find(o => o.id === body.category_id)
     const loc = mockOptions.location.find(o => o.id === body.location_id)
@@ -66,22 +67,22 @@ function mockApi(path, options = {}) {
     return { ok: true, data: { id: t.id, title: t.title, share_token: 'mock-token-' + t.id } }
   }
   // 詳情
-  const detailMatch = path.match(/^\/api\/tickets\/(\d+)$/)
+  const detailMatch = pathname.match(/^\/api\/tickets\/(\d+)$/)
   if (detailMatch && method === 'GET') {
     const t = mockTickets.find(x => x.id === Number(detailMatch[1]))
     if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
     return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/api/share/mock', updates: [] } }
   }
   // 統計
-  if (path === '/api/stats/summary') {
+  if (pathname === '/api/stats/summary') {
     return { ok: true, data: { open_count: 1, in_progress_count: 1, month_new: 2, month_done: 0 } }
   }
   // users
-  if (path === '/api/users' && method === 'GET') {
+  if (pathname === '/api/users' && method === 'GET') {
     return { ok: true, data: mockUsers }
   }
   // vendors
-  if (path === '/api/vendors' && method === 'GET') {
+  if (pathname === '/api/vendors' && method === 'GET') {
     return { ok: true, data: mockVendors }
   }
   // 其他 mutation 一律成功
