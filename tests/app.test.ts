@@ -2,9 +2,28 @@
 // 在真實 workerd runtime 跑（@cloudflare/vitest-pool-workers），D1 用 miniflare
 // 0.5.41 新版：用 SELF（cloudflare:test）呼叫 main worker
 import { SELF } from 'cloudflare:test'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 
 const worker = SELF
+
+// 攔截外部請求（ctx7 確認新版用 vi.spyOn(globalThis, 'fetch')）
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+/** mock LINE ID token 驗證成功，回傳指定 payload */
+function mockLineVerify(payload: Record<string, unknown>) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.href.startsWith('https://api.line.me/oauth2/v2.1/verify')) {
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    throw new Error('No mock found for ' + url.href)
+  })
+}
 
 describe('app 組裝與 middleware 掛載順序（§1.3）', () => {
   it('未登入 GET /api/tickets → 401（全域 requireAuth 擋下）', async () => {
@@ -67,13 +86,42 @@ describe('app 組裝與 middleware 掛載順序（§1.3）', () => {
     expect(r.status).toBe(403)
   })
 
-  it('帶 CSRF header POST /api/auth/session → 501（進到 handler，M2 未實作）', async () => {
+  it('POST /api/auth/session LINE 驗證成功 → 200 並建 pending user + Set-Cookie', async () => {
+    mockLineVerify({
+      iss: 'https://access.line.me',
+      sub: 'U-mock-user-1',
+      aud: 'test-channel', // 對應 vitest.config 的 LINE_CHANNEL_ID
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      name: '測試用戶',
+    })
     const r = await worker.fetch('http://example.com/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      body: JSON.stringify({ id_token: 'x' }),
+      body: JSON.stringify({ id_token: 'mock-id-token' }),
     })
-    expect(r.status).toBe(501)
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.ok).toBe(true)
+    expect(body.data.user_id).toBeTruthy()
+    // 確認 Set-Cookie 有 session（HttpOnly）
+    const setCookie = r.headers.get('Set-Cookie') ?? ''
+    expect(setCookie).toContain('session=')
+    expect(setCookie).toContain('HttpOnly')
+  })
+
+  it('POST /api/auth/session LINE 驗證失敗（iss 不符）→ 401', async () => {
+    mockLineVerify({
+      iss: 'https://evil.example.com',
+      sub: 'U-mock-user-2',
+      aud: 'test-channel',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })
+    const r = await worker.fetch('http://example.com/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+      body: JSON.stringify({ id_token: 'mock-id-token' }),
+    })
+    expect(r.status).toBe(401)
   })
 
   it('未登入 POST /api/exports/sign → 401（requireAuth roles 擋）', async () => {
@@ -100,11 +148,27 @@ describe('§10 回歸斷言', () => {
     expect(r.status).toBe(401)
   })
 
-  // 以下 3 個依賴 M2/M5 實作（auth/session 目前 501、CSV 簽名需 JWT_SECRET），
-  // 里程碑完成後移除 .skip 即可驗證
-  it.skip('pending 打 /api/auth/me → 200（含 display_name）', async () => {
-    // M2 後：建立 pending user → 簽 JWT → 帶 Cookie 打 /api/auth/me
-    const r = await worker.fetch('http://example.com/api/auth/me')
+  it('pending 打 /api/auth/me → 200（含 display_name）', async () => {
+    // 先建立 pending user + 拿 session cookie
+    mockLineVerify({
+      iss: 'https://access.line.me',
+      sub: 'U-pending-user',
+      aud: 'test-channel',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      name: '等待開通用戶',
+    })
+    const session = await worker.fetch('http://example.com/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+      body: JSON.stringify({ id_token: 'mock-id-token' }),
+    })
+    expect(session.status).toBe(200)
+    const cookie = session.headers.get('set-cookie')?.split(';')[0] ?? ''
+
+    // 帶 cookie 打 /api/auth/me → 200 含 display_name
+    const r = await worker.fetch('http://example.com/api/auth/me', {
+      headers: { Cookie: cookie },
+    })
     expect(r.status).toBe(200)
     const body = await r.json()
     expect(body.data.display_name).toBeTruthy()

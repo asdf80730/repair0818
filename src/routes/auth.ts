@@ -6,21 +6,78 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { ok, fail } from '../lib/respond'
 import { requireAuth, signSessionJWT, setSessionCookie, clearSessionCookie } from '../lib/auth'
+import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
 
 export const authRoutes = new Hono<Env>()
 
 // POST /api/auth/session — 見 §3.1。需 CSRF header，不需已登入。
-// 實作（M2 里程碑）：向 LINE 驗證 id_token → 建/取 user → 簽 JWT → Set-Cookie
+// 向 LINE 驗證 id_token → 建/取 user → 簽 JWT → Set-Cookie
 const sessionSchema = z.object({ id_token: z.string().min(1) })
 
+const LINE_VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify'
+const LINE_ISS = 'https://access.line.me'
+
+type LineIDTokenPayload = {
+  iss: string
+  sub: string
+  aud: string
+  exp: number
+  name?: string
+}
+
 authRoutes.post('/session', zValidator('json', sessionSchema), async (c) => {
-  // TODO: verify against official docs — LINE ID Token 驗證端點與參數
-  // POST https://api.line.me/oauth2/v2.1/verify
-  // 核對 aud == LINE_CHANNEL_ID、iss == 'https://access.line.me'、exp 未過期
-  // 查無此人 → 建立 pending 使用者（display_name 取 name claim，缺省填「LINE 用戶」）
-  // 簽發 JWT → setSessionCookie
-  return fail(c, 501, 'INTERNAL', '尚未實作（M2）')
+  const { id_token } = c.req.valid('json')
+  const channelId = c.env.LINE_CHANNEL_ID
+
+  // 1. 向 LINE 驗證 id_token（ctx7 確認官方端點，POST 帶 id_token + client_id）
+  let payload: LineIDTokenPayload
+  try {
+    const res = await fetch(LINE_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id_token, client_id: channelId }),
+    })
+    if (!res.ok) {
+      return fail(c, 401, 'UNAUTHORIZED', 'LINE ID token 驗證失敗')
+    }
+    payload = (await res.json()) as LineIDTokenPayload
+  } catch {
+    return fail(c, 500, 'INTERNAL', '無法連線 LINE 驗證服務')
+  }
+
+  // 2. 核對 aud == LINE_CHANNEL_ID、iss == 'https://access.line.me'、exp 未過期
+  if (payload.aud !== channelId || payload.iss !== LINE_ISS) {
+    return fail(c, 401, 'UNAUTHORIZED', 'LINE ID token 驗證失敗')
+  }
+  if (!payload.exp || payload.exp * 1000 < Date.now()) {
+    return fail(c, 401, 'UNAUTHORIZED', 'LINE ID token 已過期')
+  }
+
+  // 3. 查無此人 → 建立 pending 使用者（display_name 取 name claim，缺省填「LINE 用戶」）
+  const displayName = payload.name && payload.name.trim() !== '' ? payload.name.trim() : 'LINE 用戶'
+  let userId: number
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM users WHERE line_user_id = ?',
+  ).bind(payload.sub).first<{ id: number }>()
+
+  if (existing) {
+    userId = existing.id
+  } else {
+    const now = nowIso()
+    const insert = await c.env.DB.prepare(
+      'INSERT INTO users (line_user_id, display_name, role, active, created_at) VALUES (?, ?, ?, 1, ?)',
+    )
+      .bind(payload.sub, displayName, 'pending', now)
+      .run()
+    userId = insert.meta.last_row_id
+  }
+
+  // 4. 簽發 JWT → Set-Cookie
+  const jwt = await signSessionJWT({ id: userId }, c.env.JWT_SECRET)
+  setSessionCookie(c, jwt)
+  return ok(c, { logged_in: true, user_id: userId })
 })
 
 // GET /api/auth/me — requireAuth({ allowPending: true })
