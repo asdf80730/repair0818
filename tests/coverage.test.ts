@@ -394,14 +394,21 @@ describe('tickets 列表篩選（§4.3）', () => {
 
   it('category_id 篩選只回該類別', async () => {
     const { cookie } = await loginAs('U-cov-ls3', '篩選3', 'committee')
+    // 建一張單，用它的 category_id 篩選（避免被前面測試停用的選項影響）
     const cat = await getOptionId('category')
     const loc = await getOptionId('location')
+    await worker.fetch('http://example.com/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ category_id: cat, location_id: loc, description: '篩選用單' }),
+    })
     const r = await worker.fetch(`http://example.com/api/tickets?category_id=${cat}`, { headers: { Cookie: cookie } })
+    expect(r.status).toBe(200)
     const body = await r.json()
+    expect(body.data.items.length).toBeGreaterThan(0)
     for (const t of body.data.items) {
       expect(t.category_label).toBeTruthy()
     }
-    expect(r.status).toBe(200)
   })
 })
 
