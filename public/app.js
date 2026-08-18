@@ -825,7 +825,10 @@ function renderNav() {
 // ---- hash router ----
 function router() {
   const hash = location.hash || '#/'
-  const [path, param] = hash.slice(1).split('/')
+  // 對 '#/admin' → slice(1)='/admin' → split('/')=['','admin']，過濾空字串取 path
+  const parts = hash.slice(1).split('/').filter(Boolean)
+  const path = parts[0] || ''
+  const param = parts[1]
   const root = document.getElementById('page')
   root.innerHTML = ''
 
