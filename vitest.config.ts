@@ -19,6 +19,8 @@ export default defineWorkersConfig(async () => {
           // main worker：包 Hono app
           main: './tests/worker.ts',
           miniflare: {
+            compatibilityDate: '2026-08-01',
+            compatibilityFlags: ['nodejs_compat', 'export_commonjs_default'],
             d1Databases: { DB: '00000000-0000-0000-0000-000000000000' },
             r2Buckets: { PHOTOS: 'test-photos' },
             bindings: {
