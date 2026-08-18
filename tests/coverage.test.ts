@@ -402,9 +402,6 @@ describe('tickets 列表篩選（§4.3）', () => {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
       body: JSON.stringify({ category_id: cat, location_id: loc, description: '篩選用單' }),
     })
-    if (create.status !== 201) {
-      console.log('建單失敗 body:', JSON.stringify(await create.json()))
-    }
     expect(create.status).toBe(201)
     const r = await worker.fetch(`http://example.com/api/tickets?category_id=${cat}`, { headers: { Cookie: cookie } })
     expect(r.status).toBe(200)
