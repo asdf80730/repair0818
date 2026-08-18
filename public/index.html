@@ -2,15 +2,23 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>社區修繕系統</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="app">
-    <h1>🏘️ 社區修繕系統</h1>
-    <p>專案骨架已建立（M1 里程碑）。前端 SPA（P0–P7）待實作。</p>
+    <!-- hash router 掛載點 -->
+    <div id="page"></div>
   </div>
+  <!-- 底部導覽 -->
+  <nav id="nav"></nav>
+
+  <!-- LIFF SDK（LINE 官方 CDN，平台 SDK） -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- browser-image-compression（vendored，§1.2） -->
+  <script src="/vendor/browser-image-compression.js"></script>
+  <!-- 主系統邏輯 -->
   <script src="/app.js"></script>
 </body>
 </html>
