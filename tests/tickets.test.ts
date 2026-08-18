@@ -45,15 +45,26 @@ async function loginAs(sub: string, name: string, role: 'committee' | 'manager' 
   return { userId, cookie }
 }
 
+/** 取第一個 active 的 category/location option id（seed 後動態查） */
+async function getOptionId(type: 'category' | 'location'): Promise<number> {
+  const row = await env.DB.prepare(
+    'SELECT id FROM options WHERE type = ? AND active = 1 ORDER BY id LIMIT 1',
+  ).bind(type).first<{ id: number }>()
+  if (!row) throw new Error('找不到 ' + type + ' 選項，seed 失敗')
+  return row.id
+}
+
 describe('M3 案件核心（§4.3）', () => {
   it('建單 → 列表 → 詳情 完整流程', async () => {
     const { cookie } = await loginAs('U-m3-user', 'M3測試', 'committee')
+    const categoryId = await getOptionId('category')
+    const locationId = await getOptionId('location')
 
     // 建單
     const create = await worker.fetch('http://example.com/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
-      body: JSON.stringify({ category_id: 1, location_id: 1, description: '電梯故障' }),
+      body: JSON.stringify({ category_id: categoryId, location_id: locationId, description: '電梯故障' }),
     })
     expect(create.status).toBe(201)
     const created = await create.json()
@@ -82,10 +93,11 @@ describe('M3 案件核心（§4.3）', () => {
 
   it('建單時類別/地點無效 → 400', async () => {
     const { cookie } = await loginAs('U-m3-bad', '壞單', 'committee')
+    const locationId = await getOptionId('location')
     const r = await worker.fetch('http://example.com/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
-      body: JSON.stringify({ category_id: 999, location_id: 1 }),
+      body: JSON.stringify({ category_id: 999, location_id: locationId }),
     })
     expect(r.status).toBe(400)
   })
