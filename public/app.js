@@ -200,6 +200,17 @@ function statusBadge(status) {
   return el('span', { class: `badge badge-${color}`, text: label })
 }
 
+// 問題16：縮圖點開放大（lightbox）
+function openLightbox(src) {
+  const mask = el('div', { class: 'lightbox', onclick: () => mask.remove() }, [
+    el('img', { src, class: 'lightbox-img' }),
+  ])
+  document.body.appendChild(mask)
+}
+function thumb(src) {
+  return el('img', { src, class: 'thumb', onclick: (e) => { e.stopPropagation(); openLightbox(src) } })
+}
+
 // ---- 頁面渲染 ----
 const pages = {}
 
@@ -252,12 +263,33 @@ pages.list = function () {
     const stale = (t.status === 'open' || t.status === 'in_progress') &&
       (Date.now() - new Date(t.last_activity_at).getTime() > 7 * 24 * 3600 * 1000)
     const days = Math.floor((Date.now() - new Date(t.last_activity_at).getTime()) / (24 * 3600 * 1000))
-    return el('div', { class: 'card ticket-card', onclick: () => { location.hash = '#/ticket/' + t.id } }, [
+    const card = el('div', { class: 'card ticket-card', onclick: () => { location.hash = '#/ticket/' + t.id } }, [
       el('div', { class: 'ticket-title' }, [statusBadge(t.status), el('span', { text: t.title })]),
       el('div', { class: 'ticket-meta', text: `廠商：${t.vendor_name || '未指派'}` }),
       el('div', { class: 'ticket-meta', text: `最後活動：${fmtTime(t.last_activity_at)}` }),
       stale ? el('div', { class: 'stale', text: `⚠ ${days} 天未更新` }) : null,
     ])
+    // 問題3：列表可直接指派廠商（manager/admin，未結案）
+    if (me && (me.role === 'manager' || me.role === 'admin') && (t.status === 'open' || t.status === 'in_progress')) {
+      const vendorSelect = el('select', { class: 'select vendor-inline' })
+      vendorSelect.appendChild(el('option', { value: '', text: t.vendor_name ? `廠商：${t.vendor_name}` : '指派廠商…' }))
+      api('/api/vendors').then((b) => {
+        for (const v of b.data) {
+          if (!v.active) continue
+          vendorSelect.appendChild(el('option', { value: String(v.id), text: v.name }))
+        }
+      }).catch(() => {})
+      vendorSelect.addEventListener('change', async (e) => {
+        e.stopPropagation()
+        if (!e.target.value) return
+        try {
+          await api('/api/tickets/' + t.id, { method: 'PATCH', body: JSON.stringify({ vendor_id: Number(e.target.value) }) })
+          location.reload()
+        } catch (err) { alert(err.message) }
+      })
+      card.appendChild(vendorSelect)
+    }
+    return card
   }
 
   function loadMore() {
@@ -313,37 +345,27 @@ pages.new = function () {
     el('h1', { text: '建單' }),
   ]))
 
-  // 類別 chips
-  const catChips = el('div', { class: 'chips' })
+  // 類別下拉（問題2：選項多時 chips 選不到，改下拉式）
+  const catSelect = el('select', { class: 'select' })
+  catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
   let selectedCat = null
   api('/api/options?type=category').then((b) => {
     for (const o of b.data) {
-      catChips.appendChild(el('button', {
-        class: 'chip', text: o.label,
-        onclick: (e) => {
-          selectedCat = o.id
-          for (const c of catChips.children) c.classList.remove('active')
-          e.currentTarget.classList.add('active')
-        },
-      }))
+      catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
   }).catch(() => {})
+  catSelect.addEventListener('change', (e) => { selectedCat = e.target.value ? Number(e.target.value) : null })
 
-  // 地點 chips
-  const locChips = el('div', { class: 'chips' })
+  // 地點下拉
+  const locSelect = el('select', { class: 'select' })
+  locSelect.appendChild(el('option', { value: '', text: '請選擇地點' }))
   let selectedLoc = null
   api('/api/options?type=location').then((b) => {
     for (const o of b.data) {
-      locChips.appendChild(el('button', {
-        class: 'chip', text: o.label,
-        onclick: (e) => {
-          selectedLoc = o.id
-          for (const c of locChips.children) c.classList.remove('active')
-          e.currentTarget.classList.add('active')
-        },
-      }))
+      locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
   }).catch(() => {})
+  locSelect.addEventListener('change', (e) => { selectedLoc = e.target.value ? Number(e.target.value) : null })
 
   // 常用說明 chips（點擊附加至 textarea，§5.2）
   const descChips = el('div', { class: 'chips' })
@@ -371,7 +393,7 @@ pages.new = function () {
         fd.append('file', compressed)
         const body = await api('/api/photos', { method: 'POST', body: fd })
         selectedPhotos.push(body.data.id)
-        photoPreview.appendChild(el('img', { src: body.data.url, class: 'thumb' }))
+        photoPreview.appendChild(thumb(body.data.url))
       } catch (e) {
         if (e && e.code !== 'NETWORK') continue
         alert(e.message)
@@ -398,8 +420,8 @@ pages.new = function () {
   }
 
   root.appendChild(el('div', { class: 'form' }, [
-    el('label', { text: '類別' }), catChips,
-    el('label', { text: '地點' }), locChips,
+    el('label', { text: '類別' }), catSelect,
+    el('label', { text: '地點' }), locSelect,
     el('label', { text: '常用說明（點擊附加）' }), descChips,
     el('label', { text: '說明' }), descEl,
     el('label', { text: '照片' }), photoInput, photoPreview,
@@ -437,6 +459,28 @@ pages.ticket = async function (id) {
   ])
   root.appendChild(info)
 
+  // 指派廠商（manager/admin，問題3：詳情頁可直接指派）
+  if (me && (me.role === 'manager' || me.role === 'admin') && (t.status === 'open' || t.status === 'in_progress')) {
+    const vendorSelect = el('select', { class: 'select' })
+    vendorSelect.appendChild(el('option', { value: '', text: t.vendor_name ? `目前：${t.vendor_name}` : '指派廠商…' }))
+    api('/api/vendors').then((b) => {
+      for (const v of b.data) {
+        if (!v.active) continue
+        vendorSelect.appendChild(el('option', { value: String(v.id), text: v.name }))
+      }
+    }).catch(() => {})
+    vendorSelect.addEventListener('change', async (e) => {
+      if (!e.target.value) return
+      try {
+        await api(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify({ vendor_id: Number(e.target.value) }) })
+        location.reload()
+      } catch (err) { alert(err.message) }
+    })
+    root.appendChild(el('div', { class: 'form' }, [
+      el('label', { text: '指派廠商' }), vendorSelect,
+    ]))
+  }
+
   // 照片牆
   if (t.photos && t.photos.length) {
     const wall = el('div', { class: 'photo-wall' })
@@ -444,11 +488,11 @@ pages.ticket = async function (id) {
     root.appendChild(wall)
   }
 
-  // 分享連結
+  // 分享連結（問題10：複製不彈確認框）
   const shareRow = el('div', { class: 'share-row' }, [
     el('span', { text: '分享連結：' }),
     el('input', { class: 'input', value: location.origin + t.share_url, readonly: 'true' }),
-    el('button', { class: 'btn', text: '複製', onclick: () => { navigator.clipboard.writeText(location.origin + t.share_url); alert('已複製') } }),
+    el('button', { class: 'btn', text: '複製', onclick: () => { navigator.clipboard.writeText(location.origin + t.share_url) } }),
   ])
   root.appendChild(shareRow)
 
@@ -460,7 +504,7 @@ pages.ticket = async function (id) {
   root.appendChild(el('h3', { text: '時間軸' }))
   root.appendChild(timeline)
 
-  // 底部留言框（三角色）
+  // 底部留言框（三角色，問題4：留言＋回報合一，manager/admin 可選狀態）
   const commentInput = el('textarea', { class: 'textarea', placeholder: '留言…' })
   const commentPhotos = []
   const commentFile = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
@@ -478,24 +522,42 @@ pages.ticket = async function (id) {
       }
     }
   })
+  const isMgr = me && (me.role === 'manager' || me.role === 'admin')
+  const canStatus = isMgr && (t.status === 'open' || t.status === 'in_progress')
+  const statusSelect = el('select', { class: 'select' })
+  statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
+  if (canStatus) {
+    statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記處理中' }))
+    statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
+  }
   const commentBox = el('div', { class: 'comment-box' }, [
     commentInput,
     commentFile,
-    el('button', { class: 'btn btn-primary', text: '送出留言', onclick: async () => {
+    canStatus ? statusSelect : null,
+    el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
       if (!commentInput.value.trim()) { alert('請輸入留言'); return }
+      const status = statusSelect.value
+      if (status === 'done' && !confirm('標記為已完成並結案？')) return
       try {
-        await api(`/api/tickets/${id}/comments`, {
-          method: 'POST',
-          body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }),
-        })
+        if (status) {
+          await api(`/api/tickets/${id}/updates`, {
+            method: 'POST',
+            body: JSON.stringify({ status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }),
+          })
+        } else {
+          await api(`/api/tickets/${id}/comments`, {
+            method: 'POST',
+            body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }),
+          })
+        }
         location.reload()
       } catch (e) { alert(e.message) }
     } }),
   ])
   root.appendChild(commentBox)
 
-  // 管理公司：新增回報主按鈕
-  if (me && (me.role === 'manager' || me.role === 'admin')) {
+  // 管理公司：新增回報主按鈕（保留，供快速回報）
+  if (isMgr) {
     root.appendChild(el('button', { class: 'btn btn-primary btn-block', text: '＋ 新增回報', onclick: () => { location.hash = `#/report/${id}` } }))
   }
 
@@ -522,26 +584,41 @@ pages.ticket = async function (id) {
       } }))
     }
     if (canReopen) {
-      menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新開啟', onclick: async () => {
-        const status = prompt('重新開啟為（待處理/處理中）？', '處理中')
-        if (!status) return
-        const note = prompt('備註（選填）')
-        if (note === null) return
-        try {
-          await api(`/api/tickets/${id}/reopen`, {
-            method: 'POST',
-            body: JSON.stringify({ status: status === '待處理' ? 'open' : 'in_progress', note: note || undefined }),
-          })
-          location.reload()
-        } catch (e) { alert(e.message) }
+      menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新開啟', onclick: () => {
+        // 問題8：用選單選擇狀態，不用 prompt 輸入
+        const sel = el('select', { class: 'select' })
+        sel.appendChild(el('option', { value: 'in_progress', text: '處理中' }))
+        sel.appendChild(el('option', { value: 'open', text: '待處理' }))
+        const noteEl = el('textarea', { class: 'textarea', placeholder: '備註（選填）' })
+        const modal = el('div', { class: 'modal-mask' }, [
+          el('div', { class: 'modal' }, [
+            el('h3', { text: '重新開啟案件' }),
+            el('label', { text: '狀態' }), sel,
+            el('label', { text: '備註' }), noteEl,
+            el('div', { class: 'modal-actions' }, [
+              el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => modal.remove() }),
+              el('button', { class: 'btn btn-primary', text: '確認重新開啟', onclick: async () => {
+                try {
+                  await api(`/api/tickets/${id}/reopen`, {
+                    method: 'POST',
+                    body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }),
+                  })
+                  location.reload()
+                } catch (e) { alert(e.message) }
+              } }),
+            ]),
+          ]),
+        ])
+        document.body.appendChild(modal)
       } }))
     }
     if (canReshare) {
       menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新產生分享連結', onclick: async () => {
         try {
           const b = await api(`/api/tickets/${id}/share-token`, { method: 'POST' })
-          alert('新連結：' + location.origin + b.data.share_url)
-          location.reload()
+          // 問題6+10：不彈框，直接更新分享輸入框
+          const input = shareRow.querySelector('input')
+          if (input) input.value = location.origin + b.data.share_url
         } catch (e) { alert(e.message) }
       } }))
     }
@@ -554,7 +631,7 @@ function renderUpdate(u) {
     return el('div', { class: 'update comment' }, [
       el('div', { class: 'update-head', text: `💬 ${u.display_name || ''} · ${fmtTime(u.created_at)}` }),
       el('div', { class: 'update-body', text: u.note }),
-      ...(u.photo_urls || []).map((p) => el('img', { src: p, class: 'thumb' })),
+      ...(u.photo_urls || []).map((p) => thumb(p)),
     ])
   }
   if (u.kind === 'system') {
@@ -567,8 +644,61 @@ function renderUpdate(u) {
   return el('div', { class: 'update status' }, [
     el('div', { class: 'update-head' }, [statusBadge(u.status), el('span', { text: ` ${u.display_name || ''} · ${fmtTime(u.created_at)}` })]),
     u.note ? el('div', { class: 'update-body', text: u.note }) : null,
-    ...(u.photo_urls || []).map((p) => el('img', { src: p, class: 'thumb' })),
+    ...(u.photo_urls || []).map((p) => thumb(p)),
   ])
+}
+
+// P3.5 編輯案件（問題5：詳情頁「編輯」原本跳 #/edit 但無此頁面）
+pages.edit = async function (id) {
+  const root = document.getElementById('page')
+  root.innerHTML = ''
+  root.appendChild(el('header', { class: 'topbar' }, [
+    el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/ticket/' + id } }),
+    el('h1', { text: '編輯案件' }),
+  ]))
+
+  let t
+  try {
+    const body = await api('/api/tickets/' + id)
+    t = body.data
+  } catch (e) {
+    root.appendChild(el('p', { class: 'error', text: e.message }))
+    return
+  }
+
+  const catSelect = el('select', { class: 'select' })
+  api('/api/options?type=category').then((b) => {
+    for (const o of b.data) {
+      catSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.category_label ? 'selected' : null }))
+    }
+  }).catch(() => {})
+
+  const locSelect = el('select', { class: 'select' })
+  api('/api/options?type=location').then((b) => {
+    for (const o of b.data) {
+      locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
+    }
+  }).catch(() => {})
+
+  const descEl = el('textarea', { class: 'textarea', value: t.description || '' })
+
+  async function submit() {
+    const body = {}
+    if (catSelect.value) body.category_id = Number(catSelect.value)
+    if (locSelect.value) body.location_id = Number(locSelect.value)
+    if (descEl.value !== (t.description || '')) body.description = descEl.value
+    try {
+      await api(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      location.hash = '#/ticket/' + id
+    } catch (e) { alert(e.message) }
+  }
+
+  root.appendChild(el('div', { class: 'form' }, [
+    el('label', { text: '類別' }), catSelect,
+    el('label', { text: '地點' }), locSelect,
+    el('label', { text: '說明' }), descEl,
+    el('button', { class: 'btn btn-primary', text: '儲存', onclick: submit }),
+  ]))
 }
 
 // P4 新增回報（§5.4）
@@ -634,11 +764,15 @@ pages.stats = function () {
 
   api('/api/stats/summary').then((b) => {
     const s = b.data
+    const openTotal = s.open_count + s.in_progress_count
+    const doneRate = s.month_new > 0 ? Math.round((s.month_done / s.month_new) * 100) : 0
     const cards = [
       ['待處理', s.open_count, 'red'],
       ['處理中', s.in_progress_count, 'yellow'],
+      ['未結案總數', openTotal, 'blue'],
       ['本月新增', s.month_new, 'blue'],
       ['本月完成', s.month_done, 'green'],
+      ['本月完成率', doneRate + '%', 'green'],
     ]
     const grid = el('div', { class: 'stats-grid' })
     for (const [label, val, color] of cards) {
@@ -681,35 +815,63 @@ pages.users = function () {
   ]))
 
   api('/api/users').then((b) => {
+    const allUsers = b.data
     const list = el('div', { class: 'user-list' })
-    for (const u of b.data) {
-      const roleSelect = el('select', { class: 'select' })
-      for (const r of ['pending', 'committee', 'manager', 'admin']) {
-        roleSelect.appendChild(el('option', { value: r, text: r, selected: u.role === r ? 'selected' : null }))
-      }
-      roleSelect.addEventListener('change', async () => {
-        try {
-          await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ role: roleSelect.value }) })
-          alert('已更新角色')
-        } catch (e) { alert(e.message) }
+    const roleLabel = { pending: '待開通', committee: '委員', manager: '主管', admin: '保全/秘書' }
+    // 反向：下拉選項順序
+    const roleOrder = [['pending', '待開通'], ['committee', '委員'], ['manager', '主管'], ['admin', '保全/秘書']]
+
+    // 篩選（問題14：可依狀態篩選）
+    const filterSelect = el('select', { class: 'select' })
+    filterSelect.appendChild(el('option', { value: 'all', text: '全部成員' }))
+    filterSelect.appendChild(el('option', { value: 'pending', text: '待開通' }))
+    filterSelect.appendChild(el('option', { value: 'active', text: '已開通' }))
+    filterSelect.appendChild(el('option', { value: 'disabled', text: '已停用' }))
+
+    function render() {
+      list.innerHTML = ''
+      const f = filterSelect.value
+      const filtered = allUsers.filter((u) => {
+        if (f === 'pending') return u.role === 'pending'
+        if (f === 'active') return u.role !== 'pending' && u.active === 1
+        if (f === 'disabled') return u.active === 0
+        return true
       })
-      const activeBtn = el('button', {
-        class: 'btn btn-ghost',
-        text: u.active ? '停用' : '啟用',
-        onclick: async () => {
+      for (const u of filtered) {
+        const roleSelect = el('select', { class: 'select' })
+        for (const [val, label] of roleOrder) {
+          roleSelect.appendChild(el('option', { value: val, text: label, selected: u.role === val ? 'selected' : null }))
+        }
+        roleSelect.addEventListener('change', async () => {
           try {
-            await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ active: u.active ? 0 : 1 }) })
-            location.reload()
+            await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ role: roleSelect.value }) })
+            u.role = roleSelect.value
+            render()
           } catch (e) { alert(e.message) }
-        },
-      })
-      list.appendChild(el('div', { class: 'card user-row' }, [
-        el('span', { text: u.display_name }),
-        roleSelect,
-        activeBtn,
-      ]))
+        })
+        const activeBtn = el('button', {
+          class: 'btn ' + (u.active ? 'btn-danger' : 'btn-primary'), // 問題15：停用紅/啟用藍
+          text: u.active ? '停用' : '啟用',
+          onclick: async () => {
+            try {
+              await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ active: u.active ? 0 : 1 }) })
+              u.active = u.active ? 0 : 1
+              render()
+            } catch (e) { alert(e.message) }
+          },
+        })
+        list.appendChild(el('div', { class: 'card user-row' }, [
+          el('span', { text: u.display_name }),
+          el('span', { class: 'role-chip', text: roleLabel[u.role] || u.role }),
+          roleSelect,
+          activeBtn,
+        ]))
+      }
     }
+    filterSelect.addEventListener('change', render)
+    root.appendChild(el('div', { class: 'filter-row' }, [el('label', { text: '篩選：' }), filterSelect]))
     root.appendChild(list)
+    render()
   }).catch((e) => root.appendChild(el('p', { class: 'error', text: e.message })))
 }
 
@@ -722,11 +884,40 @@ pages.admin = function () {
     el('h1', { text: '管理' }),
   ]))
 
-  // 選項管理三個 tab
-  const types = [['category', '類別'], ['location', '地點'], ['description', '常用說明']]
+  // 選項管理 + 廠商管理 tab（問題9：廠商管理獨立 tab，不再每個類別都顯示）
+  const types = [['category', '類別'], ['location', '地點'], ['description', '常用說明'], ['vendors', '廠商']]
   const tabBar = el('div', { class: 'tabs' })
   const content = el('div', {})
   let currentType = 'category'
+
+  function renderVendors() {
+    content.innerHTML = ''
+    api('/api/vendors').then((b) => {
+      const list = el('div', { class: 'option-list' })
+      for (const v of b.data) {
+        list.appendChild(el('div', { class: 'card option-row' }, [
+          el('span', { text: v.name + (v.active ? '' : '（已停用）') }),
+          el('button', { class: 'btn ' + (v.active ? 'btn-danger' : 'btn-primary'), text: v.active ? '停用' : '啟用', onclick: async () => {
+            try { await api('/api/vendors/' + v.id, { method: 'PATCH', body: JSON.stringify({ active: v.active ? 0 : 1 }) }); renderVendors() }
+            catch (e) { alert(e.message) }
+          } }),
+        ]))
+      }
+      content.appendChild(list)
+      const newVendor = el('input', { class: 'input', placeholder: '新廠商名稱' })
+      content.appendChild(el('div', { class: 'add-row' }, [
+        newVendor,
+        el('button', { class: 'btn', text: '新增廠商', onclick: async () => {
+          if (!newVendor.value.trim()) return
+          try {
+            await api('/api/vendors', { method: 'POST', body: JSON.stringify({ name: newVendor.value.trim() }) })
+            newVendor.value = ''
+            renderVendors()
+          } catch (e) { alert(e.message) }
+        } }),
+      ]))
+    }).catch((e) => content.appendChild(el('p', { class: 'error', text: e.message })))
+  }
 
   function renderOptions() {
     content.innerHTML = ''
@@ -735,7 +926,7 @@ pages.admin = function () {
       for (const o of b.data) {
         list.appendChild(el('div', { class: 'card option-row' }, [
           el('span', { text: o.label }),
-          el('button', { class: 'btn btn-ghost', text: '停用', onclick: async () => {
+          el('button', { class: 'btn btn-danger', text: '停用', onclick: async () => {
             try { await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ active: 0 }) }); renderOptions() }
             catch (e) { alert(e.message) }
           } }),
@@ -753,7 +944,8 @@ pages.admin = function () {
         currentType = val
         for (const b of tabBar.children) b.classList.remove('active')
         e.currentTarget.classList.add('active')
-        renderOptions()
+        if (val === 'vendors') renderVendors()
+        else renderOptions()
       },
     }))
   }
@@ -761,9 +953,9 @@ pages.admin = function () {
   root.appendChild(content)
   renderOptions()
 
-  // 新增選項
+  // 新增選項（僅選項 tab 顯示，非廠商 tab）
   const newLabel = el('input', { class: 'input', placeholder: '新選項名稱' })
-  root.appendChild(el('div', { class: 'add-row' }, [
+  const addRow = el('div', { class: 'add-row' }, [
     newLabel,
     el('button', { class: 'btn', text: '新增', onclick: async () => {
       if (!newLabel.value.trim()) return
@@ -773,36 +965,17 @@ pages.admin = function () {
         renderOptions()
       } catch (e) { alert(e.message) }
     } }),
-  ]))
-
-  // 廠商管理
-  root.appendChild(el('h3', { text: '廠商管理' }))
-  const vendorList = el('div', { class: 'option-list' })
-  api('/api/vendors').then((b) => {
-    for (const v of b.data) {
-      vendorList.appendChild(el('div', { class: 'card option-row' }, [
-        el('span', { text: v.name + (v.active ? '' : '（已停用）') }),
-        el('button', { class: 'btn btn-ghost', text: v.active ? '停用' : '啟用', onclick: async () => {
-          try { await api('/api/vendors/' + v.id, { method: 'PATCH', body: JSON.stringify({ active: v.active ? 0 : 1 }) }); location.reload() }
-          catch (e) { alert(e.message) }
-        } }),
-      ]))
+  ])
+  // 切換 tab 時更新新增列（廠商 tab 不顯示選項新增列）
+  root.appendChild(addRow)
+  const origTabClick = null
+  for (const b of tabBar.children) {
+    const cb = b.onclick
+    b.onclick = (e) => {
+      cb(e)
+      addRow.style.display = currentType === 'vendors' ? 'none' : ''
     }
-  }).catch((e) => vendorList.appendChild(el('p', { class: 'error', text: e.message })))
-  root.appendChild(vendorList)
-
-  const newVendor = el('input', { class: 'input', placeholder: '新廠商名稱' })
-  root.appendChild(el('div', { class: 'add-row' }, [
-    newVendor,
-    el('button', { class: 'btn', text: '新增廠商', onclick: async () => {
-      if (!newVendor.value.trim()) return
-      try {
-        await api('/api/vendors', { method: 'POST', body: JSON.stringify({ name: newVendor.value.trim() }) })
-        newVendor.value = ''
-        location.reload()
-      } catch (e) { alert(e.message) }
-    } }),
-  ]))
+  }
 }
 
 // ---- 底部導覽 ----
@@ -839,6 +1012,7 @@ function router() {
     case '': case 'list': pages.list(); break
     case 'new': pages.new(); break
     case 'ticket': pages.ticket(param); break
+    case 'edit': pages.edit(param); break
     case 'report': pages.report(param); break
     case 'stats': pages.stats(); break
     case 'users': pages.users(); break
@@ -918,9 +1092,40 @@ async function boot() {
         // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL
         liff.login()
         return
+      } else if (window.liff) {
+        // LIFF SDK 在但 init 失敗（外部瀏覽器）→ 重試 init 後登入
+        try {
+          await liff.init({ liffId: LIFF_ID })
+          liffReady = true
+          if (liff.isLoggedIn()) {
+            const idToken = liff.getIDToken()
+            if (idToken) {
+              await fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+                body: JSON.stringify({ id_token: idToken }),
+              })
+              const b = await api('/api/auth/me')
+              me = b.data
+              router()
+              return
+            }
+          }
+          liff.login()
+          return
+        } catch (e2) {
+          root.innerHTML = ''
+          root.appendChild(el('p', { class: 'error', text: '登入失敗，請重新從 LINE 開啟' }))
+          return
+        }
       } else {
+        // 完全無 LIFF（非 LINE 環境）→ 顯示提示 + 重新整理
         root.innerHTML = ''
-        root.appendChild(el('p', { class: 'error', text: '請從 LINE 圖文選單開啟本系統' }))
+        root.appendChild(el('div', { class: 'pending' }, [
+          el('h1', { text: '🏘️ 社區修繕系統' }),
+          el('p', { text: '請從 LINE 圖文選單開啟本系統，或使用已登入的瀏覽器' }),
+          el('button', { class: 'btn', text: '重新整理', onclick: () => location.reload() }),
+        ]))
         return
       }
     } else if (e.code === 'PENDING') {

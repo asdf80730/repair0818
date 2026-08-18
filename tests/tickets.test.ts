@@ -87,7 +87,7 @@ describe('M3 案件核心（§4.3）', () => {
     expect(detail.status).toBe(200)
     const detailBody = await detail.json()
     expect(detailBody.data.description).toBe('電梯故障')
-    expect(detailBody.data.share_url).toContain('/api/share/')
+    expect(detailBody.data.share_url).toContain('/share.html?token=')
     expect(detailBody.data.updates).toEqual([])
   })
 

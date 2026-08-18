@@ -179,3 +179,36 @@ button { cursor: pointer; }
 .share-row .input { flex: 1; }
 .menu { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
 .export-row { display: flex; align-items: center; gap: 8px; padding: 8px; }
+
+/* 問題16：lightbox 縮圖放大 */
+.lightbox {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+  cursor: zoom-out;
+}
+.lightbox-img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+
+/* 問題8：modal 選單 */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 90;
+}
+.modal {
+  background: var(--card); border-radius: 12px; padding: 20px; width: 90%; max-width: 400px;
+}
+.modal h3 { margin: 0 0 12px; }
+.modal label { display: block; font-weight: 600; margin: 10px 0 4px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+/* 問題14：角色標籤 */
+.role-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 12px;
+  background: var(--border); color: var(--gray); font-size: 12px; white-space: nowrap;
+}
+
+/* 問題3：列表內嵌廠商下拉 */
+.vendor-inline { margin-top: 6px; min-height: 36px; font-size: 14px; }
+
+/* 問題14：篩選列 */
+.filter-row { display: flex; align-items: center; gap: 8px; padding: 8px; }
+.filter-row .select { flex: 1; }

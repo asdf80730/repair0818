@@ -445,7 +445,7 @@ describe('share photos 端點（§4.5）', () => {
     const ticketId = await createTicket(cookie)
     const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: cookie } })
     const detailBody = await detail.json()
-    const shareToken = detailBody.data.share_url.split('/').pop()
+    const shareToken = new URL('http://x' + detailBody.data.share_url).searchParams.get('token')
     const r = await worker.fetch(`http://example.com/api/share/${shareToken}/photos/${photoId}`)
     expect(r.status).toBe(404)
   })

@@ -197,7 +197,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
     last_activity_at: ticket.last_activity_at,
     closed_at: ticket.closed_at,
     photos: photos.results.map((p) => `/api/photos/${p.id}`),
-    share_url: `/api/share/${ticket.share_token}`,
+    share_url: `/share.html?token=${ticket.share_token}`,
     updates: updates.results.map((u) => ({
       id: u.id,
       kind: u.kind,
@@ -487,5 +487,5 @@ ticketRoutes.post('/:id/share-token', requireAuth({ roles: ['manager', 'admin'] 
     'UPDATE tickets SET share_token = ? WHERE id = ?',
   ).bind(newToken, id).run()
 
-  return ok(c, { share_url: `/api/share/${newToken}` })
+  return ok(c, { share_url: `/share.html?token=${newToken}` })
 })

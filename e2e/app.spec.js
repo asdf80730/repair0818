@@ -18,10 +18,11 @@ test('案件列表渲染（含 mock 資料）', async ({ page }) => {
 
 test('建單完整流程：選類別→地點→填說明→送出→跳詳情頁', async ({ page }) => {
   await page.getByText('＋ 建單').first().click()
-  await page.waitForSelector('.chips .chip', { timeout: 10000 })
+  await page.waitForSelector('.form select', { timeout: 10000 })
 
-  await page.locator('.chips').first().getByText('門禁').click()
-  await page.locator('.chips').nth(1).getByText('大廳').click()
+  // 類別/地點改下拉式選單（問題2）
+  await page.locator('.form select').nth(0).selectOption({ label: '門禁' })
+  await page.locator('.form select').nth(1).selectOption({ label: '大廳' })
   await page.locator('textarea.textarea').fill('門禁感應不良')
   await page.getByText('送出建單').click()
 
@@ -42,7 +43,7 @@ test('管理頁渲染（admin 專屬）', async ({ page }) => {
   await page.getByText('⚙ 管理').click()
   await page.waitForSelector('text=管理', { timeout: 10000 })
   await expect(page.getByText('類別')).toBeVisible()
-  await expect(page.getByText('廠商管理')).toBeVisible()
+  await expect(page.getByText('廠商').first()).toBeVisible()
 })
 
 test('統計頁渲染（含 CSV 匯出）', async ({ page }) => {

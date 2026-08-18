@@ -26,7 +26,7 @@ const statusMap = { open: ['待處理', 'red'], in_progress: ['處理中', 'yell
 async function load() {
   const root = document.getElementById('share-app')
   root.innerHTML = ''
-  const token = location.pathname.split('/').filter(Boolean).pop()
+  const token = new URLSearchParams(location.search).get('token') || location.pathname.split('/').filter(Boolean).pop()
 
   try {
     const res = await fetch('/api/share/' + token)

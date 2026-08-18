@@ -82,8 +82,8 @@ describe('M6 share 公開頁 + token 重發（§4.3/§4.5）', () => {
     })
     expect(r.status).toBe(200)
     const body = await r.json()
-    expect(body.data.share_url).toContain('/api/share/')
-    const newToken = body.data.share_url.split('/').pop()
+    expect(body.data.share_url).toContain('/share.html?token=')
+    const newToken = new URL('http://x' + body.data.share_url).searchParams.get('token')
 
     // 舊 token 失效 → 404
     const old = await worker.fetch(`http://example.com/api/share/${oldToken}`)
