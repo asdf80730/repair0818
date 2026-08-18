@@ -69,9 +69,9 @@ exportRoutes.post('/sign', requireAuth({ roles: ['manager', 'admin'] }), zValida
 // GET /api/exports/tickets.csv — 註冊於全域 requireAuth() 之上，端點內雙軌自驗（§4.8）
 export async function csvDownload(c: AppContext) {
   // 軌 A：有效 session 且 role 為 manager/admin
-  const res = await resolveUser(c)
-  if (res.user && (res.user.role === 'manager' || res.user.role === 'admin')) {
-    return buildCsv(c, res.user.id)
+  const user = await resolveUser(c)
+  if (user && (user.role === 'manager' || user.role === 'admin')) {
+    return buildCsv(c, user.id)
   }
 
   // 軌 B：驗 uid/exp/sig
