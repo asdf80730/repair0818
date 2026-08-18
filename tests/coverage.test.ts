@@ -120,6 +120,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     expect(r.status).toBe(200)
     expect(r.headers.get('Content-Type')).toBe('image/jpeg')
     expect(r.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    await r.arrayBuffer() // 消費 R2 body stream，避免 isolation 清理失敗
   })
 
   it('未綁定照片他人不可讀 → 404（歸屬檢查）', async () => {
@@ -144,6 +145,7 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
     })
     const r = await worker.fetch(`http://example.com/api/photos/${photoId}`, { headers: { Cookie: b.cookie } })
     expect(r.status).toBe(200)
+    await r.arrayBuffer() // 消費 R2 body stream
   })
 })
 
@@ -426,6 +428,7 @@ describe('share photos 端點（§4.5）', () => {
     const photo = await worker.fetch(`http://example.com/api/share/${shareToken}/photos/${photoId}`)
     expect(photo.status).toBe(200)
     expect(photo.headers.get('Content-Type')).toBe('image/jpeg')
+    await photo.arrayBuffer() // 消費 R2 body stream
   })
 
   it('非該案件的照片透過 share 讀取 → 404', async () => {
