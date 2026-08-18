@@ -1,15 +1,12 @@
 // vitest.config.ts — @cloudflare/vitest-pool-workers 設定
-// 結合官方 fixture：
-//   pages-functions-unit-integration-self（main + ASSETS binding + globalSetup）
-//   d1（wrangler.configPath 提供 D1 binding + readD1Migrations + applyD1Migrations）
+// 參考官方 D1 fixture：
+//   wrangler.configPath 提供 D1/R2/vars binding（tests/worker.ts 包 Hono app）
+//   readD1Migrations + applyD1Migrations
 import path from 'node:path'
 import {
-  buildPagesASSETSBinding,
   defineWorkersConfig,
   readD1Migrations,
 } from '@cloudflare/vitest-pool-workers/config'
-
-const assetsPath = path.join(import.meta.dirname, 'public')
 
 export default defineWorkersConfig(async () => {
   // 讀取 migrations 目錄（D1 fixture 模式）
@@ -20,20 +17,16 @@ export default defineWorkersConfig(async () => {
     test: {
       poolOptions: {
         workers: {
-          // main 由 wrangler.test.jsonc 指定（dist-functions/index.js）
+          // main 由 wrangler.test.jsonc 指定（tests/worker.ts，包 Hono app）
           wrangler: {
             configPath: './wrangler.test.jsonc',
           },
           miniflare: {
-            // Pages 靜態資產 binding + 測試專用 TEST_MIGRATIONS binding
-            serviceBindings: {
-              ASSETS: await buildPagesASSETSBinding(assetsPath),
-            },
+            // 測試專用 TEST_MIGRATIONS binding（供 applyD1Migrations 使用）
             bindings: { TEST_MIGRATIONS: migrations },
           },
         },
       },
-      globalSetup: ['./global-setup.ts'],
       setupFiles: ['./tests/apply-migrations.ts'],
       include: ['tests/**/*.test.ts'],
       testTimeout: 90_000,

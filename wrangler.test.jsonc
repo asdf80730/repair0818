@@ -1,9 +1,9 @@
 // wrangler.test.jsonc — vitest-pool-workers 測試專用設定
-// 提供 D1/R2/vars binding 給測試的 main worker（Pages Functions 編譯產物）
+// 提供 D1/R2/vars binding 給測試的 main worker（tests/worker.ts，包 Hono app）
 // 參考官方 D1 fixture：wrangler.jsonc（d1_databases 透過 configPath 提供）
 {
   "name": "repair-system-test",
-  "main": "dist-functions/index.js",
+  "main": "tests/worker.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
