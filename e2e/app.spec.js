@@ -74,9 +74,10 @@ test('成員管理：權限中文對照、篩選、停用紅/啟用藍', async (
   await page.waitForSelector('text=成員管理', { timeout: 10000 })
 
   // 權限中文對照（v1.1.5：主管=admin、保全/秘書=manager、委員=committee）
-  await expect(page.getByText('主管').first()).toBeVisible()
-  await expect(page.getByText('保全/秘書').first()).toBeVisible()
-  await expect(page.getByText('委員').first()).toBeVisible()
+  // 用 .role-chip（顯示標籤）驗證，option 在下拉未展開時是 hidden
+  await expect(page.locator('.role-chip', { hasText: '主管' }).first()).toBeVisible()
+  await expect(page.locator('.role-chip', { hasText: '保全/秘書' }).first()).toBeVisible()
+  await expect(page.locator('.role-chip', { hasText: '委員' }).first()).toBeVisible()
 
   // 篩選下拉存在
   await expect(page.locator('.filter-row select')).toBeVisible()
