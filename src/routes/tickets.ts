@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { activeOptionLabel, makeTitle, validateOwnUnboundPhotos } from '../lib/db'
+import { activeOptionLabel, activeVendor, makeTitle, validateOwnUnboundPhotos } from '../lib/db'
 import { nowIso } from '../lib/time'
 import {
   createTicketSchema,
@@ -212,32 +212,263 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
 
 // PATCH /api/tickets/:id — D7：committee 僅自己建的單；manager/admin 全部（§4.3）
 ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema), async (c) => {
-  // TODO: 編輯（M4）— 權限、僅 open/in_progress、label 快照同步、system 時間軸留痕
-  return fail(c, 501, 'INTERNAL', '尚未實作（M4）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+  const user = c.get('user')
+  const body = c.req.valid('json')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id, category_id, category_label, location_id, location_label, description, status, created_by, vendor_id FROM tickets WHERE id = ?',
+  ).bind(id).first<{
+    id: number; category_id: number | null; category_label: string
+    location_id: number | null; location_label: string; description: string | null
+    status: string; created_by: number; vendor_id: number | null
+  }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // D7：committee 僅自己建的單；manager/admin 全部
+  if (user.role === 'committee' && ticket.created_by !== user.id) {
+    return fail(c, 403, 'FORBIDDEN', '權限不足')
+  }
+
+  // 僅 open / in_progress 可編輯（已結案/作廢不可改）
+  if (ticket.status !== 'open' && ticket.status !== 'in_progress') {
+    return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可編輯')
+  }
+
+  // committee 即使編自己的單也不可改 vendor_id（§4.3）
+  if (user.role === 'committee' && body.vendor_id !== undefined) {
+    return fail(c, 403, 'FORBIDDEN', '管委會不可指派廠商')
+  }
+
+  // 收集變更欄位（before→after 摘要）
+  const changes: string[] = []
+  const labelMap: Record<string, string> = {}
+
+  let newCategoryId = ticket.category_id
+  let newCategoryLabel = ticket.category_label
+  if (body.category_id !== undefined && body.category_id !== ticket.category_id) {
+    const label = await activeOptionLabel(c, 'category', body.category_id)
+    if (!label) return fail(c, 400, 'VALIDATION_ERROR', '類別無效')
+    changes.push(`類別 ${ticket.category_label}→${label}`)
+    newCategoryId = body.category_id
+    newCategoryLabel = label
+  }
+
+  let newLocationId = ticket.location_id
+  let newLocationLabel = ticket.location_label
+  if (body.location_id !== undefined && body.location_id !== ticket.location_id) {
+    const label = await activeOptionLabel(c, 'location', body.location_id)
+    if (!label) return fail(c, 400, 'VALIDATION_ERROR', '地點無效')
+    changes.push(`地點 ${ticket.location_label}→${label}`)
+    newLocationId = body.location_id
+    newLocationLabel = label
+  }
+
+  let newDescription = ticket.description
+  if (body.description !== undefined && body.description !== (ticket.description ?? '')) {
+    changes.push('說明')
+    newDescription = body.description
+  }
+
+  let newVendorId: number | null | undefined
+  if (body.vendor_id !== undefined && body.vendor_id !== ticket.vendor_id) {
+    const vendor = await activeVendor(c, body.vendor_id)
+    if (!vendor) return fail(c, 400, 'VALIDATION_ERROR', '廠商無效')
+    newVendorId = body.vendor_id
+    changes.push('廠商')
+  }
+
+  if (changes.length === 0) {
+    return ok(c, { id, updated: false, message: '無變更' })
+  }
+
+  const now = nowIso()
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE tickets SET category_id = ?, category_label = ?, location_id = ?,
+         location_label = ?, description = ?, vendor_id = ?, last_activity_at = ?
+       WHERE id = ?`,
+    ).bind(
+      newCategoryId, newCategoryLabel, newLocationId, newLocationLabel,
+      newDescription, newVendorId ?? ticket.vendor_id, now, id,
+    ),
+    // system 時間軸留痕
+    c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'system', NULL, ?, ?)`,
+    ).bind(id, user.id, `已修改：${changes.join('；')}`, now),
+  ])
+
+  return ok(c, { id, updated: true, changes })
 })
 
 // POST /api/tickets/:id/updates — manager/admin（§4.3）
 ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createUpdateSchema), async (c) => {
-  // TODO: 回報（M4）— status 同步、done 設 closed_at/by、batch
-  return fail(c, 501, 'INTERNAL', '尚未實作（M4）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+  const user = c.get('user')
+  const body = c.req.valid('json')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id, status FROM tickets WHERE id = ?',
+  ).bind(id).first<{ id: number; status: string }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // 已結案（done）或作廢（void）不可回報（§4.3）
+  if (ticket.status === 'done' || ticket.status === 'void') {
+    return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可回報')
+  }
+
+  // 驗證照片
+  const photoIds = body.photo_ids ?? []
+  if (photoIds.length > 0) {
+    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id)
+    if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '照片無效或已被使用')
+  }
+
+  const now = nowIso()
+  const isDone = body.status === 'done'
+
+  // 多步驟寫入用 env.DB.batch()
+  const stmts = [
+    // 更新 ticket status
+    c.env.DB.prepare(
+      `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ? WHERE id = ?`,
+    ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, id),
+    // 寫入時間軸（kind=status）
+    c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'status', ?, ?, ?)`,
+    ).bind(id, user.id, body.status, body.note ?? null, now),
+  ]
+
+  // 綁定照片（target_type='update' + 該筆 update id）—— 需先 insert 拿 update id
+  await c.env.DB.batch(stmts)
+  const lastUpdate = await c.env.DB.prepare(
+    'SELECT id FROM ticket_updates WHERE ticket_id = ? ORDER BY id DESC LIMIT 1',
+  ).bind(id).first<{ id: number }>()
+  if (photoIds.length > 0 && lastUpdate) {
+    await c.env.DB.batch(photoIds.map((pid) =>
+      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?')
+        .bind('update', lastUpdate.id, pid),
+    ))
+  }
+
+  return ok(c, { updated: true, status: body.status })
 })
 
 // POST /api/tickets/:id/comments — 三角色（D1，§4.3）
 ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createCommentSchema), async (c) => {
-  // TODO: 留言（M4）— kind=comment、不改 status、void 不可留言
-  return fail(c, 501, 'INTERNAL', '尚未實作（M4）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+  const user = c.get('user')
+  const body = c.req.valid('json')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id, status FROM tickets WHERE id = ?',
+  ).bind(id).first<{ id: number; status: string }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // void 不可留言（§4.3）
+  if (ticket.status === 'void') {
+    return fail(c, 400, 'VALIDATION_ERROR', '已作廢的案件不可留言')
+  }
+
+  // 驗證照片
+  const photoIds = body.photo_ids ?? []
+  if (photoIds.length > 0) {
+    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id)
+    if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '照片無效或已被使用')
+  }
+
+  const now = nowIso()
+
+  // 寫入 kind='comment'、status=NULL；不改變 ticket.status；更新 last_activity_at
+  const insert = await c.env.DB.prepare(
+    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+     VALUES (?, ?, 'comment', NULL, ?, ?)`,
+  ).bind(id, user.id, body.note, now).run()
+  const updateId = insert.meta.last_row_id
+
+  await c.env.DB.prepare(
+    'UPDATE tickets SET last_activity_at = ? WHERE id = ?',
+  ).bind(now, id).run()
+
+  // 留言照片一律 target_type='update' + target_id=留言 id
+  if (photoIds.length > 0) {
+    await c.env.DB.batch(photoIds.map((pid) =>
+      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?')
+        .bind('update', updateId, pid),
+    ))
+  }
+
+  return ok(c, { id: updateId, kind: 'comment' }, 201)
 })
 
 // POST /api/tickets/:id/void — manager/admin（§4.3）
 ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', voidTicketSchema), async (c) => {
-  // TODO: 作廢（M4）— kind=status status=void、closed_at/by
-  return fail(c, 501, 'INTERNAL', '尚未實作（M4）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+  const user = c.get('user')
+  const body = c.req.valid('json')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id, status FROM tickets WHERE id = ?',
+  ).bind(id).first<{ id: number; status: string }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // 已結案或已作廢不可再作廢
+  if (ticket.status === 'done' || ticket.status === 'void') {
+    return fail(c, 400, 'VALIDATION_ERROR', '僅 open/in_progress 可作廢')
+  }
+
+  const now = nowIso()
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ?',
+    ).bind('void', now, user.id, now, id),
+    c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'status', 'void', ?, ?)`,
+    ).bind(id, user.id, body.note ?? null, now),
+  ])
+
+  return ok(c, { status: 'void' })
 })
 
-// POST /api/tickets/:id/reopen — 僅 admin（D2，§4.3）
+// POST /api/tickets/:id/reopen — 僅 admin（D2，§3）
 ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('json', reopenTicketSchema), async (c) => {
-  // TODO: reopen（M4）— 僅 done/void、note 帶實際前狀態、清空 closed_at/by
-  return fail(c, 501, 'INTERNAL', '尚未實作（M4）')
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+  const user = c.get('user')
+  const body = c.req.valid('json')
+
+  const ticket = await c.env.DB.prepare(
+    'SELECT id, status FROM tickets WHERE id = ?',
+  ).bind(id).first<{ id: number; status: string }>()
+  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+
+  // 僅限 done / void 的案件
+  if (ticket.status !== 'done' && ticket.status !== 'void') {
+    return fail(c, 400, 'VALIDATION_ERROR', '僅已結案或已作廢的案件可重新開啟')
+  }
+
+  const now = nowIso()
+  const targetStatus = body.status ?? 'in_progress'
+  const prevStatusLabel = ticket.status === 'done' ? '已完成' : '已作廢'
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ?',
+    ).bind(targetStatus, now, id),
+    c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'status', ?, ?, ?)`,
+    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）：${body.note ?? ''}`, now),
+  ])
+
+  return ok(c, { status: targetStatus })
 })
 
 // POST /api/tickets/:id/share-token — manager/admin（§4.3）
