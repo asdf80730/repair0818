@@ -1,7 +1,7 @@
 // vitest.config.ts — @cloudflare/vitest-pool-workers 設定
-// 參考官方 fixture：
+// 結合官方 fixture：
 //   pages-functions-unit-integration-self（main + ASSETS binding + globalSetup）
-//   d1（readD1Migrations + applyD1Migrations）
+//   d1（wrangler.configPath 提供 D1 binding + readD1Migrations + applyD1Migrations）
 import path from 'node:path'
 import {
   buildPagesASSETSBinding,
@@ -20,20 +20,16 @@ export default defineWorkersConfig(async () => {
     test: {
       poolOptions: {
         workers: {
-          main: './dist-functions/index.js',
+          // main 由 wrangler.test.jsonc 指定（dist-functions/index.js）
+          wrangler: {
+            configPath: './wrangler.test.jsonc',
+          },
           miniflare: {
-            compatibilityDate: '2026-08-01',
-            compatibilityFlags: ['nodejs_compat'],
+            // Pages 靜態資產 binding + 測試專用 TEST_MIGRATIONS binding
             serviceBindings: {
               ASSETS: await buildPagesASSETSBinding(assetsPath),
             },
-            d1Databases: { DB: '00000000-0000-0000-0000-000000000000' },
-            r2Buckets: { PHOTOS: 'test-photos' },
-            bindings: {
-              TEST_MIGRATIONS: migrations,
-              LINE_CHANNEL_ID: 'test-channel',
-              JWT_SECRET: 'test-secret',
-            },
+            bindings: { TEST_MIGRATIONS: migrations },
           },
         },
       },
