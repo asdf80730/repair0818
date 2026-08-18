@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.3（定稿，可施工）** ｜ 日期：2026-08-18
+**版本：v1.1.5（定稿，可施工）** ｜ 日期：2026-08-19
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 五版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 七版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -694,7 +694,7 @@ WHERE kind = 'status' AND status = 'done'
 
 - 狀態篩選 tabs：**未結案（=active，預設）／待處理（open）／處理中（in_progress）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應，避免「進行中／處理中」混淆；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
-- **列表卡片可直接指派廠商**（manager/admin，open/in_progress；v1.1.4）
+- **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
 - 分頁：依 `has_more` 顯示「載入更多」
 
@@ -807,7 +807,7 @@ WHERE kind = 'status' AND status = 'done'
 
 1. LINE Developers Console 建立 **LINE Login Channel**，取得 Channel ID
 2. 建立 **LIFF app**：Scope 勾選 `openid`＋`profile`（`display_name` 取自 ID token 的 `name` claim）；Endpoint URL 填正式網域
-3. **preview 環境**：在同一 Channel 下**另建第二個 LIFF app**（Endpoint URL 填 preview 網域），preview 測試使用該 LIFF ID
+3. **preview 環境**：**已取消（v1.1.5）**——preview 部署已關閉，僅需正式 LIFF app，不需另建 preview LIFF
 4. **開官方帳號（OA）**：LINE Official Account Manager 註冊，選輕用量免費方案（⚠ 方案名稱與費率以 LINE 官方帳號後台當下公告為準）
 5. **OA 與 Login Channel 連動**：OA 後台 → Messaging API 頁 → 選擇與 Login Channel 相同的 Provider → 啟用
 6. **圖文選單（Rich Menu）**：OA 後台設定，連結指向 LIFF URL（圖文選單屬官方帳號功能，沒有 OA 就沒有入口）
@@ -829,18 +829,18 @@ pages_build_output_dir = "public"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "repair-db"
-database_id = "<id>"
+database_name = "repair-db0818"
+database_id = "99a4f274-d68c-4ad6-b382-6a6e449cf0ed"
 
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "repair-photos"
 
 [vars]
-LINE_CHANNEL_ID = "<channel id>"
+LINE_CHANNEL_ID = "2008484338"
 ```
 
-（preview 環境另建 `repair-db-preview`，preview 部署綁定指向它。）
+> **preview 決策（v1.1.5）**：preview 自動部署已關閉（`preview_deployment_setting: none`），單人開發直接 push main 走 production。preview 環境不再需要另建 `repair-db-preview` 或設定 preview 的 D1/R2/secret。
 
 ### 8.2 _routes.json 與 _headers
 
@@ -900,8 +900,8 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 | # | 範圍 | 驗收 |
 |---|---|---|
-| **M0** | **LINE 後台開通**（§7 全部 8 步）：Login Channel、正式＋preview 兩個 LIFF app、開官方帳號、OA 與 Channel 連動、圖文選單連結。**另：準備 2–3 個測試 LINE 帳號（可用家人／同事）** | 拿到 Channel ID＋兩個 LIFF ID；preview LIFF URL 可開啟；測試帳號已加入 OA 好友 |
-| M1 | 專案骨架：repo、wrangler、Hono 入口、D1/R2 binding、部署打通 | `GET /api/hello` 在 preview URL 回 200，**且 `GET /api/tickets`（未實作）回 404 而非 200**（順手驗證 basePath 無重複） |
+| **M0** | **LINE 後台開通**（§7 全部 8 步）：Login Channel、正式 LIFF app（**preview LIFF 已取消，v1.1.5**）、開官方帳號、OA 與 Channel 連動、圖文選單連結。**另：準備 2–3 個測試 LINE 帳號（可用家人／同事）** | 拿到 Channel ID＋LIFF ID；測試帳號已加入 OA 好友 |
+| M1 | 專案骨架：repo、wrangler、Hono 入口、D1/R2 binding、部署打通 | `GET /api/hello` 在正式網域回 200，**且 `GET /api/tickets`（未實作）回 404 而非 200**（順手驗證 basePath 無重複） |
 | M2 | 認證＋成員審核（依賴 M0 的 Channel ID 與測試帳號） | 三支角色帳號各自看到正確權限畫面；**pending 使用者打 `/api/auth/me` 回 200 且取得 display_name**，前端正確顯示 P0 |
 | M3 | 案件核心：options、建單（P2）、列表（P1）、詳情（P3）、照片上傳/讀取 | 建一單附 2 照片，三角色可見 |
 | M4 | 回報（P4）、留言、void、reopen、時間軸三 kind、編輯留痕 | 走完 open→in_progress→done→reopen→done，時間軸完整 |

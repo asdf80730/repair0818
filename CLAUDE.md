@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.3 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.5 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -47,6 +47,12 @@
 - 編輯、void、reopen 都必須寫入時間軸；reopen 訊息須帶入實際前狀態（已完成／已作廢）。
 - month_done 從 ticket_updates 計算（見 §4.7），禁止用 tickets.closed_at。
 - 建單不接受 vendor_id；廠商僅在 PATCH 由 manager/admin 指派。
+- **指派廠商只在編輯頁（pages.edit）提供**（v1.1.5），不要塞進列表卡片或詳情頁；權限 manager/admin（保全/秘書層級）。
+- **權限中文對照**：主管=admin、保全/秘書=manager、委員=committee（v1.1.5 定案，勿寫反）。
 - 編輯權限：committee 僅自己建的單；manager/admin 全部（D7）。
 - 統計頁三角色皆可（D6）；CSV 匯出限 manager/admin（D3）。
 - committee 看得到 vendor_name 但 GET /api/vendors 限 manager/admin——刻意設計，勿「順手修掉」。
+
+## 部署與 preview（v1.1.5 決策）
+- preview 自動部署已關閉（preview_deployment_setting: none）。單人開發直接 push main 走 production。
+- production 的 D1/R2/JWT_SECRET/LINE_CHANNEL_ID 已設定；preview 未設（也不需設）。

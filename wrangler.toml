@@ -1,5 +1,5 @@
 # 社區修繕管理系統 — Wrangler 設定（§8.1）
-# 注意：database_id / bucket_name / LINE_CHANNEL_ID 為佔位，需以實際資源填入
+# preview 自動部署已關閉（見 v1.1.5），單人開發直接 push main 走 production
 name = "repair-system"
 compatibility_date = "2026-08-01"
 pages_build_output_dir = "public"
@@ -8,7 +8,7 @@ pages_build_output_dir = "public"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "repair-db"
+database_name = "repair-db0818"
 database_id = "99a4f274-d68c-4ad6-b382-6a6e449cf0ed"
 
 [[r2_buckets]]
