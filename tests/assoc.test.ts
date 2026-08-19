@@ -61,15 +61,18 @@ describe('GET /api/options 三種模式（v1.1.7）', () => {
     const { cookie } = await loginAs('U-assoc-2', '關聯2', 'manager')
     const catId = await optionId('category', '電梯')
     const locId = await optionId('location', '頂樓')
-    // 把 頂樓 掛到 電梯
+    // 把 頂樓 掛到 電梯，大廳 掛到 門禁（使其非通用、不屬電梯）
+    const doorCat = await optionId('category', '門禁')
+    const hallLoc = await optionId('location', '大廳')
     await setAssoc(cookie, locId, [catId])
+    await setAssoc(cookie, hallLoc, [doorCat])
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}`, { headers: { Cookie: cookie } })
     expect(r.status).toBe(200)
     const body = await r.json()
     const labels = body.data.map(o => o.label)
     expect(labels).toContain('頂樓')   // 關聯
     expect(labels).toContain('停車場') // 通用（無關聯）
-    expect(labels).not.toContain('大廳') // 非關聯且非通用（若大廳被掛到別類）
+    expect(labels).not.toContain('大廳') // 已掛到門禁，非電梯類別也非通用
   })
 
   it('?type=X&include_inactive=1 附 category_ids，限 manager/admin', async () => {

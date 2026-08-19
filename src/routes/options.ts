@@ -90,7 +90,13 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
     if (!check.ok) return fail(c, 400, 'VALIDATION_ERROR', check.reason)
   }
 
-  // 第 1 趟：upsert 取 id（RETURNING，upsert 命中既有列時 meta.last_row_id 不可靠）
+  // 第 1 趟：先查是否已存在（決定 reactivated）
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM options WHERE type = ? AND label = ?',
+  ).bind(body.type, body.label).first<{ id: number }>()
+  const reactivated = !!existing
+
+  // upsert 取 id（RETURNING，upsert 命中既有列時 meta.last_row_id 不可靠）
   const inserted = await c.env.DB.prepare(
     `INSERT INTO options (type, label, sort_order, active, created_at) VALUES (?, ?, ?, 1, ?)
      ON CONFLICT(type, label) DO UPDATE SET active = 1, sort_order = excluded.sort_order
@@ -108,7 +114,7 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
     ])
   }
 
-  return ok(c, { id: optionId, reactivated: false }, 201)
+  return ok(c, { id: optionId, reactivated }, reactivated ? 200 : 201)
 })
 
 // PATCH /api/options/:id — manager/admin（§4.6）
