@@ -12,7 +12,7 @@
 npm test   # 等於 vitest run
 ```
 
-`global-setup.ts` 會先把 `functions/` 編譯成 Worker（`dist-functions/`），測試用 `exports.default.fetch()` 打真實 HTTP 流程。
+`tests/worker.ts` 包 Hono app 成標準 ExportedHandler，測試用 `SELF`（cloudflare:test）打真實 HTTP 流程；D1/R2 由 miniflare 提供。
 
 ## 回歸斷言（§10 必含）
 

@@ -929,6 +929,8 @@ pages.admin = function () {
         currentType = val
         for (const b of tabBar.children) b.classList.remove('active')
         e.currentTarget.classList.add('active')
+        // 廠商 tab 有自己內嵌的新增列，隱藏選項新增列
+        addRow.style.display = val === 'vendors' ? 'none' : ''
         if (val === 'vendors') renderVendors()
         else renderOptions()
       },
@@ -953,14 +955,6 @@ pages.admin = function () {
   ])
   // 切換 tab 時更新新增列（廠商 tab 不顯示選項新增列）
   root.appendChild(addRow)
-  const origTabClick = null
-  for (const b of tabBar.children) {
-    const cb = b.onclick
-    b.onclick = (e) => {
-      cb(e)
-      addRow.style.display = currentType === 'vendors' ? 'none' : ''
-    }
-  }
 }
 
 // ---- 底部導覽 ----

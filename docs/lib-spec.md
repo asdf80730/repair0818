@@ -45,14 +45,9 @@ export type AppContext = Context<Env>
 ```ts
 ok<T>(c, data, status = 200)          // → { ok: true, data }
 fail(c, status, code, message)        // → { ok: false, error: { code, message } }
-errors.validation(c, msg)              // 400 VALIDATION_ERROR
-errors.unauthorized(c, msg?)          // 401 UNAUTHORIZED（預設「請重新登入」）
-errors.forbidden(c, msg?)             // 403 FORBIDDEN（預設「權限不足」）
-errors.notFound(c, msg?)              // 404 NOT_FOUND
-errors.internal(c, msg?)             // 500 INTERNAL
 ```
 
-**規則**：`status` 用 Hono 的 `ContentfulStatusCode` 型別（非 `number`），確保型別安全。
+**規則**：`status` 用 Hono 的 `ContentfulStatusCode` 型別（非 `number`），確保型別安全。所有路由一律用 `fail()` 回錯誤（無 `errors` 速記物件，避免死碼）。
 
 ## 3. time.ts — 時間工具（§2.2、§4.7）
 

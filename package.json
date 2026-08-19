@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "wrangler pages dev public",
     "deploy": "wrangler pages deploy public",
-    "db:migrate:local": "wrangler d1 migrations apply repair-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply repair-db --remote",
-    "db:seed:remote": "wrangler d1 execute repair-db --remote --file=seed.sql",
+    "db:migrate:local": "wrangler d1 migrations apply repair-db0818 --local",
+    "db:migrate:remote": "wrangler d1 migrations apply repair-db0818 --remote",
+    "db:seed:remote": "wrangler d1 execute repair-db0818 --remote --file=seed.sql",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
