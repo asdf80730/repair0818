@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.5（定稿，可施工）** ｜ 日期：2026-08-19
+**版本：v1.1.6（定稿，可施工）** ｜ 日期：2026-08-20
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 七版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 八版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -21,6 +21,7 @@
 | v1.1.3 | 四次評審修訂：**修復 middleware 順序架構錯誤**（`/auth` 與 CSV 下載移到全域 requireAuth 之上、`lib/auth.ts` 拆 `resolveUser`/`requireAuth`）＋補回 §7 官方帳號三步＋快取標頭修正（share 照片改 private、內部照片補回）＋CHECK 約束涵蓋 note＋CSV 欄位精簡＋P1 tab 改名 |
 | v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
+| v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -246,7 +247,7 @@ CREATE INDEX idx_options_type    ON options(type, active, sort_order);
 
 ### 2.3 seed.sql
 
-> **seed.sql 為 seed 資料的唯一來源**（v1.1.5 清理重複：測試 `apply-migrations.ts` 直接讀取 seed.sql 執行，不再內嵌重複 seed）。
+> **seed 單一來源（v1.1.6）**：seed 併入 `migrations/0002_seed.sql`（INSERT OR IGNORE）作為唯一來源。vitest 自動套用全部 migration；production 用 `wrangler d1 migrations apply`。根目錄 seed.sql 與 `db:seed:remote` script 已刪除。
 
 ```sql
 INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
@@ -710,11 +711,11 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.3 P3 案件詳情
 
-- 案件資訊、照片牆、分享連結（複製按鈕，**不彈確認框**；v1.1.4）
-- **時間軸依 `kind` 三種樣式**：狀態回報（狀態徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
-- **底部留言框（三角色）＋狀態更新合一**（v1.1.4）：manager/admin 可選「僅留言／標記處理中／標記完成並結案」，committee 僅留言；**v1.1.5 移除獨立「新增回報」按鈕**，回報統一走此留言框
-- **⋮ 選單**：編輯（**D7：committee 僅自己建的單；manager/admin 全部**，open/in_progress）、作廢（manager/admin，二次確認彈窗含選填原因）、重新開啟（**僅 admin 且 done/void** → **modal 選單**選「待處理／處理中」＋備註，v1.1.4 起不用 prompt）、重新產生分享連結（manager/admin，**不彈框、直接更新輸入框**，v1.1.4）
-- 🟢 完成（P4 回報選 done）同樣需二次確認彈窗
+- **右上角 ⋮ 選單**（v1.1.6）：利用返回右邊空間，點開下拉顯示 **分享連結（複製）／✏️ 編輯／🗑 作廢／↩️ 重新開啟／🔄 重新產生分享連結**。分享連結不再佔主版面。
+- 案件資訊卡（緊湊：detail-head/detail-line）、照片牆、**時間軸為主角**。時間軸依 `kind` 三種樣式：狀態回報（徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
+- **底部留言框改隱藏式**（v1.1.6）：頁面底部只有「💬 留言／回報」按鈕，點開才展開留言框＋可選狀態更新（manager/admin 可標記處理中/完成，委員僅留言）
+- **⋮ 選單**：編輯（D7：committee 僅自己建的單；manager/admin 全部，open/in_progress）、作廢（manager/admin，二次確認含選填原因）、重新開啟（僅 admin 且 done/void → modal 選狀態＋備註）、重新產生分享連結（manager/admin，直接更新輸入框）
+- 🟢 完成（P4 回報選 done）需二次確認彈窗
 - **縮圖點開放大**（lightbox，v1.1.4）
 - **指派廠商在編輯頁內**（v1.1.5：保全/秘書層級，不再塞列表/詳情頁）
 

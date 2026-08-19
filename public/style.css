@@ -244,9 +244,6 @@ button { cursor: pointer; }
   background: var(--border); color: var(--gray); font-size: 12px; white-space: nowrap;
 }
 
-/* 問題3：列表內嵌廠商下拉 */
-.vendor-inline { margin-top: 6px; min-height: 36px; font-size: 14px; }
-
 /* 問題14：篩選列 */
 .filter-row { display: flex; align-items: center; gap: 8px; padding: 8px; }
 .filter-row .select { flex: 1; }
