@@ -402,6 +402,8 @@ pages.new = function () {
 
   // 常用說明（依類別過濾，未選類別 disabled）
   const descSelect = el('select', { class: 'select' })
+  descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' }))
+  descSelect.disabled = true
   const loadDesc = (catId) => {
     api(`/api/options?type=description&category_id=${catId}`).then((b) => {
       descSelect.innerHTML = ''

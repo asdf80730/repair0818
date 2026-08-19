@@ -1,6 +1,6 @@
 {
   "name": "repair-system",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "private": true,
   "description": "社區修繕管理系統 — Cloudflare Pages + Hono + D1 + R2 + LINE LIFF",
   "type": "module",

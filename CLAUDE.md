@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.6 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.7 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -56,3 +56,15 @@
 ## 部署與 preview（v1.1.5 決策）
 - preview 自動部署已關閉（preview_deployment_setting: none）。單人開發直接 push main 走 production。
 - production 的 D1/R2/JWT_SECRET/LINE_CHANNEL_ID 已設定；preview 未設（也不需設）。
+
+## 類別關聯（v1.1.7，硬性規則）
+- **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。關聯一律寫新的 migration。
+- `option_categories` join 表：多對多，一個 option 可屬多個 category；**無關聯列 = 通用，所有類別可見**。
+- 建單驗證 `location_id` 屬於 `category_id` **或為通用**；PATCH 僅當 category/location 有變動時才驗（歷史資料不鎖死）。
+- `GET /api/options` 三模式：`?type`（僅 active）、`?type&category_id`（關聯+通用）、`?type&include_inactive=1`（附 category_ids，**限 manager/admin，handler 內判**）。
+- `category_ids` 三態：**未帶=不動關聯、[]=清空、有值=全量覆寫**。zod 用 `.optional()` 不用 `.default([])`。
+- `include_inactive` 用 `z.enum(['0','1']).transform()`，**不可用 `z.coerce.boolean()`**（`"false"` 也是 true）。
+- `option_categories` 的 INSERT/DELETE 只允許出現在 `POST`/`PATCH /api/options` 兩處；DELETE WHERE 只能是 `option_id = ?`。
+- POST upsert 為「規則 2」明文例外（兩階段：先 `RETURNING id` 再 batch 寫關聯）；禁用 `meta.last_row_id` 當 upsert 後 id。
+- join 表 type 由應用層強制（`assertValidAssoc`/`assertCategoryIds`），SQLite CHECK 不能跨表。
+- 類別停用 → 僅下拉消失，`option_categories` 列保留（不 DELETE）。

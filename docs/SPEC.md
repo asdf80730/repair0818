@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.6（定稿，可施工）** ｜ 日期：2026-08-20
+**版本：v1.1.7（定稿，可施工）** ｜ 日期：2026-08-20
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 八版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 九版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -22,6 +22,7 @@
 | v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 | v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
+| v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -185,6 +186,14 @@ CREATE TABLE options (
   created_at TEXT NOT NULL,
   UNIQUE(type, label)
 );
+
+-- v1.1.7 類別關聯 join 表（多對多：location/description ↔ category）
+CREATE TABLE option_categories (
+  option_id   INTEGER NOT NULL REFERENCES options(id),
+  category_id INTEGER NOT NULL REFERENCES options(id),
+  PRIMARY KEY (option_id, category_id)
+);
+CREATE INDEX idx_oc_category ON option_categories(category_id);
 
 CREATE TABLE tickets (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
