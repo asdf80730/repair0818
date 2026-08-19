@@ -246,8 +246,10 @@ CREATE INDEX idx_options_type    ON options(type, active, sort_order);
 
 ### 2.3 seed.sql
 
+> **seed.sql 為 seed 資料的唯一來源**（v1.1.5 清理重複：測試 `apply-migrations.ts` 直接讀取 seed.sql 執行，不再內嵌重複 seed）。
+
 ```sql
-INSERT INTO options (type, label, sort_order, active, created_at) VALUES
+INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
   ('category', '電梯', 1, 1, '2026-01-01T00:00:00.000Z'),
   ('category', '門禁', 2, 1, '2026-01-01T00:00:00.000Z'),
   ('category', '水泵', 3, 1, '2026-01-01T00:00:00.000Z'),
