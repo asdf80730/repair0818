@@ -166,13 +166,15 @@ async function silentRelogin(path, options, headers) {
 }
 
 // ---- 工具 ----
-// 照片壓縮（§5.0：最長邊 1600px、輸出 JPEG；解碼失敗顯示提示）
+// 照片壓縮（§5.0：最長邊 1280px、目標 ≤500KB、輸出 JPEG；解碼失敗顯示提示）
+// maxSizeMB 是「目標大小」，設 0.5 會迭代壓縮到 ≤500KB（2MB 照片約縮到 200KB）
 async function compressPhoto(file) {
   if (!window.imageCompression) return file
   try {
     const compressed = await imageCompression(file, {
-      maxSizeMB: 10,
-      maxWidthOrHeight: 1600,
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 1280,
+      initialQuality: 0.7,
       useWebWorker: true,
       fileType: 'image/jpeg',
     })

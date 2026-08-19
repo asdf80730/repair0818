@@ -671,7 +671,7 @@ WHERE kind = 'status' AND status = 'done'
 - 使用者內容進 DOM 一律 `textContent`，禁止 `innerHTML`
 - 401 一律走 §3.4 靜默重登；403 依 code 顯示對應訊息
 - 前端 fetch wrapper 統一自動帶 `X-Requested-With: fetch`（見 §4.0）
-- 照片壓縮：`browser-image-compression`（最長邊 1600px、輸出 JPEG）；**解碼失敗時**顯示「此照片格式無法處理，請改用相機拍攝或先在相簿轉存」
+- 照片壓縮：`browser-image-compression`（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG）；**解碼失敗時**顯示「此照片格式無法處理，請改用相機拍攝或先在相簿轉存」
 - 觸控目標 ≥ 44px、內文字級 ≥ 16px（input 也 16px，避免 iOS 自動縮放）
 - 狀態色：🔴待處理／🟡處理中／🟢已完成／⚫作廢
 
