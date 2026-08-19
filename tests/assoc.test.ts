@@ -155,7 +155,7 @@ describe('category_ids 寫入（v1.1.7）', () => {
 
 describe('建單驗證（v1.1.7）', () => {
   it('location 不屬於 category 且非通用 → 400', async () => {
-    const { cookie } = await loginAs('U-assoc-11', '關聯11', 'committee')
+    const { cookie } = await loginAs('U-assoc-11', '關聯11', 'admin') // 建關聯需 manager/admin
     const catId = await optionId('category', '電梯')
     const locId = await optionId('location', '大廳')
     // 把 大廳 掛到 門禁（非電梯），使其非通用
