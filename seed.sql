@@ -2,7 +2,7 @@
 -- 預設選項為初始值，上線後由管理公司在 P7 自行維護
 -- 時間格式一律 ISO8601 UTC
 
-INSERT INTO options (type, label, sort_order, active, created_at) VALUES
+INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
   ('category', '電梯', 1, 1, '2026-01-01T00:00:00.000Z'),
   ('category', '門禁', 2, 1, '2026-01-01T00:00:00.000Z'),
   ('category', '水泵', 3, 1, '2026-01-01T00:00:00.000Z'),
