@@ -56,3 +56,59 @@ export async function validateOwnUnboundPhotos(
     .all<{ id: number }>()
   return rows.results.length === photoIds.length
 }
+
+/** 驗證 location 是否屬於 category 或為通用（§4.1 v1.1.7） */
+export async function optionAllowedInCategory(
+  c: AppContext,
+  optionId: number,
+  categoryId: number,
+): Promise<boolean> {
+  const row = await c.env.DB.prepare(
+    `SELECT 1 FROM options o
+     WHERE o.id = ? AND o.type = 'location'
+       AND (
+         EXISTS (SELECT 1 FROM option_categories oc
+                 WHERE oc.option_id = o.id AND oc.category_id = ?)
+         OR NOT EXISTS (SELECT 1 FROM option_categories oc2
+                        WHERE oc2.option_id = o.id)   -- 通用
+       )`,
+  )
+    .bind(optionId, categoryId)
+    .first()
+  return !!row
+}
+
+/** 驗證 category_ids 是否全為 category（v1.1.7，POST 新增時用，option 尚不存在） */
+export async function assertCategoryIds(
+  c: AppContext,
+  categoryIds: number[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (categoryIds.length === 0) return { ok: true }
+  const placeholders = categoryIds.map(() => '?').join(',')
+  const cats = await c.env.DB.prepare(
+    `SELECT id FROM options WHERE id IN (${placeholders}) AND type = 'category'`,
+  ).bind(...categoryIds).all<{ id: number }>()
+  if (cats.results.length !== categoryIds.length) return { ok: false, reason: 'category_ids 含非類別' }
+  return { ok: true }
+}
+
+/** 驗證 category_ids 關聯合法性（§2.6 v1.1.7，應用層強制，SQLite CHECK 不能跨表）
+ * 用於 PATCH：option 已存在，須驗 type 為 location/description、category_ids 全為 category、不得自我關聯 */
+export async function assertValidAssoc(
+  c: AppContext,
+  optionId: number,
+  categoryIds: number[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (categoryIds.length === 0) return { ok: true }
+  // ① option_id 的 type 必須是 location/description
+  const opt = await c.env.DB.prepare(
+    "SELECT type FROM options WHERE id = ? AND type IN ('location','description')",
+  ).bind(optionId).first<{ type: string }>()
+  if (!opt) return { ok: false, reason: '僅地點或說明可設定所屬類別' }
+  // ② 每個 category_id 的 type 必須是 category
+  const check = await assertCategoryIds(c, categoryIds)
+  if (!check.ok) return check
+  // ③ 不得自我關聯
+  if (categoryIds.includes(optionId)) return { ok: false, reason: '不可自我關聯' }
+  return { ok: true }
+}

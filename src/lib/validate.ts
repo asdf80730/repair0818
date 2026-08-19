@@ -48,15 +48,34 @@ export const reopenTicketSchema = z.object({
 })
 
 // 選項（§4.6）
+const categoryIds = z.array(z.number().int().positive()).max(20).optional()
 export const createOptionSchema = z.object({
   type: z.enum(['category', 'location', 'description']),
   label: z.string().trim().min(1).max(30),
   sort_order: z.number().int().default(0),
+  category_ids: categoryIds,
+}).superRefine((val, ctx) => {
+  // type=category 時不得帶 category_ids（類別是頂層，不屬於任何類別）
+  if (val.type === 'category' && val.category_ids !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['category_ids'], message: '類別不可設定所屬類別' })
+  }
 })
 export const updateOptionSchema = z.object({
   label: z.string().trim().min(1).max(30).optional(),
   sort_order: z.number().int().optional(),
   active: z.number().int().min(0).max(1).optional(),
+  category_ids: categoryIds,
+})
+
+// 選項查詢（§4.6 GET /api/options）
+export const listOptionsQuerySchema = z.object({
+  type: z.enum(['category', 'location', 'description']),
+  category_id: z.coerce.number().int().positive().optional(),
+  include_inactive: z.enum(['0', '1']).optional().transform(v => v === '1'),
+}).superRefine((val, ctx) => {
+  if (val.category_id !== undefined && val.include_inactive) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['include_inactive'], message: 'include_inactive 不可與 category_id 併用' })
+  }
 })
 
 // 廠商（§4.6）

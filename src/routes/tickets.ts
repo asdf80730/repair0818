@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { activeOptionLabel, activeVendor, makeTitle, validateOwnUnboundPhotos } from '../lib/db'
+import { activeOptionLabel, activeVendor, makeTitle, validateOwnUnboundPhotos, optionAllowedInCategory } from '../lib/db'
 import { nowIso } from '../lib/time'
 import {
   createTicketSchema,
@@ -30,6 +30,12 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
   const locationLabel = await activeOptionLabel(c, 'location', body.location_id)
   if (!categoryLabel || !locationLabel) {
     return fail(c, 400, 'VALIDATION_ERROR', '類別或地點無效')
+  }
+
+  // 驗證 location 屬於 category 或為通用（v1.1.7 §4.1）
+  const allowed = await optionAllowedInCategory(c, body.location_id, body.category_id)
+  if (!allowed) {
+    return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於所選類別')
   }
 
   // 驗證 photo_ids：每張須 uploaded_by=本人 且 target_id IS NULL（§4.1）
@@ -130,14 +136,15 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
 
   // 案件本體（含廠商名稱，停用時後綴「（已停用）」）
   const ticket = await c.env.DB.prepare(
-    `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
+    `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label, t.description, t.status,
             t.vendor_id, v.name AS vendor_name, v.active AS vendor_active,
             t.created_at, t.last_activity_at, t.closed_at, t.share_token
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      WHERE t.id = ?`,
   ).bind(id).first<{
-    id: number; category_label: string; location_label: string; description: string | null
+    id: number; category_id: number | null; category_label: string
+    location_id: number | null; location_label: string; description: string | null
     status: string; vendor_id: number | null; vendor_name: string | null; vendor_active: number | null
     created_at: string; last_activity_at: string; closed_at: string | null; share_token: string
   }>()
@@ -188,7 +195,9 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   return ok(c, {
     id: ticket.id,
     title: makeTitle(ticket.category_label, ticket.location_label, ticket.id),
+    category_id: ticket.category_id,
     category_label: ticket.category_label,
+    location_id: ticket.location_id,
     location_label: ticket.location_label,
     description: ticket.description,
     status: ticket.status,
@@ -255,14 +264,26 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
     newCategoryLabel = label
   }
 
-  let newLocationId = ticket.location_id
-  let newLocationLabel = ticket.location_label
+  let newLocationId: number | null = ticket.location_id
+  let newLocationLabel: string | null = ticket.location_label
   if (body.location_id !== undefined && body.location_id !== ticket.location_id) {
     const label = await activeOptionLabel(c, 'location', body.location_id)
     if (!label) return fail(c, 400, 'VALIDATION_ERROR', '地點無效')
+    // v1.1.7：location 變動時驗證屬於 category（或通用）
+    const newCatId = body.category_id !== undefined ? body.category_id : (ticket.category_id ?? 0)
+    const allowed = await optionAllowedInCategory(c, body.location_id, newCatId)
+    if (!allowed) return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於所選類別')
     changes.push(`地點 ${ticket.location_label}→${label}`)
     newLocationId = body.location_id
     newLocationLabel = label
+  } else if (body.category_id !== undefined && body.category_id !== ticket.category_id) {
+    // 只改 category、不動 location → 若 location 不屬於新 category 且非通用，則清空 location
+    const locAllowed = await optionAllowedInCategory(c, ticket.location_id ?? 0, body.category_id)
+    if (!locAllowed) {
+      changes.push(`地點 ${ticket.location_label}→（清空）`)
+      newLocationId = null
+      newLocationLabel = null
+    }
   }
 
   let newDescription = ticket.description

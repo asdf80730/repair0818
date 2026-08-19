@@ -95,13 +95,47 @@ test('建單：常用說明用下拉＋附加按鈕', async ({ page }) => {
   await page.getByText('＋ 建單').first().click()
   await page.waitForSelector('.form select', { timeout: 10000 })
 
+  // 未選類別時常用說明顯示「請先選擇類別」且 disabled（v1.1.7）
+  await expect(page.locator('.form .add-row select')).toBeDisabled()
+
+  // 選類別後載入常用說明
+  await page.locator('.form select').nth(0).selectOption({ label: '門禁' })
+  await page.waitForTimeout(500)
+  await expect(page.locator('.form .add-row select')).toBeEnabled()
+
   // 常用說明下拉＋附加按鈕（v1.1.5）
   await expect(page.getByText('＋ 附加')).toBeVisible()
-  // 選取常用說明後按附加，會寫入說明框
-  await page.locator('.add-row select').selectOption({ index: 1 })
+  await page.locator('.form .add-row select').selectOption({ index: 1 })
   await page.getByText('＋ 附加').click()
   const descVal = await page.locator('textarea.textarea').inputValue()
   expect(descVal.length).toBeGreaterThan(0)
+})
+
+test('建單：選類別後地點限縮（v1.1.7）', async ({ page }) => {
+  await page.getByText('＋ 建單').first().click()
+  await page.waitForSelector('.form select', { timeout: 10000 })
+
+  // 未選類別時地點 disabled
+  await expect(page.locator('.form select').nth(1)).toBeDisabled()
+
+  // 選「電梯」→ 地點只剩通用(停車場)＋關聯(頂樓)，不含大廳
+  await page.locator('.form select').nth(0).selectOption({ label: '電梯' })
+  await page.waitForTimeout(500)
+  const locOptions = await page.locator('.form select').nth(1).locator('option').allTextContents()
+  expect(locOptions).toContain('停車場') // 通用
+  expect(locOptions).toContain('頂樓')   // 關聯
+  expect(locOptions).not.toContain('大廳') // 非關聯
+})
+
+test('留言框：manager/admin 有常用說明下拉＋附加（v1.1.7）', async ({ page }) => {
+  await page.locator('.ticket-card').first().click()
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  // 展開隱藏式留言
+  await page.getByText('💬 留言／回報').click()
+  await page.waitForTimeout(300)
+  // manager/admin（mock 為 admin）有常用說明下拉＋附加
+  await expect(page.locator('.comment-box .add-row select')).toBeVisible()
+  await expect(page.getByText('＋ 附加').first()).toBeVisible()
 })
 
 test('案件詳情：重新產生分享連結更新輸入框', async ({ page }) => {

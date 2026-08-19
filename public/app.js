@@ -20,6 +20,11 @@ let mockTickets = [
   { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', vendor_name: '測試廠商', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
 ]
 let mockNextId = 3
+// mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
+const mockAssoc = [
+  { option_id: 3, category_id: 1 }, // 頂樓 → 電梯
+  { option_id: 2, category_id: 2 }, // 大廳 → 門禁
+]
 const mockOptions = {
   category: [{ id: 1, label: '電梯' }, { id: 2, label: '門禁' }, { id: 3, label: '水泵' }],
   location: [{ id: 1, label: '停車場' }, { id: 2, label: '大廳' }, { id: 3, label: '頂樓' }],
@@ -44,10 +49,35 @@ function mockApi(path, options = {}) {
   if (pathname === '/api/auth/me') {
     return { ok: true, data: { id: 1, display_name: '測試用戶', role: 'admin' } }
   }
-  // options
+  // options（v1.1.7：支援 category_id 過濾、include_inactive、assoc=0 零關聯）
   if (pathname === '/api/options') {
     const type = url.searchParams.get('type')
-    return { ok: true, data: mockOptions[type] || [] }
+    const categoryId = url.searchParams.get('category_id')
+    const includeInactive = url.searchParams.get('include_inactive') === '1'
+    const noAssoc = url.searchParams.get('assoc') === '0'
+    let items = mockOptions[type] || []
+    // category_id 過濾：該類別關聯＋通用（無關聯者）
+    if (categoryId && type !== 'category') {
+      const cid = Number(categoryId)
+      if (noAssoc) {
+        // 零關聯：全部通用
+      } else {
+        items = items.filter(o => {
+          const assoc = mockAssoc.filter(a => a.option_id === o.id)
+          if (assoc.length === 0) return true // 通用
+          return assoc.some(a => a.category_id === cid)
+        })
+      }
+    }
+    // include_inactive：附 category_ids
+    if (includeInactive) {
+      items = items.map(o => ({
+        ...o,
+        active: 1,
+        category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === o.id).map(a => a.category_id),
+      }))
+    }
+    return { ok: true, data: items }
   }
   // tickets 列表
   if (pathname === '/api/tickets' && method === 'GET') {
@@ -337,7 +367,7 @@ pages.new = function () {
     el('h1', { text: '建單' }),
   ]))
 
-  // 類別下拉（問題2：選項多時 chips 選不到，改下拉式）
+  // 類別下拉
   const catSelect = el('select', { class: 'select' })
   catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
   let selectedCat = null
@@ -346,27 +376,55 @@ pages.new = function () {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
   }).catch(() => {})
-  catSelect.addEventListener('change', (e) => { selectedCat = e.target.value ? Number(e.target.value) : null })
 
-  // 地點下拉
+  // 地點下拉（依類別過濾，未選類別 disabled）
   const locSelect = el('select', { class: 'select' })
-  locSelect.appendChild(el('option', { value: '', text: '請選擇地點' }))
   let selectedLoc = null
-  api('/api/options?type=location').then((b) => {
-    for (const o of b.data) {
-      locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
-    }
-  }).catch(() => {})
+  const resetLoc = (msg) => {
+    locSelect.innerHTML = ''
+    locSelect.appendChild(el('option', { value: '', text: msg }))
+    selectedLoc = null
+  }
+  const loadLoc = (catId) => {
+    resetLoc('載入地點…')
+    api(`/api/options?type=location&category_id=${catId}`).then((b) => {
+      locSelect.innerHTML = ''
+      locSelect.appendChild(el('option', { value: '', text: '請選擇地點' }))
+      for (const o of b.data) {
+        locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
+      }
+      locSelect.disabled = false
+    }).catch(() => { resetLoc('請選擇地點'); locSelect.disabled = false })
+  }
+  resetLoc('請先選擇類別')
+  locSelect.disabled = true
   locSelect.addEventListener('change', (e) => { selectedLoc = e.target.value ? Number(e.target.value) : null })
 
-  // 常用說明（下拉 + 附加按鈕，問題：點擊附加改下拉式）
+  // 常用說明（依類別過濾，未選類別 disabled）
   const descSelect = el('select', { class: 'select' })
-  descSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
-  api('/api/options?type=description').then((b) => {
-    for (const o of b.data) {
-      descSelect.appendChild(el('option', { value: o.label, text: o.label }))
+  const loadDesc = (catId) => {
+    api(`/api/options?type=description&category_id=${catId}`).then((b) => {
+      descSelect.innerHTML = ''
+      descSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
+      for (const o of b.data) {
+        descSelect.appendChild(el('option', { value: o.label, text: o.label }))
+      }
+      descSelect.disabled = false
+    }).catch(() => { descSelect.disabled = false })
+  }
+  descSelect.disabled = true
+
+  catSelect.addEventListener('change', (e) => {
+    selectedCat = e.target.value ? Number(e.target.value) : null
+    if (selectedCat) {
+      loadLoc(selectedCat)
+      loadDesc(selectedCat)
+    } else {
+      resetLoc('請先選擇類別'); locSelect.disabled = true
+      descSelect.innerHTML = ''; descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' })); descSelect.disabled = true
     }
-  }).catch(() => {})
+  })
+
   const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
     const label = descSelect.value
     if (!label) return
@@ -571,6 +629,37 @@ pages.ticket = async function (id) {
       }
     }
   })
+
+  // 常用說明下拉＋附加（manager/admin，v1.1.7 需求2；依案件 category_id 過濾）
+  let commentDescRow = null
+  if (isMgr) {
+    const cDescSelect = el('select', { class: 'select' })
+    cDescSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
+    const catId = t.category_id
+    if (catId) {
+      api(`/api/options?type=description&category_id=${catId}`).then((b) => {
+        for (const o of b.data) {
+          cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
+        }
+      }).catch(() => {})
+    } else {
+      // category_id 為 null → 顯示全部通用說明
+      api('/api/options?type=description').then((b) => {
+        for (const o of b.data) {
+          cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
+        }
+      }).catch(() => {})
+    }
+    const cDescAdd = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
+      const label = cDescSelect.value
+      if (!label) return
+      const cur = commentInput.value
+      if (cur.includes(label)) return
+      commentInput.value = cur ? cur + '、' + label : label
+      cDescSelect.value = ''
+    } })
+    commentDescRow = el('div', { class: 'add-row' }, [cDescSelect, cDescAdd])
+  }
   const statusSelect = el('select', { class: 'select' })
   statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
   if (canStatus) {
@@ -583,6 +672,7 @@ pages.ticket = async function (id) {
   ])
   commentWrap.appendChild(el('div', { class: 'comment-box' }, [
     commentInput,
+    commentDescRow,
     fileRow,
     canStatus ? statusSelect : null,
     el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
@@ -915,16 +1005,42 @@ pages.admin = function () {
 
   function renderOptions() {
     content.innerHTML = ''
-    api('/api/options?type=' + currentType).then((b) => {
+    // P7 用 include_inactive=1（含停用，修停用顯示 bug；限 manager/admin）
+    api('/api/options?type=' + currentType + '&include_inactive=1').then((b) => {
       const list = el('div', { class: 'option-list' })
       for (const o of b.data) {
-        list.appendChild(el('div', { class: 'card option-row' }, [
-          el('span', { text: o.label }),
-          el('button', { class: 'btn btn-danger', text: '停用', onclick: async () => {
-            try { await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ active: 0 }) }); renderOptions() }
+        const row = el('div', { class: 'card option-row' }, [
+          el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
+          el('button', { class: 'btn ' + (o.active ? 'btn-danger' : 'btn-primary'), text: o.active ? '停用' : '啟用', onclick: async () => {
+            try { await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ active: o.active ? 0 : 1 }) }); renderOptions() }
             catch (e) { alert(e.message) }
           } }),
-        ]))
+        ])
+        // location/description 顯示所屬類別勾選矩陣（category 不顯示）
+        if (currentType === 'location' || currentType === 'description') {
+          const catWrap = el('div', { class: 'assoc-wrap' })
+          const catBoxes = []
+          api('/api/options?type=category&include_inactive=1').then((cb) => {
+            for (const cat of cb.data) {
+              const box = el('label', { class: 'assoc-check' }, [
+                el('input', { type: 'checkbox', value: String(cat.id), checked: (o.category_ids || []).includes(cat.id) ? 'checked' : null }),
+                el('span', { text: cat.label }),
+              ])
+              catBoxes.push(box)
+              catWrap.appendChild(box)
+            }
+          }).catch(() => {})
+          const saveBtn = el('button', { class: 'btn', text: '儲存關聯', onclick: async () => {
+            const ids = catBoxes.filter(b => b.querySelector('input').checked).map(b => Number(b.querySelector('input').value))
+            try {
+              await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ category_ids: ids }) })
+              alert('已儲存')
+            } catch (e) { alert(e.message) }
+          } })
+          row.appendChild(catWrap)
+          row.appendChild(saveBtn)
+        }
+        list.appendChild(row)
       }
       content.appendChild(list)
     }).catch((e) => content.appendChild(el('p', { class: 'error', text: e.message })))
