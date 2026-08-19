@@ -132,6 +132,9 @@ activeVendor(c, id): Promise<{id, name} | null>           // active 的 vendor
 ticketNo(id): string                                      // '#' + id 補零 4 位
 makeTitle(catLabel, locLabel, id): string                // {cat}－{loc} #{id}
 validateOwnUnboundPhotos(c, photoIds, userId): Promise<boolean>  // §4.1 照片綁定驗證
+optionAllowedInCategory(c, optionId, categoryId): Promise<boolean> // v1.1.7 建單驗證 location 屬 category 或通用
+assertValidAssoc(c, optionId, categoryIds): Promise<{ok:true}|{ok:false,reason}> // v1.1.7 PATCH 關聯驗證
+assertCategoryIds(c, categoryIds): Promise<{ok:true}|{ok:false,reason}> // v1.1.7 POST 關聯驗證
 ```
 
 **規則**：SQL 一律 `prepare().bind()`，禁止字串拼接；禁止 `SELECT *`（逐欄列出）。
