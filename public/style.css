@@ -100,6 +100,31 @@ button { cursor: pointer; }
 .ticket-detail .meta { margin: 6px 0 0; font-size: 12px; color: var(--gray); }
 .section-title { margin: 16px 0 8px; font-size: 15px; color: var(--gray); }
 
+/* ⋮ 下拉選單 */
+.btn-icon { font-size: 22px; line-height: 1; padding: 0 12px; }
+.menu-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  z-index: 200; display: flex; justify-content: flex-end; align-items: flex-start;
+}
+.menu-popover {
+  background: var(--card); border-radius: 12px; margin: 60px 12px 0 0;
+  min-width: 240px; max-width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+.menu-item {
+  display: block; width: 100%; text-align: left; padding: 14px 16px;
+  border: none; background: transparent; font-size: 15px; border-bottom: 1px solid var(--border);
+}
+.menu-item:last-child { border-bottom: none; }
+.menu-item.danger { color: var(--red); }
+.menu-item .share-row { margin-top: 8px; }
+
+/* 隱藏式留言 */
+.comment-hidden { display: none; }
+.comment-hidden .comment-box { padding: 12px 16px; }
+.file-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--gray); }
+.btn-block { width: 100%; margin: 8px 0; }
+
 /* 案件列表 */
 .ticket-list { padding: 8px; }
 .ticket-card { cursor: pointer; }

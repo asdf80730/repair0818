@@ -428,10 +428,6 @@ pages.new = function () {
 pages.ticket = async function (id) {
   const root = document.getElementById('page')
   root.innerHTML = ''
-  root.appendChild(el('header', { class: 'topbar' }, [
-    el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/' } }),
-    el('h1', { text: '案件詳情' }),
-  ]))
 
   let body
   try {
@@ -442,7 +438,90 @@ pages.ticket = async function (id) {
   }
   const t = body.data
 
-  // 案件資訊（行距壓縮，讓內容更緊湊）
+  // ---- 權限 ----
+  const isMgr = me && (me.role === 'manager' || me.role === 'admin')
+  const canStatus = isMgr && (t.status === 'open' || t.status === 'in_progress')
+  const canShare = !!me
+  const canEdit = me && (me.role === 'manager' || me.role === 'admin' || (me.role === 'committee' && t.created_by === me.id))
+  const canVoid = me && (me.role === 'manager' || me.role === 'admin')
+  const canReopen = me && me.role === 'admin' && (t.status === 'done' || t.status === 'void')
+  const canReshare = me && (me.role === 'manager' || me.role === 'admin')
+  const canDo = canShare || canEdit || canVoid || canReopen || canReshare
+
+  // ---- Topbar：返回 + 標題 + 右上 ⋮（點 ⋮ 才建選單）----
+  const topbar = el('header', { class: 'topbar' }, [
+    el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/' } }),
+    el('h1', { text: '案件詳情' }),
+  ])
+  if (canDo) {
+    const menuBtn = el('button', { class: 'btn btn-ghost btn-icon', text: '⋮' })
+    menuBtn.addEventListener('click', () => {
+      const overlay = el('div', { class: 'menu-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove() } })
+      const menu = el('div', { class: 'menu-popover' })
+      let shareInput = null
+      if (canShare) {
+        shareInput = el('input', { class: 'input', value: location.origin + t.share_url, readonly: 'true' })
+        menu.appendChild(el('div', { class: 'menu-item' }, [
+          el('span', { text: '分享連結' }),
+          el('div', { class: 'share-row' }, [
+            shareInput,
+            el('button', { class: 'btn', text: '複製', onclick: () => navigator.clipboard.writeText(shareInput.value) }),
+          ]),
+        ]))
+      }
+      if (canEdit && (t.status === 'open' || t.status === 'in_progress')) {
+        menu.appendChild(el('button', { class: 'menu-item', text: '✏️ 編輯案件', onclick: () => { overlay.remove(); location.hash = `#/edit/${id}` } }))
+      }
+      if (canVoid && (t.status === 'open' || t.status === 'in_progress')) {
+        menu.appendChild(el('button', { class: 'menu-item danger', text: '🗑 作廢案件', onclick: async () => {
+          overlay.remove()
+          const note = prompt('作廢原因（選填）')
+          if (note === null) return
+          if (!confirm('確定作廢此案件？')) return
+          try { await api(`/api/tickets/${id}/void`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) }); location.reload() }
+          catch (e) { alert(e.message) }
+        } }))
+      }
+      if (canReopen) {
+        menu.appendChild(el('button', { class: 'menu-item', text: '↩️ 重新開啟', onclick: () => {
+          overlay.remove()
+          const sel = el('select', { class: 'select' })
+          sel.appendChild(el('option', { value: 'in_progress', text: '處理中' }))
+          sel.appendChild(el('option', { value: 'open', text: '待處理' }))
+          const noteEl = el('textarea', { class: 'textarea', placeholder: '備註（選填）' })
+          const modal = el('div', { class: 'modal-mask' }, [
+            el('div', { class: 'modal' }, [
+              el('h3', { text: '重新開啟案件' }),
+              el('label', { text: '狀態' }), sel,
+              el('label', { text: '備註' }), noteEl,
+              el('div', { class: 'modal-actions' }, [
+                el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => modal.remove() }),
+                el('button', { class: 'btn btn-primary', text: '確認重新開啟', onclick: async () => {
+                  try { await api(`/api/tickets/${id}/reopen`, { method: 'POST', body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }) }); location.reload() }
+                  catch (e) { alert(e.message) }
+                } }),
+              ]),
+            ]),
+          ])
+          document.body.appendChild(modal)
+        } }))
+      }
+      if (canReshare) {
+        menu.appendChild(el('button', { class: 'menu-item', text: '🔄 重新產生分享連結', onclick: async () => {
+          try {
+            const b = await api(`/api/tickets/${id}/share-token`, { method: 'POST' })
+            if (shareInput) shareInput.value = location.origin + b.data.share_url
+          } catch (e) { alert(e.message) }
+        } }))
+      }
+      overlay.appendChild(menu)
+      document.body.appendChild(overlay)
+    })
+    topbar.appendChild(menuBtn)
+  }
+  root.appendChild(topbar)
+
+  // ---- 案件資訊（緊湊）----
   const info = el('div', { class: 'card ticket-detail' }, [
     el('div', { class: 'detail-head' }, [
       el('h2', { text: t.title }),
@@ -455,22 +534,26 @@ pages.ticket = async function (id) {
   ])
   root.appendChild(info)
 
-  // 照片牆
+  // ---- 照片牆 ----
   if (t.photos && t.photos.length) {
     const wall = el('div', { class: 'photo-wall' })
     for (const url of t.photos) wall.appendChild(el('img', { src: url, class: 'photo' }))
     root.appendChild(wall)
   }
 
-  // 時間軸（主角，直接接在內容後）
-  const timeline = el('div', { class: 'timeline' })
-  for (const u of t.updates) {
-    timeline.appendChild(renderUpdate(u))
-  }
+  // ---- 時間軸（主角）----
   root.appendChild(el('h3', { class: 'section-title', text: '時間軸' }))
+  const timeline = el('div', { class: 'timeline' })
+  for (const u of t.updates) timeline.appendChild(renderUpdate(u))
   root.appendChild(timeline)
 
-  // 底部留言框（三角色，問題4：留言＋回報合一，manager/admin 可選狀態）
+  // ---- 隱藏式留言/回報（點按鈕展開）----
+  const commentWrap = el('div', { class: 'comment-hidden' })
+  const commentToggle = el('button', { class: 'btn btn-primary btn-block', text: canStatus ? '💬 留言／回報' : '💬 留言', onclick: () => {
+    if (commentWrap.style.display === 'block') { commentWrap.style.display = 'none'; commentToggle.textContent = canStatus ? '💬 留言／回報' : '💬 留言'; return }
+    commentWrap.style.display = 'block'
+    commentToggle.textContent = '收起'
+  } })
   const commentInput = el('textarea', { class: 'textarea', placeholder: '留言…' })
   const commentPhotos = []
   const commentFile = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
@@ -488,17 +571,19 @@ pages.ticket = async function (id) {
       }
     }
   })
-  const isMgr = me && (me.role === 'manager' || me.role === 'admin')
-  const canStatus = isMgr && (t.status === 'open' || t.status === 'in_progress')
   const statusSelect = el('select', { class: 'select' })
   statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
   if (canStatus) {
     statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記處理中' }))
     statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
   }
-  const commentBox = el('div', { class: 'comment-box' }, [
-    commentInput,
+  const fileRow = el('div', { class: 'file-row' }, [
     commentFile,
+    el('span', { text: '可附照片' }),
+  ])
+  commentWrap.appendChild(el('div', { class: 'comment-box' }, [
+    commentInput,
+    fileRow,
     canStatus ? statusSelect : null,
     el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
       if (!commentInput.value.trim()) { alert('請輸入留言'); return }
@@ -506,97 +591,17 @@ pages.ticket = async function (id) {
       if (status === 'done' && !confirm('標記為已完成並結案？')) return
       try {
         if (status) {
-          await api(`/api/tickets/${id}/updates`, {
-            method: 'POST',
-            body: JSON.stringify({ status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }),
-          })
+          await api(`/api/tickets/${id}/updates`, { method: 'POST', body: JSON.stringify({ status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         } else {
-          await api(`/api/tickets/${id}/comments`, {
-            method: 'POST',
-            body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }),
-          })
+          await api(`/api/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         }
         location.reload()
       } catch (e) { alert(e.message) }
     } }),
-  ])
-  root.appendChild(commentBox)
-
-  // ⋮ 選單（編輯/作廢/重新開啟/重發連結/分享連結）
-  const canShare = !!me // 三角色都可複製分享連結（§3.6）
-  const canEdit = me && (me.role === 'manager' || me.role === 'admin' || (me.role === 'committee' && t.created_by === me.id))
-  const canVoid = me && (me.role === 'manager' || me.role === 'admin')
-  const canReopen = me && me.role === 'admin' && (t.status === 'done' || t.status === 'void')
-  const canReshare = me && (me.role === 'manager' || me.role === 'admin')
-
-  if (canEdit || canVoid || canReopen || canReshare || canShare) {
-    const menu = el('div', { class: 'menu' })
-    // 分享連結（方案 A：收進選單，含複製＋重新產生）
-    if (canShare) {
-      const shareInput = el('input', { class: 'input', value: location.origin + t.share_url, readonly: 'true' })
-      const copyBtn = el('button', { class: 'btn', text: '複製', onclick: () => { navigator.clipboard.writeText(shareInput.value) } })
-      const shareRow = el('div', { class: 'share-row' }, [
-        el('span', { text: '分享連結：' }),
-        shareInput,
-        copyBtn,
-      ])
-      menu.appendChild(shareRow)
-    }
-    if (canEdit && (t.status === 'open' || t.status === 'in_progress')) {
-      menu.appendChild(el('button', { class: 'btn btn-ghost', text: '編輯', onclick: () => { location.hash = `#/edit/${id}` } }))
-    }
-    if (canVoid && (t.status === 'open' || t.status === 'in_progress')) {
-      menu.appendChild(el('button', { class: 'btn btn-danger', text: '作廢', onclick: async () => {
-        const note = prompt('作廢原因（選填）')
-        if (note === null) return
-        if (!confirm('確定作廢此案件？')) return
-        try {
-          await api(`/api/tickets/${id}/void`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) })
-          location.reload()
-        } catch (e) { alert(e.message) }
-      } }))
-    }
-    if (canReopen) {
-      menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新開啟', onclick: () => {
-        // 問題8：用選單選擇狀態，不用 prompt 輸入
-        const sel = el('select', { class: 'select' })
-        sel.appendChild(el('option', { value: 'in_progress', text: '處理中' }))
-        sel.appendChild(el('option', { value: 'open', text: '待處理' }))
-        const noteEl = el('textarea', { class: 'textarea', placeholder: '備註（選填）' })
-        const modal = el('div', { class: 'modal-mask' }, [
-          el('div', { class: 'modal' }, [
-            el('h3', { text: '重新開啟案件' }),
-            el('label', { text: '狀態' }), sel,
-            el('label', { text: '備註' }), noteEl,
-            el('div', { class: 'modal-actions' }, [
-              el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => modal.remove() }),
-              el('button', { class: 'btn btn-primary', text: '確認重新開啟', onclick: async () => {
-                try {
-                  await api(`/api/tickets/${id}/reopen`, {
-                    method: 'POST',
-                    body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }),
-                  })
-                  location.reload()
-                } catch (e) { alert(e.message) }
-              } }),
-            ]),
-          ]),
-        ])
-        document.body.appendChild(modal)
-      } }))
-    }
-    if (canReshare) {
-      menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新產生分享連結', onclick: async () => {
-        try {
-          const b = await api(`/api/tickets/${id}/share-token`, { method: 'POST' })
-          const shareUrl = location.origin + b.data.share_url
-          const input = menu.querySelector('.share-row input')
-          if (input) input.value = shareUrl
-        } catch (e) { alert(e.message) }
-      } }))
-    }
-    root.appendChild(menu)
-  }
+  ]))
+  commentWrap.style.display = 'none'
+  root.appendChild(commentToggle)
+  root.appendChild(commentWrap)
 }
 
 function renderUpdate(u) {
