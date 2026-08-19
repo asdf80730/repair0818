@@ -36,12 +36,17 @@ test('案件詳情：分享連結格式正確、可進編輯頁（含指派廠�
   await page.locator('.ticket-card').first().click()
   await page.waitForSelector('text=案件詳情', { timeout: 10000 })
 
-  // 分享連結格式：指向人類頁面 /share.html?token=（問題7）
-  const shareVal = await page.locator('.share-row input').inputValue()
+  // 分享連結在 ⋮ 選單內（方案 A），點 ⋮ 展開
+  await page.locator('.topbar .btn-icon').click()
+  await page.waitForSelector('.menu-popover', { timeout: 10000 })
+  const shareVal = await page.locator('.menu-popover .share-row input').inputValue()
   expect(shareVal).toContain('/share.html?token=')
+  // 關閉選單
+  await page.locator('.menu-overlay').click({ position: { x: 5, y: 5 } })
 
   // 編輯按鈕可進編輯頁（問題5）
-  await page.getByText('編輯').first().click()
+  await page.locator('.topbar .btn-icon').click()
+  await page.getByText('✏️ 編輯案件').click()
   await page.waitForSelector('text=編輯案件', { timeout: 10000 })
   await expect(page.getByText('儲存')).toBeVisible()
   // 指派廠商在編輯頁內（問題3，保全/秘書層級）
@@ -103,9 +108,11 @@ test('案件詳情：重新產生分享連結更新輸入框', async ({ page }) 
   await page.locator('.ticket-card').first().click()
   await page.waitForSelector('text=案件詳情', { timeout: 10000 })
 
-  // 重新產生分享連結（v1.1.5：不彈框、直接更新輸入框）
-  await page.getByText('重新產生分享連結').click()
+  // 重新產生分享連結（v1.1.5：在 ⋮ 選單內，不彈框、直接更新輸入框）
+  await page.locator('.topbar .btn-icon').click()
+  await page.waitForSelector('.menu-popover', { timeout: 10000 })
+  await page.getByText('🔄 重新產生分享連結').click()
   await page.waitForTimeout(500)
-  const shareVal = await page.locator('.share-row input').inputValue()
+  const shareVal = await page.locator('.menu-popover .share-row input').inputValue()
   expect(shareVal).toContain('/share.html?token=')
 })
