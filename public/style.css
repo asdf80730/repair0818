@@ -91,6 +91,15 @@ button { cursor: pointer; }
 }
 .tab.active { color: var(--blue); border-bottom: 2px solid var(--blue); font-weight: 600; }
 
+/* 案件詳情（方案 A：內容緊湊，時間軸為主角） */
+.ticket-detail { padding: 12px 16px; }
+.detail-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.detail-head h2 { margin: 0; font-size: 18px; flex: 1; }
+.detail-line { margin: 4px 0; font-size: 14px; color: var(--gray); }
+.ticket-detail .desc { margin: 6px 0; }
+.ticket-detail .meta { margin: 6px 0 0; font-size: 12px; color: var(--gray); }
+.section-title { margin: 16px 0 8px; font-size: 15px; color: var(--gray); }
+
 /* 案件列表 */
 .ticket-list { padding: 8px; }
 .ticket-card { cursor: pointer; }

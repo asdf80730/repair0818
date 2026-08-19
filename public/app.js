@@ -442,15 +442,16 @@ pages.ticket = async function (id) {
   }
   const t = body.data
 
-  // 案件資訊
-  const info = el('div', { class: 'card' }, [
-    el('h2', { text: t.title }),
-    el('div', {}, [statusBadge(t.status)]),
-    el('p', { text: `類別：${t.category_label}｜地點：${t.location_label}` }),
-    el('p', { text: `廠商：${t.vendor_name || '未指派'}` }),
+  // 案件資訊（行距壓縮，讓內容更緊湊）
+  const info = el('div', { class: 'card ticket-detail' }, [
+    el('div', { class: 'detail-head' }, [
+      el('h2', { text: t.title }),
+      statusBadge(t.status),
+    ]),
+    el('p', { class: 'detail-line', text: `類別：${t.category_label}｜地點：${t.location_label}` }),
+    el('p', { class: 'detail-line', text: `廠商：${t.vendor_name || '未指派'}` }),
     t.description ? el('p', { class: 'desc', text: t.description }) : null,
-    el('p', { class: 'meta', text: `建立：${fmtTime(t.created_at)}` }),
-    el('p', { class: 'meta', text: `最後活動：${fmtTime(t.last_activity_at)}` }),
+    el('p', { class: 'meta', text: `建立 ${fmtTime(t.created_at)} · 最後活動 ${fmtTime(t.last_activity_at)}` }),
   ])
   root.appendChild(info)
 
@@ -461,22 +462,12 @@ pages.ticket = async function (id) {
     root.appendChild(wall)
   }
 
-  // 分享連結（問題10：複製不彈確認框）
-  const shareInput = el('input', { class: 'input', value: location.origin + t.share_url, readonly: 'true' })
-  const copyBtn = el('button', { class: 'btn', text: '複製', onclick: () => { navigator.clipboard.writeText(shareInput.value) } })
-  const shareRow = el('div', { class: 'share-row' }, [
-    el('span', { text: '分享連結：' }),
-    shareInput,
-    copyBtn,
-  ])
-  root.appendChild(shareRow)
-
-  // 時間軸
+  // 時間軸（主角，直接接在內容後）
   const timeline = el('div', { class: 'timeline' })
   for (const u of t.updates) {
     timeline.appendChild(renderUpdate(u))
   }
-  root.appendChild(el('h3', { text: '時間軸' }))
+  root.appendChild(el('h3', { class: 'section-title', text: '時間軸' }))
   root.appendChild(timeline)
 
   // 底部留言框（三角色，問題4：留言＋回報合一，manager/admin 可選狀態）
@@ -531,14 +522,26 @@ pages.ticket = async function (id) {
   ])
   root.appendChild(commentBox)
 
-  // ⋮ 選單（編輯/作廢/重新開啟/重發連結）
+  // ⋮ 選單（編輯/作廢/重新開啟/重發連結/分享連結）
+  const canShare = !!me // 三角色都可複製分享連結（§3.6）
   const canEdit = me && (me.role === 'manager' || me.role === 'admin' || (me.role === 'committee' && t.created_by === me.id))
   const canVoid = me && (me.role === 'manager' || me.role === 'admin')
   const canReopen = me && me.role === 'admin' && (t.status === 'done' || t.status === 'void')
   const canReshare = me && (me.role === 'manager' || me.role === 'admin')
 
-  if (canEdit || canVoid || canReopen || canReshare) {
+  if (canEdit || canVoid || canReopen || canReshare || canShare) {
     const menu = el('div', { class: 'menu' })
+    // 分享連結（方案 A：收進選單，含複製＋重新產生）
+    if (canShare) {
+      const shareInput = el('input', { class: 'input', value: location.origin + t.share_url, readonly: 'true' })
+      const copyBtn = el('button', { class: 'btn', text: '複製', onclick: () => { navigator.clipboard.writeText(shareInput.value) } })
+      const shareRow = el('div', { class: 'share-row' }, [
+        el('span', { text: '分享連結：' }),
+        shareInput,
+        copyBtn,
+      ])
+      menu.appendChild(shareRow)
+    }
     if (canEdit && (t.status === 'open' || t.status === 'in_progress')) {
       menu.appendChild(el('button', { class: 'btn btn-ghost', text: '編輯', onclick: () => { location.hash = `#/edit/${id}` } }))
     }
@@ -586,10 +589,9 @@ pages.ticket = async function (id) {
       menu.appendChild(el('button', { class: 'btn btn-ghost', text: '重新產生分享連結', onclick: async () => {
         try {
           const b = await api(`/api/tickets/${id}/share-token`, { method: 'POST' })
-          // 問題6：重新產生後直接更新輸入框（連同複製按鈕一起換新連結）
           const shareUrl = location.origin + b.data.share_url
-          shareInput.value = shareUrl
-          copyBtn.onclick = () => { navigator.clipboard.writeText(shareUrl) }
+          const input = menu.querySelector('.share-row input')
+          if (input) input.value = shareUrl
         } catch (e) { alert(e.message) }
       } }))
     }
