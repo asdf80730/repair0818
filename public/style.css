@@ -75,14 +75,17 @@ button { cursor: pointer; }
 .badge-gray { background: var(--gray); }
 
 /* tabs */
-.tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--border); -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
-  padding: 12px 14px;
+  padding: 12px 10px;
   border: none;
   background: transparent;
   white-space: nowrap;
   color: var(--gray);
   min-height: 44px;
+  flex: 1;
+  text-align: center;
 }
 .tab.active { color: var(--blue); border-bottom: 2px solid var(--blue); font-weight: 600; }
 
@@ -105,6 +108,8 @@ button { cursor: pointer; }
   min-height: 44px;
 }
 .textarea { min-height: 80px; resize: vertical; }
+/* 送出/主操作按鈕滿寬，方便手指點擊 */
+.form .btn-primary { width: 100%; margin-top: 16px; }
 
 /* 照片 */
 .photo-preview, .photo-wall { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
@@ -133,8 +138,10 @@ button { cursor: pointer; }
 .user-row, .option-row { display: flex; align-items: center; gap: 8px; }
 .user-row .select { flex: 1; }
 .option-row span { flex: 1; }
-.add-row { display: flex; gap: 8px; padding: 8px; }
+.add-row { display: flex; gap: 8px; padding: 8px; align-items: center; }
 .add-row .input { flex: 1; }
+.add-row .select { flex: 1; }
+.add-row .btn { flex-shrink: 0; white-space: nowrap; }
 
 /* 底部導覽 */
 #nav {

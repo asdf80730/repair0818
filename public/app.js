@@ -415,7 +415,7 @@ pages.new = function () {
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
-    el('label', { text: '常用說明（選取後按附加）' }), descRow,
+    el('label', { text: '常用說明' }), descRow,
     el('label', { text: '說明' }), descEl,
     el('label', { text: '照片' }), photoInput, photoPreview,
     el('button', { class: 'btn btn-primary', text: '送出建單', onclick: submit }),
