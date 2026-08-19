@@ -1,4 +1,6 @@
--- seed.sql — 預設選項（§2.3）
+-- 0002_seed.sql — 預設選項 seed（§2.3）
+-- 併入 migration 作為唯一來源：vitest 自動套用、production 用 wrangler d1 migrations apply
+-- INSERT OR IGNORE：重複套用時 UNIQUE(type,label) 不衝突
 -- 預設選項為初始值，上線後由管理公司在 P7 自行維護
 -- 時間格式一律 ISO8601 UTC
 
