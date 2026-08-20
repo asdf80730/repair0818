@@ -34,10 +34,12 @@ optionRoutes.get('/', requireAuth(), zValidator('query', listOptionsQuerySchema)
   if (q.type === 'category' && q.include_inactive) {
     const rows = await c.env.DB.prepare(
       `SELECT o.id, o.type, o.label, o.sort_order, o.active,
-        (SELECT COUNT(*) FROM option_categories oc WHERE oc.category_id = o.id
-          JOIN options oo ON oo.id = oc.option_id AND oo.type = 'location') AS location_count,
-        (SELECT COUNT(*) FROM option_categories oc WHERE oc.category_id = o.id
-          JOIN options oo ON oo.id = oc.option_id AND oo.type = 'description') AS description_count
+        (SELECT COUNT(*) FROM option_categories oc
+          JOIN options oo ON oo.id = oc.option_id
+         WHERE oc.category_id = o.id AND oo.type = 'location') AS location_count,
+        (SELECT COUNT(*) FROM option_categories oc
+          JOIN options oo ON oo.id = oc.option_id
+         WHERE oc.category_id = o.id AND oo.type = 'description') AS description_count
        FROM options o WHERE o.type = 'category'${activeClause}
        ORDER BY o.sort_order, o.id`,
     ).all<{ id: number; type: string; label: string; sort_order: number; active: number; location_count: number; description_count: number }>()
