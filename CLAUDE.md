@@ -61,7 +61,7 @@
 - **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。關聯一律寫新的 migration。
 - `option_categories` join 表：多對多，一個 option 可屬多個 category；**無關聯列 = 通用，所有類別可見**。
 - **P7 以類別為中心**：類別列表顯示 `location_count`/`description_count`＋「設定關聯」按鈕，點開 modal 才載入該類別的地點/說明（`?type=X&category_id=N&include_inactive=1` 附 `associated`）——避免 N+1。`category_id` 與 `include_inactive` 可併用；寫入走 `POST /api/options/:id/assoc`（以類別為中心全量覆寫）。
-- **P2 catalog**（v1.1.7）：建單頁用 `GET /api/options/catalog` 一次抓完所有 active 選項＋關聯，前端本地過濾（換類別即時無延遲）。無關聯類別 → alert 提示並重新讀取 catalog，**不重整頁面**。
+- **P2 catalog 全域快取**（v1.1.7）：`ensureCatalog()` 全域快取，僅首次需要時（進建單/詳情/編輯/列表任一）讀一次 `GET /api/options/catalog`，之後共用不再重複請求。無關聯類別 → alert 提示並 `ensureCatalog(true)` 強制重讀，**不重整頁面**。
 - 建單驗證 `location_id` 屬於 `category_id` **或為通用**；PATCH 僅當 category/location 有變動時才驗（歷史資料不鎖死）。
 - `GET /api/options` 三模式：`?type`（僅 active）、`?type&category_id`（關聯+通用）、`?type&include_inactive=1`（附 category_ids，**限 manager/admin，handler 內判**）。
 - `category_ids` 三態：**未帶=不動關聯、[]=清空、有值=全量覆寫**。zod 用 `.optional()` 不用 `.default([])`。

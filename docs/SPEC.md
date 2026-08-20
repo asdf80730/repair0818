@@ -712,7 +712,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.2 P2 建單
 
-- **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，本地過濾，換類別即時無延遲；v1.1.4 起由 chips 改下拉式）
+- **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，**全域快取 `ensureCatalog()`，僅首次需要時讀取一次**，之後詳情/編輯/列表共用，本地過濾換類別即時無延遲）
 - **常用說明下拉＋附加按鈕**（v1.1.5）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
