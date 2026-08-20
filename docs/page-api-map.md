@@ -56,7 +56,6 @@
 | P1 | 列表 | tickets + catalog(快取) | ~0.65s |
 | P2 | 建單 | catalog(短 TTL 30s) | ~0.8s(冷) / 瞬間(熱) |
 | P3 | 詳情 | tickets/:id + catalog | ~1.0s ⚠️最慢 |
-| P4 | 回報 | photos | 快 |
 | P5 | 統計 | stats/summary | ~0.74s |
 | P6 | 成員 | users | ~0.46s |
 | P7 | 管理 | options+vendors | ~0.63s |

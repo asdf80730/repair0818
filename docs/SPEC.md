@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.7（定稿，可施工）** ｜ 日期：2026-08-20
+**版本：v1.1.9（定稿，可施工）** ｜ 日期：2026-08-20
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 九版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 十一版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -22,9 +22,8 @@
 | v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 | v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
-| v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
-| v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
-| v1.1.9 | **回報範本（comment_desc）**（詳見 `docs/v1.1.9-變更需求報告.md`）：建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`；建單 label 改「故障類型範本」、回報框改用 `comment_descs`（通用不依類別過濾）label 改「回報範本」；P7 管理頁 tab 新增「回報範本」 |
+| v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/archive/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
+| v1.1.9 | **回報範本（comment_desc）**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`；建單 label 改「故障類型範本」、回報框改用 `comment_descs`（通用不依類別過濾）label 改「回報範本」；P7 管理頁 tab 新增「回報範本」 |
 | v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
@@ -602,9 +601,11 @@ export function requireAuth(opts?: {
 
 | 端點 | 權限 | 說明 |
 |---|---|---|
-| GET `/api/options?type=category\|location\|description` | 三角色 | 只回 active |
-| POST `/api/options` | manager/admin | `{ type, label, sort_order }`；若 `(type,label)` 已存在 → 該筆 `active=1` 並更新 `sort_order`，否則新增 |
-| PATCH `/api/options/:id` | manager/admin | 改 label／sort_order／active（停用） |
+| GET `/api/options/catalog` | 三角色 | 一次抓所有選項＋關聯：`{categories, locations, descriptions, comment_descs}`（v1.1.9 加 comment_descs） |
+| GET `/api/options?type=category\|location\|description\|comment_desc` | 三角色 | **三種模式**（v1.1.7）：① 不帶參數＝只回 active；② 帶 `category_id=N`＝只回該類別關聯＋通用；③ 帶 `include_inactive=1`（限 manager/admin）＝含停用並附 `category_ids` |
+| POST `/api/options` | manager/admin | `{ type, label, sort_order, category_ids? }`；若 `(type,label)` 已存在 → 該筆 `active=1` 並更新 `sort_order`，否則新增；`category_ids` 三態（undefined 不動／[] 清空／有值全量覆寫） |
+| PATCH `/api/options/:id` | manager/admin | 改 label／sort_order／active（停用）／category_ids |
+| POST `/api/options/:id/assoc` | manager/admin | 以類別為中心全量覆寫關聯（v1.1.7） |
 | GET `/api/vendors` | manager/admin | 列表（含停用） |
 | POST `/api/vendors` | manager/admin | 新增 |
 | PATCH `/api/vendors/:id` | manager/admin | 修改／停用 |
@@ -906,7 +907,8 @@ LINE_CHANNEL_ID = "2008484338"
 npx wrangler d1 migrations create repair-db init   # 產生檔案後貼入 §2.1 SQL
 npx wrangler d1 migrations apply repair-db --local      # 開發
 npx wrangler d1 migrations apply repair-db --remote     # 正式
-npx wrangler d1 execute repair-db --remote --file=seed.sql
+```
+> seed 已併入 migration（v1.1.6），無需手動執行 seed.sql。
 ```
 
 ### 8.4 secrets

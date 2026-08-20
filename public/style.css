@@ -255,7 +255,6 @@ button { cursor: pointer; }
 .filter-row .select { flex: 1; }
 
 /* v1.1.7：P7 勾選矩陣 */
-.assoc-wrap { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 8px 0; }
 .assoc-check { display: flex; align-items: center; gap: 4px; font-size: 13px; }
 .assoc-check input { width: 18px; height: 18px; }
 /* v1.1.7：類別關聯計數 + modal */
