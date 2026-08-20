@@ -70,7 +70,10 @@ export async function resolveUser(c: AppContext): Promise<User | null> {
     .first<{ id: number; role: Role; active: number }>()
 
   // 4. 查無此人或 active = 0 → null（停用者視同未登入）
-  if (!row || row.active === 0) return null
+  if (!row || row.active === 0) {
+    if (row) c.set('disabledUser', true) // JWT 有效但 active=0 → 標記供 requireAuth 回 403，不再重查
+    return null
+  }
 
   // 5. 回 user
   return { id: row.id, role: row.role }
@@ -84,8 +87,8 @@ export function requireAuth(opts: {
     const user = await resolveUser(c)
     if (!user) {
       // 區分 DISABLED：JWT 有效但 active=0 → 403 DISABLED（§3.2）
-      // 在 middleware 層另查（純函式 resolveUser 維持回 null）
-      if (await isDisabledUser(c)) {
+      // resolveUser 已查過 D1 並設標記，不需重查
+      if (c.get('disabledUser')) {
         return fail(c, 403, 'DISABLED', '帳號已停用，請洽管理員')
       }
       return fail(c, 401, 'UNAUTHORIZED', '請重新登入')
@@ -103,25 +106,6 @@ export function requireAuth(opts: {
     c.set('user', user)
     await next()
   })
-}
-
-/** 檢查是否有「JWT 有效但 active=0」的使用者（供 requireAuth 區分 DISABLED） */
-async function isDisabledUser(c: AppContext): Promise<boolean> {
-  const token = getCookie(c, SESSION_COOKIE)
-  if (!token) return false
-  try {
-    const key = await secretKey(c.env.JWT_SECRET)
-    const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] })
-    if (!payload.sub) return false
-    const row = await c.env.DB.prepare(
-      'SELECT active FROM users WHERE id = ?',
-    )
-      .bind(Number(payload.sub))
-      .first<{ active: number }>()
-    return row?.active === 0
-  } catch {
-    return false
-  }
 }
 
 /** 設定 session Cookie（§3.1） */

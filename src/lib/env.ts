@@ -17,6 +17,8 @@ export type Env = {
   }
   Variables: {
     user: User
+    // JWT 有效但 active=0（停用者）時由 resolveUser 設標記，requireAuth 據此回 403 DISABLED 而不再重查 D1
+    disabledUser: boolean
   }
 }
 

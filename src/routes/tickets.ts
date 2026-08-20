@@ -366,15 +366,13 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
     ).bind(id, user.id, body.status, body.note ?? null, now),
   ]
 
-  // 綁定照片（target_type='update' + 該筆 update id）—— 需先 insert 拿 update id
-  await c.env.DB.batch(stmts)
-  const lastUpdate = await c.env.DB.prepare(
-    'SELECT id FROM ticket_updates WHERE ticket_id = ? ORDER BY id DESC LIMIT 1',
-  ).bind(id).first<{ id: number }>()
-  if (photoIds.length > 0 && lastUpdate) {
+  // 多步驟寫入用 env.DB.batch()（原子），從 batch 回傳結果拿 last_row_id（避免並發回報時 ORDER BY DESC 抓錯）
+  const batchRes = await c.env.DB.batch(stmts)
+  const inserted = batchRes[1].meta.last_row_id as number | undefined
+  if (photoIds.length > 0 && inserted) {
     await c.env.DB.batch(photoIds.map((pid) =>
       c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?')
-        .bind('update', lastUpdate.id, pid),
+        .bind('update', inserted, pid),
     ))
   }
 

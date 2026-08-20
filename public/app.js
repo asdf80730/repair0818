@@ -18,8 +18,12 @@ const IS_MOCK = new URLSearchParams(window.location.search).get('mock') === 'tru
 let mockTickets = [
   { id: 1, title: '電梯－停車場 #0001', status: 'open', category_label: '電梯', location_label: '停車場', vendor_name: null, created_at: '2026-08-18T10:00:00.000Z', last_activity_at: '2026-08-18T10:00:00.000Z' },
   { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', vendor_name: '測試廠商', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
+  { id: 3, title: '門禁－車道 #0003', status: 'void', category_label: '門禁', location_label: '車道', vendor_name: null, created_at: '2026-08-18T08:00:00.000Z', last_activity_at: '2026-08-18T12:00:00.000Z' },
+  { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', vendor_name: '測試廠商', created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
+  { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', vendor_name: null, created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
+  { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', vendor_name: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
 ]
-let mockNextId = 3
+let mockNextId = 7
 // mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
 const mockAssoc = [
   { option_id: 3, category_id: 1 }, // 頂樓 → 電梯
