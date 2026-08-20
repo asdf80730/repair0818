@@ -208,28 +208,41 @@ async function api(path, options = {}) {
   return body
 }
 
-// §3.4 靜默重登：liff.login() → 取 id_token → POST /api/auth/session → 重送原請求一次
-async function silentRelogin(path, options, headers) {
-  if (!liffReady || !window.liff) return null
-  try {
+// F3：全域 session 刷新單例，避免平行 401 各自重登（雷鳴群）
+let sessionRefreshPromise = null
+async function refreshSession() {
+  if (sessionRefreshPromise) return sessionRefreshPromise
+  sessionRefreshPromise = (async () => {
+    if (!liffReady || !window.liff) return false
     if (!liff.isLoggedIn()) {
       // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL（避免部署網域變動造成不符）
       liff.login()
-      return null
+      return false
     }
     const idToken = liff.getIDToken()
-    if (!idToken) return null
+    if (!idToken) return false
     const sessionRes = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ id_token: idToken }),
     })
-    if (!sessionRes.ok) return null
+    return sessionRes.ok
+  })().finally(() => { sessionRefreshPromise = null })
+  return sessionRefreshPromise
+}
+
+// §3.4 靜默重登：刷新 session → 重送原請求一次
+async function silentRelogin(path, options, headers) {
+  try {
+    const ok = await refreshSession()
+    if (!ok) return null
     // 重送原請求一次
     const retry = await fetch(path, { ...options, headers })
     if (retry.status === 401) return null
     let body
     try { body = await retry.json() } catch { body = null }
+    // D3：重試後若回 400/500，body 是 {ok:false}，呼叫端會當成功讀 b.data → 崩潰。檢查 body.ok
+    if (!body || body.ok === false) return null
     return body
   } catch {
     return null
@@ -285,6 +298,44 @@ function statusBadge(status) {
 }
 
 // 問題16：縮圖點開放大（lightbox）
+// E2：複製文字，LIFF WebView 用 navigator.clipboard，失敗 fallback execCommand，成功 toast「已複製」
+function copyText(text) {
+  const done = () => toast('已複製')
+  const fallback = () => {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      if (ok) done()
+      else toast('複製失敗，請長按手動複製')
+    } catch {
+      toast('複製失敗，請長按手動複製')
+    }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback)
+  } else {
+    fallback()
+  }
+}
+// E2：輕量 toast 提示（自動消失）
+function toast(msg) {
+  let t = document.querySelector('.toast')
+  if (!t) {
+    t = el('div', { class: 'toast' })
+    document.body.appendChild(t)
+  }
+  t.textContent = msg
+  t.classList.add('show')
+  clearTimeout(t._timer)
+  t._timer = setTimeout(() => t.classList.remove('show'), 1500)
+}
+
 function openLightbox(src) {
   const mask = el('div', { class: 'lightbox', onclick: () => mask.remove() }, [
     el('img', { src, class: 'lightbox-img' }),
@@ -396,8 +447,10 @@ pages.list = function () {
   }
 
   function loadMore() {
+    if (loadMoreBtn.disabled) return // E3：請求期間防重複點擊
+    loadMoreBtn.disabled = true
     page++
-    load()
+    load().finally(() => { loadMoreBtn.disabled = false })
   }
 
   // 標題列 + tabs
@@ -441,6 +494,7 @@ pages.new = function () {
   const root = document.getElementById('page')
   root.innerHTML = ''
   const selectedPhotos = []
+  let zeroAssocRetried = false // F6：零關聯類別只重抓一次，避免無限 alert
   const descEl = el('textarea', { class: 'textarea', placeholder: '說明（選填）' })
 
   root.appendChild(el('header', { class: 'topbar' }, [
@@ -518,8 +572,9 @@ pages.new = function () {
     }
     const locs = filterByCat('locations', selectedCat)
     const descs = filterByCat('descriptions', selectedCat)
-    if (locs.length === 0 || descs.length === 0) {
-      alert('此類別尚無關聯的地點或說明，正在重新載入…')
+    // F6：僅在「快取可能過期」時重抓一次；重抓後仍空則改為非阻斷提示，不再重複 alert
+    if ((locs.length === 0 || descs.length === 0) && !zeroAssocRetried) {
+      zeroAssocRetried = true
       try {
         await ensureCatalog(true) // 強制重新讀取最新
       } catch (err) { /* 保持原資料 */ }
@@ -528,20 +583,32 @@ pages.new = function () {
     renderDesc(selectedCat)
   })
 
-  const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
+  // G3：判斷文字是否已含某附加片段（以「、」為分隔的獨立項目，避免子字串誤判）
+function hasSegment(cur, label) {
+  if (!cur) return false
+  return cur.split('、').some((s) => s.trim() === label)
+}
+
+const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
     const label = descSelect.value
     if (!label) return
     const cur = descEl.value
-    if (cur.includes(label)) return
+    if (hasSegment(cur, label)) return
     descEl.value = cur ? cur + '、' + label : label
     descSelect.value = ''
   } })
   const descRow = el('div', { class: 'add-row' }, [descSelect, descAddBtn])
 
-  // 照片上傳
+  // 照片上傳（E1：累積計數 ≤5、縮圖可刪除）
   const photoInput = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
   const photoPreview = el('div', { class: 'photo-preview' })
   photoInput.addEventListener('change', async () => {
+    // E1：先算「已上傳 + 本次選取」是否超過 5，超過則阻斷（避免傳到 R2 才被拒）
+    if (selectedPhotos.length + photoInput.files.length > 5) {
+      alert('最多上傳 5 張照片')
+      photoInput.value = ''
+      return
+    }
     for (const file of photoInput.files) {
       try {
         const compressed = await compressPhoto(file)
@@ -549,7 +616,16 @@ pages.new = function () {
         fd.append('file', compressed)
         const body = await api('/api/photos', { method: 'POST', body: fd })
         selectedPhotos.push(body.data.id)
-        photoPreview.appendChild(thumb(body.data.url))
+        // E1：縮圖加 ✕ 刪除鍵
+        const wrap = el('div', { class: 'photo-thumb' }, [
+          thumb(body.data.url),
+          el('button', { class: 'thumb-del', text: '✕', onclick: () => {
+            const idx = selectedPhotos.indexOf(body.data.id)
+            if (idx >= 0) selectedPhotos.splice(idx, 1)
+            wrap.remove()
+          } }),
+        ])
+        photoPreview.appendChild(wrap)
       } catch (e) {
         if (e && e.code !== 'NETWORK') continue
         alert(e.message)
@@ -557,8 +633,11 @@ pages.new = function () {
     }
   })
 
+  let submitting = false // D5：防重複點擊
   async function submit() {
+    if (submitting) return
     if (!selectedCat || !selectedLoc) { alert('請選擇類別與地點'); return }
+    submitting = true
     try {
       const body = await api('/api/tickets', {
         method: 'POST',
@@ -571,6 +650,7 @@ pages.new = function () {
       })
       location.hash = '#/ticket/' + body.data.id
     } catch (e) {
+      submitting = false
       alert(e.message + '，已重新載入最新選項，請重新選擇')
       // 400 後強制重讀 catalog 更新下拉（不重整頁面，保留已輸入資料）
       try {
@@ -637,7 +717,7 @@ pages.ticket = async function (id) {
           el('span', { text: '分享連結' }),
           el('div', { class: 'share-row' }, [
             shareInput,
-            el('button', { class: 'btn', text: '複製', onclick: () => navigator.clipboard.writeText(shareInput.value) }),
+            el('button', { class: 'btn', text: '複製', onclick: () => copyText(shareInput.value) }),
           ]),
         ]))
       }
@@ -707,10 +787,10 @@ pages.ticket = async function (id) {
   ])
   root.appendChild(info)
 
-  // ---- 照片牆 ----
+  // ---- 照片牆（F7：主照片也用 thumb() 支援 Lightbox，與時間軸一致）----
   if (t.photos && t.photos.length) {
     const wall = el('div', { class: 'photo-wall' })
-    for (const url of t.photos) wall.appendChild(el('img', { src: url, class: 'photo' }))
+    for (const url of t.photos) wall.appendChild(thumb(url))
     root.appendChild(wall)
   }
 
@@ -729,8 +809,16 @@ pages.ticket = async function (id) {
   } })
   const commentInput = el('textarea', { class: 'textarea', placeholder: '留言…' })
   const commentPhotos = []
+  let commentSubmitting = false // D5：防重複點擊
   const commentFile = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
+  const commentPreview = el('div', { class: 'photo-preview' })
   commentFile.addEventListener('change', async () => {
+    // E1：累積計數 ≤5，超過阻斷（避免傳到 R2 才被拒）
+    if (commentPhotos.length + commentFile.files.length > 5) {
+      alert('最多上傳 5 張照片')
+      commentFile.value = ''
+      return
+    }
     for (const file of commentFile.files) {
       try {
         const compressed = await compressPhoto(file)
@@ -738,6 +826,16 @@ pages.ticket = async function (id) {
         fd.append('file', compressed)
         const b = await api('/api/photos', { method: 'POST', body: fd })
         commentPhotos.push(b.data.id)
+        // E1：補縮圖預覽 + ✕ 刪除鍵
+        const wrap = el('div', { class: 'photo-thumb' }, [
+          thumb(b.data.url),
+          el('button', { class: 'thumb-del', text: '✕', onclick: () => {
+            const idx = commentPhotos.indexOf(b.data.id)
+            if (idx >= 0) commentPhotos.splice(idx, 1)
+            wrap.remove()
+          } }),
+        ])
+        commentPreview.appendChild(wrap)
       } catch (e) {
         if (e && e.code !== 'NETWORK') continue
         alert(e.message)
@@ -760,7 +858,7 @@ pages.ticket = async function (id) {
       const label = cDescSelect.value
       if (!label) return
       const cur = commentInput.value
-      if (cur.includes(label)) return
+      if (hasSegment(cur, label)) return
       commentInput.value = cur ? cur + '、' + label : label
       cDescSelect.value = ''
     } })
@@ -780,11 +878,14 @@ pages.ticket = async function (id) {
     commentInput,
     commentDescRow,
     fileRow,
+    commentPreview,
     canStatus ? statusSelect : null,
     el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
+      if (commentSubmitting) return // D5：防重複點擊
       if (!commentInput.value.trim()) { alert('請輸入留言'); return }
       const status = statusSelect.value
       if (status === 'done' && !confirm('標記為已完成並結案？')) return
+      commentSubmitting = true
       try {
         if (status) {
           await api(`/api/tickets/${id}/updates`, { method: 'POST', body: JSON.stringify({ status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
@@ -792,7 +893,7 @@ pages.ticket = async function (id) {
           await api(`/api/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         }
         location.reload()
-      } catch (e) { alert(e.message) }
+      } catch (e) { commentSubmitting = false; alert(e.message) }
     } }),
   ]))
   commentWrap.style.display = 'none'
@@ -842,18 +943,38 @@ pages.edit = async function (id) {
 
   const catSelect = el('select', { class: 'select' })
   const locSelect = el('select', { class: 'select' })
+  // D2：編輯頁地點依類別連動（比照建單頁），避免選到不屬類別的地點送出 400
+  const filterByCat = (type, catId) => {
+    const items = (catalogCache || { categories: [], locations: [], descriptions: [] })[type] || []
+    return items.filter(o => {
+      if (o.category_ids.length === 0) return true // 通用
+      return o.category_ids.includes(catId)
+    })
+  }
+  const renderLoc = (catId) => {
+    locSelect.innerHTML = ''
+    locSelect.appendChild(el('option', { value: '', text: '請選擇地點' }))
+    for (const o of filterByCat('locations', catId)) {
+      locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
+    }
+  }
   // 編輯頁：強制重讀（category/location 後端驗證），一次載入
   ensureCatalog(true).then(() => {
     for (const o of (catalogCache?.categories || [])) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.category_label ? 'selected' : null }))
     }
-    for (const o of (catalogCache?.locations || [])) {
-      locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
-    }
+    // 依目前類別渲染地點（D2）
+    const curCat = (catalogCache?.categories || []).find(o => o.label === t.category_label)
+    renderLoc(curCat ? curCat.id : 0)
   }).catch(() => {
     // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
     catSelect.innerHTML = ''
     catSelect.appendChild(el('option', { value: '', text: '載入類別失敗，請重整頁面' }))
+  })
+  // D2：切換類別時連動地點
+  catSelect.addEventListener('change', () => {
+    const catId = catSelect.value ? Number(catSelect.value) : 0
+    renderLoc(catId)
   })
 
   const descEl = el('textarea', { class: 'textarea', value: t.description || '' })
@@ -950,7 +1071,8 @@ async function exportCsv() {
     if (window.liff && liffReady) {
       liff.openWindow({ url, external: true })
     } else {
-      window.open(url, '_blank')
+      // D6：await 後 window.open 失去手勢信任（iOS Safari 攔截），改用 location.href 導向
+      location.href = url
     }
   } catch (e) { alert(e.message) }
 }
@@ -1001,7 +1123,7 @@ pages.users = function () {
             await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ role: roleSelect.value }) })
             u.role = roleSelect.value
             render()
-          } catch (e) { alert(e.message) }
+          } catch (e) { alert(e.message); render() } // D7：失敗回滾下拉到實際角色
         })
         const activeBtn = el('button', {
           class: 'btn ' + (u.active ? 'btn-danger' : 'btn-primary'), // 問題15：停用紅/啟用藍
@@ -1046,12 +1168,14 @@ pages.admin = function () {
   let currentType = 'category'
 
   function renderVendors() {
+    const thisType = 'vendors' // F2：記錄發起時 tab，避免 stale 覆蓋
     content.innerHTML = ''
     content.appendChild(el('div', { class: 'loading-wrap' }, [
       el('div', { class: 'spinner' }),
       el('div', { class: 'loading-text', text: '載入中…' }),
     ]))
     api('/api/vendors').then((b) => {
+      if (currentType !== thisType) return // F2：tab 已切走，捨棄此回應
       content.innerHTML = ''
       const list = el('div', { class: 'option-list' })
       for (const v of b.data) {
@@ -1077,10 +1201,11 @@ pages.admin = function () {
           } catch (e) { alert(e.message) }
         } }),
       ]))
-    }).catch((e) => { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) })
+    }).catch((e) => { if (currentType === 'vendors') { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) } })
   }
 
   function renderOptions() {
+    const thisType = currentType // F2：記錄發起時 tab，避免 stale 覆蓋
     content.innerHTML = ''
     content.appendChild(el('div', { class: 'loading-wrap' }, [
       el('div', { class: 'spinner' }),
@@ -1088,12 +1213,21 @@ pages.admin = function () {
     ]))
     // P7 用 include_inactive=1（含停用，修停用顯示 bug；限 manager/admin）
     api('/api/options?type=' + currentType + '&include_inactive=1').then((b) => {
+      if (currentType !== thisType) return // F2：tab 已切走，捨棄此回應
       const list = el('div', { class: 'option-list' })
       for (const o of b.data) {
         const row = el('div', { class: 'card option-row' }, [
           el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
           el('button', { class: 'btn ' + (o.active ? 'btn-danger' : 'btn-primary'), text: o.active ? '停用' : '啟用', onclick: async () => {
-            try { await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ active: o.active ? 0 : 1 }) }); renderOptions() }
+            // G2：停用類別時警示——該類別專屬的地點/說明會因類別不可選而隱形（幽靈孤兒）
+            if (currentType === 'category' && o.active && (o.location_count || 0) + (o.description_count || 0) > 0) {
+              if (!confirm(`停用「${o.label}」後，其專屬的地點/說明將無法在任何類別下選取。確定停用？`)) return
+            }
+            try {
+              await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ active: o.active ? 0 : 1 }) })
+              catalogCache = null // E10：停用/啟用後清全域快取，避免建單/詳情頁讀舊
+              renderOptions()
+            }
             catch (e) { alert(e.message) }
           } }),
         ])
@@ -1108,7 +1242,7 @@ pages.admin = function () {
       }
       content.innerHTML = ''
       content.appendChild(list)
-    }).catch((e) => { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) })
+    }).catch((e) => { if (currentType === thisType) { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) } })
   }
 
   // 以類別為中心：點「設定關聯」開 modal，編輯該類別的地點/說明關聯（v1.1.7）
@@ -1125,14 +1259,15 @@ pages.admin = function () {
     modal.appendChild(el('h4', { class: 'modal-sub', text: '故障類型範本' }))
     const descWrap = el('div', { class: 'assoc-list' })
     modal.appendChild(descWrap)
-    // 儲存
-    const saveBtn = el('button', { class: 'btn btn-primary', text: '儲存', onclick: async () => {
+    // 儲存（F1：載入完成前 disabled，避免誤點清空關聯）
+    const saveBtn = el('button', { class: 'btn btn-primary', text: '載入中…', disabled: 'true', onclick: async () => {
       try {
         const locIds = [...locWrap.querySelectorAll('input:checked')].map(i => Number(i.value))
         const descIds = [...descWrap.querySelectorAll('input:checked')].map(i => Number(i.value))
         // 以類別為中心，全量覆寫該類別的地點/說明關聯
         await api(`/api/options/${cat.id}/assoc`, { method: 'POST', body: JSON.stringify({ type: 'location', option_ids: locIds }) })
         await api(`/api/options/${cat.id}/assoc`, { method: 'POST', body: JSON.stringify({ type: 'description', option_ids: descIds }) })
+        catalogCache = null // E10：關聯變更後清全域快取
         mask.remove()
         renderOptions()
       } catch (e) { alert(e.message) }
@@ -1144,7 +1279,10 @@ pages.admin = function () {
     mask.appendChild(modal)
     document.body.appendChild(mask)
 
-    // 載入該類別的地點（含 associated）
+    // 載入該類別的地點（含 associated）；兩區都載完才啟用儲存（F1）
+    let locLoaded = false
+    let descLoaded = false
+    const maybeEnable = () => { if (locLoaded && descLoaded) { saveBtn.disabled = false; saveBtn.textContent = '儲存' } }
     api(`/api/options?type=location&category_id=${cat.id}&include_inactive=1`).then((b) => {
       for (const o of b.data) {
         locWrap.appendChild(el('label', { class: 'assoc-check' }, [
@@ -1152,7 +1290,9 @@ pages.admin = function () {
           el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
         ]))
       }
-    }).catch(() => {})
+      locLoaded = true
+      maybeEnable()
+    }).catch(() => { locLoaded = true; maybeEnable() })
     // 載入該類別的說明（含 associated）
     api(`/api/options?type=description&category_id=${cat.id}&include_inactive=1`).then((b) => {
       for (const o of b.data) {
@@ -1161,7 +1301,9 @@ pages.admin = function () {
           el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
         ]))
       }
-    }).catch(() => {})
+      descLoaded = true
+      maybeEnable()
+    }).catch(() => { descLoaded = true; maybeEnable() })
   }
 
   for (const [val, label] of types) {
@@ -1192,6 +1334,7 @@ pages.admin = function () {
       try {
         await api('/api/options', { method: 'POST', body: JSON.stringify({ type: currentType, label: newLabel.value.trim(), sort_order: 0 }) })
         newLabel.value = ''
+        catalogCache = null // E10：新增選項後清全域快取
         renderOptions()
       } catch (e) { alert(e.message) }
     } }),
@@ -1219,7 +1362,8 @@ function renderNav() {
 
 // ---- hash router ----
 function router() {
-  const hash = location.hash || '#/'
+  // B2：先 split('?') 過濾 query string，避免 #/ticket/12?ref=share 解析成 '12?ref=share'
+  const hash = (location.hash || '#/').split('?')[0]
   // 對 '#/admin' → slice(1)='/admin' → split('/')=['','admin']，過濾空字串取 path
   const parts = hash.slice(1).split('/').filter(Boolean)
   const path = parts[0] || ''

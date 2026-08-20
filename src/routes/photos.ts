@@ -71,11 +71,17 @@ photoRoutes.post('/', requireAuth(), async (c) => {
     httpMetadata: { contentType },
   })
 
-  // photos 表存 content_type、size_bytes，target_id=NULL（待綁定）
-  const insert = await c.env.DB.prepare(
-    `INSERT INTO photos (r2_key, content_type, size_bytes, uploaded_by, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).bind(r2Key, contentType, file.size, user.id, nowIso()).run()
+  // E9：先 PUT 後 INSERT，INSERT 失敗時清理 R2，避免孤兒照片洩漏
+  let insert
+  try {
+    insert = await c.env.DB.prepare(
+      `INSERT INTO photos (r2_key, content_type, size_bytes, uploaded_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(r2Key, contentType, file.size, user.id, nowIso()).run()
+  } catch (e) {
+    await c.env.PHOTOS.delete(r2Key)
+    throw e
+  }
   const photoId = insert.meta.last_row_id
 
   return ok(c, { id: photoId, url: `/api/photos/${photoId}` }, 201)

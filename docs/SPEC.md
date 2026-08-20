@@ -912,9 +912,9 @@ LINE_CHANNEL_ID = "2008484338"
 ### 8.3 migrations
 
 ```bash
-npx wrangler d1 migrations create repair-db init   # 產生檔案後貼入 §2.1 SQL
-npx wrangler d1 migrations apply repair-db --local      # 開發
-npx wrangler d1 migrations apply repair-db --remote     # 正式
+npx wrangler d1 migrations create repair-db0818 init   # 產生檔案後貼入 §2.1 SQL
+npx wrangler d1 migrations apply repair-db0818 --local      # 開發
+npx wrangler d1 migrations apply repair-db0818 --remote     # 正式
 ```
 > seed 已併入 migration（v1.1.6），無需手動執行 seed.sql。
 ```
@@ -929,7 +929,7 @@ npx wrangler d1 migrations apply repair-db --remote     # 正式
 誤刪還原：
 
 ```bash
-npx wrangler d1 time-travel repair-db --timestamp <unix_timestamp>
+npx wrangler d1 time-travel repair-db0818 --timestamp <unix_timestamp>
 ```
 
 建議每日記錄一次關鍵時間點的 timestamp，或操作前先記錄當下時間。

@@ -6,8 +6,10 @@
 //  3. 角色限制在路由模組內以 requireAuth({ roles }) 逐群掛載
 
 import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
 import { csrfGuard } from './lib/csrf'
 import { requireAuth } from './lib/auth'
+import { exportQuerySchema } from './lib/validate'
 import { shareRoutes } from './routes/share'
 import { csvDownload } from './routes/exports'
 import { authRoutes } from './routes/auth'
@@ -22,8 +24,20 @@ import type { Env } from './lib/env'
 
 export const app = new Hono<Env>().basePath('/api')
 
+// C2：全域錯誤處理器——統一回 500，不洩堆疊/DB 錯誤碼
+// C3：env 未設時回明確提示（不 throw 到用戶端）
+app.onError((err, c) => {
+  const env = c.env
+  if (!env?.JWT_SECRET || !env?.LINE_CHANNEL_ID) {
+    return c.json({ ok: false, error: { code: 'INTERNAL', message: '伺服器環境變數未設定' } }, 500)
+  }
+  console.error(err)
+  return c.json({ ok: false, error: { code: 'INTERNAL', message: '伺服器錯誤' } }, 500)
+})
+
 app.route('/share', shareRoutes)              // 公開唯讀：無 auth、無 csrf
-app.get('/exports/tickets.csv', csvDownload)  // 雙軌自驗：軌A Cookie / 軌B 簽名（§4.8）
+// E6：csv 端點掛 zValidator 驗證 query（status/from/to 格式），非法格式回 400 而非繞過
+app.get('/exports/tickets.csv', zValidator('query', exportQuerySchema), csvDownload)
 app.get('/hello', (c) => c.json({ ok: true, data: 'hello' })) // M1 部署打通驗證
 app.use('/*', csrfGuard())                      // 所有 mutation 驗 CSRF（GET/HEAD 直接放行）
 app.route('/auth', authRoutes)   // session 不需登入；me / logout 內部各自掛 requireAuth({ allowPending: true })

@@ -149,8 +149,11 @@ button { cursor: pointer; }
 
 /* 照片 */
 .photo-preview, .photo-wall { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; }
-.photo { width: 100%; max-width: 300px; border-radius: 8px; }
+.thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; cursor: pointer; } /* H5 */
+.photo { width: 100%; max-width: 300px; border-radius: 8px; cursor: pointer; } /* H5 */
+/* E1：縮圖容器與 ✕ 刪除鍵 */
+.photo-thumb { position: relative; display: inline-block; }
+.thumb-del { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: #e02424; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 
 /* 時間軸 */
 .timeline { padding: 8px; }
@@ -189,6 +192,7 @@ button { cursor: pointer; }
   background: var(--card);
   border-top: 1px solid var(--border);
   z-index: 20;
+  padding-bottom: env(safe-area-inset-bottom); /* E4：iOS Home 條安全區域 */
 }
 .nav-item {
   flex: 1;
@@ -260,5 +264,9 @@ button { cursor: pointer; }
 /* v1.1.7：類別關聯計數 + modal */
 .assoc-count { font-size: 12px; color: var(--gray); }
 .modal-sub { margin: 12px 0 6px; font-size: 14px; color: var(--gray); }
+
+/* E2：toast 提示 */
+.toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px; z-index: 100; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.toast.show { opacity: 1; }
 .assoc-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
 .assoc-list .assoc-check { display: flex; align-items: center; gap: 6px; }

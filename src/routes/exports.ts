@@ -118,7 +118,9 @@ async function buildCsv(c: AppContext, uid: number) {
 
   let sql = `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
                     v.name AS vendor_name, u.display_name AS creator,
-                    t.created_at, t.last_activity_at, t.closed_at
+                    t.created_at, t.last_activity_at, t.closed_at,
+                    (SELECT COUNT(*) FROM ticket_updates u
+                     WHERE u.ticket_id = t.id AND u.kind = 'status') AS update_count
              FROM tickets t
              LEFT JOIN vendors v ON v.id = t.vendor_id
              LEFT JOIN users u ON u.id = t.created_by
@@ -130,22 +132,16 @@ async function buildCsv(c: AppContext, uid: number) {
   } else if (status === 'active') {
     sql += " AND t.status IN ('open','in_progress')"
   }
-  if (from) { sql += ' AND t.created_at >= ?'; binds.push(from + 'T00:00:00.000Z') }
-  if (to) { sql += ' AND t.created_at < ?'; binds.push(to + 'T23:59:59.999Z') }
+  if (from) { sql += ' AND t.created_at >= ?'; binds.push(new Date(from + 'T00:00:00+08:00').toISOString()) }
+  if (to) { sql += ' AND t.created_at < ?'; binds.push(new Date(to + 'T23:59:59.999+08:00').toISOString()) }
   sql += ' ORDER BY t.id'
 
   const rows = await c.env.DB.prepare(sql).bind(...binds).all<{
     id: number; category_label: string; location_label: string; description: string | null
     status: string; vendor_name: string | null; creator: string | null
-    created_at: string; last_activity_at: string; closed_at: string | null
+    created_at: string; last_activity_at: string; closed_at: string | null; update_count: number
   }>()
   const rowList = rows.results
-
-  // 回報次數：每單 kind='status' 的筆數
-  const counts = await c.env.DB.prepare(
-    "SELECT ticket_id, COUNT(*) AS n FROM ticket_updates WHERE kind = 'status' GROUP BY ticket_id",
-  ).all<{ ticket_id: number; n: number }>()
-  const countMap = new Map(counts.results.map((r) => [r.ticket_id, r.n]))
 
   const header = ['單號', '類別', '地點', '說明', '狀態', '廠商', '建立人', '建立時間', '最後活動', '結案時間', '回報次數']
   const lines = [header.map(csvCell).join(',')]
@@ -161,7 +157,7 @@ async function buildCsv(c: AppContext, uid: number) {
       toTaipeiDisplay(r.created_at),
       toTaipeiDisplay(r.last_activity_at),
       r.closed_at ? toTaipeiDisplay(r.closed_at) : '',
-      String(countMap.get(r.id) ?? 0),
+      String(r.update_count ?? 0),
     ].map(csvCell).join(','))
   }
 

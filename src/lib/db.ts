@@ -47,14 +47,20 @@ export async function validateOwnUnboundPhotos(
   userId: number,
 ): Promise<boolean> {
   if (photoIds.length === 0) return true
-  const placeholders = photoIds.map(() => '?').join(',')
-  const rows = await c.env.DB.prepare(
-    `SELECT id FROM photos
-     WHERE id IN (${placeholders}) AND uploaded_by = ? AND target_id IS NULL`,
-  )
-    .bind(...photoIds, userId)
-    .all<{ id: number }>()
-  return rows.results.length === photoIds.length
+  // B4：IN 陣列分塊（每 50 個一組），避免超過 D1 綁定上限
+  const IN_CHUNK = 50
+  for (let i = 0; i < photoIds.length; i += IN_CHUNK) {
+    const chunk = photoIds.slice(i, i + IN_CHUNK)
+    const placeholders = chunk.map(() => '?').join(',')
+    const rows = await c.env.DB.prepare(
+      `SELECT id FROM photos
+       WHERE id IN (${placeholders}) AND uploaded_by = ? AND target_id IS NULL`,
+    )
+      .bind(...chunk, userId)
+      .all<{ id: number }>()
+    if (rows.results.length !== chunk.length) return false
+  }
+  return true
 }
 
 /** 驗證 location 是否屬於 category 或為通用（§4.1 v1.1.7） */
@@ -84,11 +90,16 @@ export async function assertCategoryIds(
   categoryIds: number[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (categoryIds.length === 0) return { ok: true }
-  const placeholders = categoryIds.map(() => '?').join(',')
-  const cats = await c.env.DB.prepare(
-    `SELECT id FROM options WHERE id IN (${placeholders}) AND type = 'category'`,
-  ).bind(...categoryIds).all<{ id: number }>()
-  if (cats.results.length !== categoryIds.length) return { ok: false, reason: 'category_ids 含非類別' }
+  // B4：IN 陣列分塊（每 50 個一組），避免超過 D1 綁定上限
+  const IN_CHUNK = 50
+  for (let i = 0; i < categoryIds.length; i += IN_CHUNK) {
+    const chunk = categoryIds.slice(i, i + IN_CHUNK)
+    const placeholders = chunk.map(() => '?').join(',')
+    const cats = await c.env.DB.prepare(
+      `SELECT id FROM options WHERE id IN (${placeholders}) AND type = 'category'`,
+    ).bind(...chunk).all<{ id: number }>()
+    if (cats.results.length !== chunk.length) return { ok: false, reason: 'category_ids 含非類別' }
+  }
   return { ok: true }
 }
 
@@ -99,12 +110,12 @@ export async function assertValidAssoc(
   optionId: number,
   categoryIds: number[],
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  if (categoryIds.length === 0) return { ok: true }
-  // ① option_id 的 type 必須是 location/description
+  // ① option_id 的 type 必須是 location/description（E7：移到空陣列判斷之前，空陣列也須驗 type）
   const opt = await c.env.DB.prepare(
     "SELECT type FROM options WHERE id = ? AND type IN ('location','description')",
   ).bind(optionId).first<{ type: string }>()
   if (!opt) return { ok: false, reason: '僅地點或說明可設定所屬類別' }
+  if (categoryIds.length === 0) return { ok: true }
   // ② 每個 category_id 的 type 必須是 category
   const check = await assertCategoryIds(c, categoryIds)
   if (!check.ok) return check

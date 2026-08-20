@@ -79,7 +79,9 @@ export function taipeiDate(): string {
  * 把 UTC ISO 字串轉成台灣時區的 'YYYY-MM-DD HH:mm'（CSV §4.8 用）。
  */
 export function toTaipeiDisplay(iso: string): string {
+  if (!iso) return ''
   const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TAIWAN_TZ,
     year: 'numeric',

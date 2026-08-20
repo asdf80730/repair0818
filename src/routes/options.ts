@@ -11,6 +11,22 @@ import { nowIso } from '../lib/time'
 import { assertValidAssoc, assertCategoryIds } from '../lib/db'
 import type { Env } from '../lib/env'
 
+// E5：D1 batch 對單次語句數有上限（約 100 條），把 INSERT OR IGNORE 分批（每批 ≤50），避免超出
+const ASSOC_BATCH_SIZE = 50
+async function writeOptionAssociations(
+  c: import('../lib/env').AppContext,
+  optionId: number,
+  categoryIds: number[],
+): Promise<void> {
+  await c.env.DB.prepare('DELETE FROM option_categories WHERE option_id = ?').bind(optionId).run()
+  for (let i = 0; i < categoryIds.length; i += ASSOC_BATCH_SIZE) {
+    const chunk = categoryIds.slice(i, i + ASSOC_BATCH_SIZE)
+    await c.env.DB.batch(chunk.map(cid => c.env.DB.prepare(
+      'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
+    ).bind(optionId, cid)))
+  }
+}
+
 export const optionRoutes = new Hono<Env>()
 
 // GET /api/options — 三種模式（§4.6 v1.1.7）
@@ -167,12 +183,7 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
 
   // 第 2 趟：寫關聯（僅當 category_ids 有值或 []）
   if (categoryIds !== undefined) {
-    await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM option_categories WHERE option_id = ?').bind(optionId),
-      ...categoryIds.map(cid => c.env.DB.prepare(
-        'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
-      ).bind(optionId, cid)),
-    ])
+    await writeOptionAssociations(c, optionId, categoryIds)
   }
 
   return ok(c, { id: optionId, reactivated }, reactivated ? 200 : 201)
@@ -197,25 +208,30 @@ optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zV
 
   const optionIds = [...new Set(body.option_ids)]
 
-  // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前）
+  // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前；B4：IN 分塊避免超綁定上限）
   if (optionIds.length > 0) {
-    const placeholders = optionIds.map(() => '?').join(',')
-    const opts = await c.env.DB.prepare(
-      `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
-    ).bind(...optionIds, body.type).all<{ id: number }>()
-    if (opts.results.length !== optionIds.length) return fail(c, 400, 'VALIDATION_ERROR', `option_ids 含非${body.type}`)
+    const IN_CHUNK = 50
+    for (let i = 0; i < optionIds.length; i += IN_CHUNK) {
+      const chunk = optionIds.slice(i, i + IN_CHUNK)
+      const placeholders = chunk.map(() => '?').join(',')
+      const opts = await c.env.DB.prepare(
+        `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
+      ).bind(...chunk, body.type).all<{ id: number }>()
+      if (opts.results.length !== chunk.length) return fail(c, 400, 'VALIDATION_ERROR', `option_ids 含非${body.type}`)
+    }
   }
 
-  // 全量覆寫：先刪該類別對該 type 的所有關聯，再插入
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
-        (SELECT id FROM options WHERE type = ?)`,
-    ).bind(id, body.type),
-    ...optionIds.map(oid => c.env.DB.prepare(
+  // 全量覆寫：先刪該類別對該 type 的所有關聯，再分批插入（E5：避免超過 D1 batch 語句上限）
+  await c.env.DB.prepare(
+    `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
+      (SELECT id FROM options WHERE type = ?)`,
+  ).bind(id, body.type).run()
+  for (let i = 0; i < optionIds.length; i += ASSOC_BATCH_SIZE) {
+    const chunk = optionIds.slice(i, i + ASSOC_BATCH_SIZE)
+    await c.env.DB.batch(chunk.map(oid => c.env.DB.prepare(
       'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
-    ).bind(oid, id)),
-  ])
+    ).bind(oid, id)))
+  }
 
   return ok(c, { category_id: id, type: body.type, count: optionIds.length })
 })
@@ -227,11 +243,19 @@ optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValida
   const body = c.req.valid('json')
 
   const existing = await c.env.DB.prepare(
-    'SELECT id, type FROM options WHERE id = ?',
-  ).bind(id).first<{ id: number; type: string }>()
+    'SELECT id, type, label FROM options WHERE id = ?',
+  ).bind(id).first<{ id: number; type: string; label: string }>()
   if (!existing) return fail(c, 404, 'NOT_FOUND', '選項不存在')
 
   const categoryIds = body.category_ids !== undefined ? [...new Set(body.category_ids)] : undefined
+
+  // D4：改 label 前檢查是否被其他 id 占用（options 有 UNIQUE(type,label) 約束），避免 500
+  if (body.label !== undefined && body.label !== existing.label) {
+    const dup = await c.env.DB.prepare(
+      'SELECT id FROM options WHERE type = ? AND label = ? AND id != ?',
+    ).bind(existing.type, body.label, id).first<{ id: number }>()
+    if (dup) return fail(c, 400, 'VALIDATION_ERROR', '標籤已存在')
+  }
 
   // 動態組 UPDATE（只更新提供的欄位）
   const sets: string[] = []
@@ -253,12 +277,7 @@ optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValida
   }
 
   if (categoryIds !== undefined) {
-    await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM option_categories WHERE option_id = ?').bind(id),
-      ...categoryIds.map(cid => c.env.DB.prepare(
-        'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
-      ).bind(id, cid)),
-    ])
+    await writeOptionAssociations(c, id, categoryIds)
   }
 
   return ok(c, { id, updated: sets.length > 0 || categoryIds !== undefined })

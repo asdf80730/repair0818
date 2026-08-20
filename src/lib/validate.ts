@@ -5,7 +5,8 @@ import { z } from 'zod'
 
 // 通用
 const id = z.number().int().positive()
-const optionalText = (max: number) => z.string().trim().max(max).optional().or(z.literal(''))
+// G8：optionalText 允許 null（標準 REST 語意），null 視同未填
+const optionalText = (max: number) => z.string().trim().max(max).optional().nullable().or(z.literal(''))
 
 // 建單（§4.3 POST /api/tickets）
 export const createTicketSchema = z.object({
@@ -16,11 +17,12 @@ export const createTicketSchema = z.object({
 })
 
 // 編輯（§4.3 PATCH /api/tickets/:id）
+// vendor_id 三態（D1/G1）：undefined=不變、null=清空指派、正整數=指派新廠商
 export const updateTicketSchema = z.object({
   category_id: id.optional(),
   location_id: id.optional(),
   description: optionalText(500),
-  vendor_id: id.optional(),
+  vendor_id: id.nullable().optional(),
 })
 
 // 回報（§4.3 POST /api/tickets/:id/updates）
@@ -55,9 +57,11 @@ export const createOptionSchema = z.object({
   sort_order: z.number().int().default(0),
   category_ids: categoryIds,
 }).superRefine((val, ctx) => {
-  // type=category 時不得帶 category_ids（類別是頂層，不屬於任何類別）
-  if (val.type === 'category' && val.category_ids !== undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['category_ids'], message: '類別不可設定所屬類別' })
+  // A4：type=category 與 type=comment_desc 都不得帶 category_ids
+  //  - category 是頂層，不屬於任何類別
+  //  - comment_desc（回報範本）不參與類別關聯（v1.1.9，通用追蹤說明）
+  if ((val.type === 'category' || val.type === 'comment_desc') && val.category_ids !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['category_ids'], message: '此類型不可設定所屬類別' })
   }
 })
 export const updateOptionSchema = z.object({

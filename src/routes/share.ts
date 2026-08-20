@@ -58,6 +58,8 @@ shareRoutes.get('/:token/photos/:photo_id', async (c) => {
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRe.test(token)) return fail(c, 404, 'NOT_FOUND', '連結已失效')
   const photoId = Number(c.req.param('photo_id'))
+  // H3：photo_id 需為正整數（防非數字字串）
+  if (!Number.isInteger(photoId) || photoId <= 0) return fail(c, 404, 'NOT_FOUND', '照片不存在')
 
   // 該 photo 必須屬於該 token 對應的 ticket，且 target_type='ticket'
   const row = await c.env.DB.prepare(
@@ -72,10 +74,16 @@ shareRoutes.get('/:token/photos/:photo_id', async (c) => {
   const obj = await c.env.PHOTOS.get(row.r2_key)
   if (!obj) return fail(c, 404, 'NOT_FOUND', '照片不存在')
 
+  // G7：補 Content-Disposition: inline（與內部照片端點一致，避免 Android 瀏覽器觸發下載）
+  const ext = row.content_type === 'image/jpeg' ? 'jpg'
+    : row.content_type === 'image/png' ? 'png'
+    : 'webp'
+
   return new Response(obj.body, {
     status: 200,
     headers: {
       'Content-Type': row.content_type,
+      'Content-Disposition': `inline; filename="photo-${photoId}.${ext}"`,
       'Cache-Control': 'private, max-age=300', // §4.5
       'X-Content-Type-Options': 'nosniff',
     },

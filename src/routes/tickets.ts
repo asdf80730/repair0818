@@ -101,15 +101,15 @@ ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema)
   const offset = (page - 1) * limit
   const rows = await c.env.DB.prepare(
     `SELECT t.id, t.category_label, t.location_label, t.status,
-            v.name AS vendor_name, t.created_at, t.last_activity_at
+            v.name AS vendor_name, v.active AS vendor_active, t.created_at, t.last_activity_at
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      ${where}
-     ORDER BY t.last_activity_at DESC
+     ORDER BY t.last_activity_at DESC, t.id DESC
      LIMIT ? OFFSET ?`,
   ).bind(...binds, limit + 1, offset).all<{
     id: number; category_label: string; location_label: string; status: string
-    vendor_name: string | null; created_at: string; last_activity_at: string
+    vendor_name: string | null; vendor_active: number | null; created_at: string; last_activity_at: string
   }>()
 
   const items = rows.results.slice(0, limit).map((r) => ({
@@ -118,7 +118,10 @@ ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema)
     status: r.status,
     category_label: r.category_label,
     location_label: r.location_label,
-    vendor_name: r.vendor_name,
+    // G4：與詳情端一致，停用廠商後綴「（已停用）」
+    vendor_name: r.vendor_name
+      ? (r.vendor_active === 0 ? `${r.vendor_name}（已停用）` : r.vendor_name)
+      : null,
     created_at: r.created_at,
     last_activity_at: r.last_activity_at,
   }))
@@ -175,16 +178,21 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   const updateIds = updates.results.map((u) => u.id)
   const updatePhotos = new Map<number, string[]>()
   if (updateIds.length > 0) {
-    const placeholders = updateIds.map(() => '?').join(',')
-    const up = await c.env.DB.prepare(
-      `SELECT target_id, id FROM photos
-       WHERE target_type = 'update' AND target_id IN (${placeholders})
-       ORDER BY id`,
-    ).bind(...updateIds).all<{ target_id: number; id: number }>()
-    for (const p of up.results) {
-      const arr = updatePhotos.get(p.target_id) ?? []
-      arr.push(`/api/photos/${p.id}`)
-      updatePhotos.set(p.target_id, arr)
+    // B4：IN 陣列分塊（每 50 個一組），避免超過 D1 綁定上限
+    const IN_CHUNK = 50
+    for (let i = 0; i < updateIds.length; i += IN_CHUNK) {
+      const chunk = updateIds.slice(i, i + IN_CHUNK)
+      const placeholders = chunk.map(() => '?').join(',')
+      const up = await c.env.DB.prepare(
+        `SELECT target_id, id FROM photos
+         WHERE target_type = 'update' AND target_id IN (${placeholders})
+         ORDER BY id`,
+      ).bind(...chunk).all<{ target_id: number; id: number }>()
+      for (const p of up.results) {
+        const arr = updatePhotos.get(p.target_id) ?? []
+        arr.push(`/api/photos/${p.id}`)
+        updatePhotos.set(p.target_id, arr)
+      }
     }
   }
 
@@ -229,11 +237,16 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
   const body = c.req.valid('json')
 
   const ticket = await c.env.DB.prepare(
-    'SELECT id, category_id, category_label, location_id, location_label, description, status, created_by, vendor_id FROM tickets WHERE id = ?',
+    `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label,
+            t.description, t.status, t.created_by, t.vendor_id,
+            v.name AS vendor_name
+     FROM tickets t
+     LEFT JOIN vendors v ON v.id = t.vendor_id
+     WHERE t.id = ?`,
   ).bind(id).first<{
     id: number; category_id: number | null; category_label: string
     location_id: number | null; location_label: string; description: string | null
-    status: string; created_by: number; vendor_id: number | null
+    status: string; created_by: number; vendor_id: number | null; vendor_name: string | null
   }>()
   if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
 
@@ -254,7 +267,6 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
 
   // 收集變更欄位（before→after 摘要）
   const changes: string[] = []
-  const labelMap: Record<string, string> = {}
 
   let newCategoryId = ticket.category_id
   let newCategoryLabel = ticket.category_label
@@ -279,27 +291,32 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
     newLocationId = body.location_id
     newLocationLabel = label
   } else if (body.category_id !== undefined && body.category_id !== ticket.category_id) {
-    // 只改 category、不動 location → 若 location 不屬於新 category 且非通用，則清空 location
+    // 只改 category、不動 location → 若 location 不屬於新 category 且非通用，回 400 要求重選（A1）
     const locAllowed = await optionAllowedInCategory(c, ticket.location_id ?? 0, body.category_id)
     if (!locAllowed) {
-      changes.push(`地點 ${ticket.location_label}→（清空）`)
-      newLocationId = null
-      newLocationLabel = null
+      return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於新類別，請重新選擇地點')
     }
   }
 
   let newDescription = ticket.description
   if (body.description !== undefined && body.description !== (ticket.description ?? '')) {
     changes.push('說明')
-    newDescription = body.description
+    // H1：空字串/null 正規化為 null，保持 DB 欄位一致
+    newDescription = body.description === null || body.description.trim() === '' ? null : body.description
   }
 
   let newVendorId: number | null | undefined
   if (body.vendor_id !== undefined && body.vendor_id !== ticket.vendor_id) {
-    const vendor = await activeVendor(c, body.vendor_id)
-    if (!vendor) return fail(c, 400, 'VALIDATION_ERROR', '廠商無效')
+    let newVendorName: string | null = null
+    if (body.vendor_id !== null) {
+      const vendor = await activeVendor(c, body.vendor_id)
+      if (!vendor) return fail(c, 400, 'VALIDATION_ERROR', '廠商無效')
+      newVendorName = vendor.name
+    }
     newVendorId = body.vendor_id
-    changes.push('廠商')
+    // G5：留痕帶舊→新廠商名（null 表示清空指派）
+    const oldName = ticket.vendor_name ?? '未指派'
+    changes.push(`廠商 ${oldName}→${newVendorName ?? '未指派'}`)
   }
 
   if (changes.length === 0) {
@@ -314,7 +331,7 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
        WHERE id = ?`,
     ).bind(
       newCategoryId, newCategoryLabel, newLocationId, newLocationLabel,
-      newDescription, newVendorId ?? ticket.vendor_id, now, id,
+      newDescription, newVendorId === undefined ? ticket.vendor_id : newVendorId, now, id,
     ),
     // system 時間軸留痕
     c.env.DB.prepare(
@@ -405,16 +422,17 @@ ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createComme
 
   const now = nowIso()
 
-  // 寫入 kind='comment'、status=NULL；不改變 ticket.status；更新 last_activity_at
-  const insert = await c.env.DB.prepare(
-    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-     VALUES (?, ?, 'comment', NULL, ?, ?)`,
-  ).bind(id, user.id, body.note, now).run()
-  const updateId = insert.meta.last_row_id
-
-  await c.env.DB.prepare(
-    'UPDATE tickets SET last_activity_at = ? WHERE id = ?',
-  ).bind(now, id).run()
+  // D9：INSERT + UPDATE last_activity_at 用 env.DB.batch() 一次包住（原子，符合 CLAUDE 規則 2）
+  const batchRes = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'comment', NULL, ?, ?)`,
+    ).bind(id, user.id, body.note, now),
+    c.env.DB.prepare(
+      'UPDATE tickets SET last_activity_at = ? WHERE id = ?',
+    ).bind(now, id),
+  ])
+  const updateId = batchRes[0].meta.last_row_id as number
 
   // 留言照片一律 target_type='update' + target_id=留言 id
   if (photoIds.length > 0) {
@@ -486,7 +504,7 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
        VALUES (?, ?, 'status', ?, ?, ?)`,
-    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）：${body.note ?? ''}`, now),
+    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now),
   ])
 
   return ok(c, { status: targetStatus })

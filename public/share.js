@@ -23,6 +23,17 @@ function fmtTime(iso) {
 
 const statusMap = { open: ['待處理', 'red'], in_progress: ['處理中', 'yellow'], done: ['已完成', 'green'], void: ['已作廢', 'black'] }
 
+// H2：公開派工頁照片 Lightbox（與 app.js 一致）
+function openLightbox(src) {
+  const mask = el('div', { class: 'lightbox', onclick: () => mask.remove() }, [
+    el('img', { src, class: 'lightbox-img' }),
+  ])
+  document.body.appendChild(mask)
+}
+function thumb(src) {
+  return el('img', { src, class: 'thumb', onclick: (e) => { e.stopPropagation(); openLightbox(src) } })
+}
+
 async function load() {
   const root = document.getElementById('share-app')
   root.innerHTML = ''
@@ -57,7 +68,7 @@ async function load() {
 
     if (t.photos && t.photos.length) {
       const wall = el('div', { class: 'photo-wall' })
-      for (const url of t.photos) wall.appendChild(el('img', { src: url, class: 'photo' }))
+      for (const url of t.photos) wall.appendChild(thumb(url)) // H2：支援 Lightbox
       root.appendChild(wall)
     }
   } catch (e) {

@@ -34,9 +34,12 @@ export function csrfGuard() {
     }
 
     // 3. mutation 只接受 application/json（multipart 照片上傳除外）
+    //    無 body（Content-Length 為 0 或缺）的請求不需 Content-Type（A2：share-token、logout）
     const contentType = c.req.header('Content-Type') ?? ''
+    const contentLength = c.req.header('Content-Length')
+    const hasBody = contentLength !== undefined && contentLength !== '0'
     const isMultipart = contentType.startsWith('multipart/form-data')
-    if (!isMultipart && !contentType.startsWith('application/json')) {
+    if (hasBody && !isMultipart && !contentType.startsWith('application/json')) {
       return fail(c, 403, 'FORBIDDEN', '不支援的 Content-Type')
     }
 
