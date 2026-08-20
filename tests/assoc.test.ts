@@ -234,9 +234,15 @@ describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
 
   it('type=location&category_id=N&include_inactive=1 附 associated', async () => {
     const { cookie } = await loginAs('U-assoc17', '關聯17', 'admin')
-    const catId = await optionId('category', '電梯')
-    const locId = await optionId('location', '頂樓')
-    await setAssoc(cookie, locId, [catId])
+    const catId = await optionId('category', '門禁')
+    const locId = await optionId('location', '大廳')
+    // 用 POST assoc 端點建關聯（不受 PATCH assertValidAssoc 影響，且避免與前面停用電梯衝突）
+    const set = await worker.fetch(`http://example.com/api/options/${catId}/assoc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ type: 'location', option_ids: [locId] }),
+    })
+    expect(set.status).toBe(200)
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
     expect(r.status).toBe(200)
     const body = await r.json()
