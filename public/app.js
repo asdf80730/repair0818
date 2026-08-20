@@ -293,14 +293,21 @@ function thumb(src) {
 
 // ---- 頁面渲染 ----
 const pages = {}
-// 全域選項快取（v1.1.7）：進建單頁才讀一次，之後詳情/編輯/列表共用
+// 全域選項快取（v1.1.7）
+// 依「後端是否驗證」分層：
+//  - 建單/編輯（category/location 會 400）→ ensureCatalog(true) 進頁強制重讀
+//  - 留言/列表（純 UI，不驗證）→ ensureCatalog() 用 TTL 快取（10 分鐘）
 let catalogCache = null
+let catalogLoadedAt = 0
 let catalogLoading = null
+const CATALOG_TTL = 10 * 60 * 1000 // 10 分鐘
 async function ensureCatalog(force) {
-  if (catalogCache && !force) return catalogCache
+  if (force) { catalogCache = null; catalogLoadedAt = 0 }
+  if (catalogCache && Date.now() - catalogLoadedAt < CATALOG_TTL) return catalogCache
   if (catalogLoading) return catalogLoading
   catalogLoading = api('/api/options/catalog').then((b) => {
     catalogCache = b.data
+    catalogLoadedAt = Date.now()
     return catalogCache
   }).finally(() => { catalogLoading = null })
   return catalogLoading
@@ -462,8 +469,8 @@ pages.new = function () {
     descSelect.disabled = false
   }
 
-  // 確保 catalog（首次進建單頁才讀，之後共用）
-  ensureCatalog().then(() => {
+  // 建單頁：強制重讀（category/location 後端驗證，資料須最新，避免 400）
+  ensureCatalog(true).then(() => {
     const cats = (catalogCache?.categories) || []
     for (const o of cats) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
@@ -533,7 +540,15 @@ pages.new = function () {
       })
       location.hash = '#/ticket/' + body.data.id
     } catch (e) {
-      alert(e.message)
+      alert(e.message + '，已重新載入最新選項，請重新選擇')
+      // 400 後強制重讀 catalog 更新下拉（不重整頁面，保留已輸入資料）
+      try {
+        await ensureCatalog(true)
+        catSelect.innerHTML = ''
+        catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
+        for (const o of (catalogCache?.categories || [])) catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
+        if (selectedCat) { renderLoc(selectedCat); renderDesc(selectedCat) }
+      } catch (err) { /* 重讀失敗則保持原狀 */ }
     }
   }
 
@@ -798,14 +813,12 @@ pages.edit = async function (id) {
   }
 
   const catSelect = el('select', { class: 'select' })
-  ensureCatalog().then(() => {
+  const locSelect = el('select', { class: 'select' })
+  // 編輯頁：強制重讀（category/location 後端驗證），一次載入
+  ensureCatalog(true).then(() => {
     for (const o of (catalogCache?.categories || [])) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.category_label ? 'selected' : null }))
     }
-  }).catch(() => {})
-
-  const locSelect = el('select', { class: 'select' })
-  ensureCatalog().then(() => {
     for (const o of (catalogCache?.locations || [])) {
       locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
     }
