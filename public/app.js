@@ -595,6 +595,7 @@ pages.ticket = async function (id) {
   try {
     body = await api('/api/tickets/' + id)
   } catch (e) {
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('p', { class: 'error', text: e.message }))
     return
   }
@@ -681,6 +682,7 @@ pages.ticket = async function (id) {
     })
     topbar.appendChild(menuBtn)
   }
+  root.querySelector('.loading-wrap')?.remove()
   root.appendChild(topbar)
 
   // ---- 案件資訊（緊湊）----
@@ -1012,7 +1014,7 @@ pages.users = function () {
     root.appendChild(el('div', { class: 'filter-row' }, [el('label', { text: '篩選：' }), filterSelect]))
     root.appendChild(list)
     render()
-  }).catch((e) => root.appendChild(el('p', { class: 'error', text: e.message })))
+  }).catch((e) => { root.querySelector('.loading-wrap')?.remove(); root.appendChild(el('p', { class: 'error', text: e.message })) })
 }
 
 // P7 管理（manager/admin，§5.7）
