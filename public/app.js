@@ -374,6 +374,7 @@ pages.list = function () {
       }
       loadMoreBtn.style.display = hasMore ? '' : 'none'
     } catch (e) {
+      if (page === 1) listEl.innerHTML = '' // 清掉 loading
       listEl.appendChild(el('p', { class: 'error', text: e.message }))
     }
   }
@@ -497,7 +498,11 @@ pages.new = function () {
     for (const o of cats) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
-  }).catch(() => {})
+  }).catch(() => {
+    // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
+    catSelect.innerHTML = ''
+    catSelect.appendChild(el('option', { value: '', text: '載入類別失敗，請重整頁面' }))
+  })
 
   // 選類別：本地過濾；若該類別無關聯（全空），提示並重新讀取最新
   catSelect.addEventListener('change', async (e) => {
@@ -841,7 +846,11 @@ pages.edit = async function (id) {
     for (const o of (catalogCache?.locations || [])) {
       locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
     }
-  }).catch(() => {})
+  }).catch(() => {
+    // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
+    catSelect.innerHTML = ''
+    catSelect.appendChild(el('option', { value: '', text: '載入類別失敗，請重整頁面' }))
+  })
 
   const descEl = el('textarea', { class: 'textarea', value: t.description || '' })
 
