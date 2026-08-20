@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.10（已擴充至 110 單元測試 + 11 E2E）
+> 版本：v1.1.11（已擴充至 110 單元測試 + 11 E2E）
 
 ## 執行方式
 

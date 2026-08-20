@@ -2,7 +2,7 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.10（定稿，可施工）** ｜ 日期：2026-08-20
+**版本：v1.1.11（定稿，可施工）** ｜ 日期：2026-08-21
 
 > 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 十二版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
@@ -26,6 +26,7 @@
 | v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
+| v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署 |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -462,7 +463,7 @@ export function requireAuth(opts?: {
 | description（建單） | 選填，≤ 500 字 |
 | note（回報） | 選填，≤ 500 字 |
 | note（留言） | **必填**，1–500 字（資料庫 CHECK 為第二道防線） |
-| vendor_id | **僅 PATCH 適用**：選填，必須是 active 的 vendor（建單不指派廠商） |
+| vendor_id | **僅 PATCH 適用**：選填，**三態**——不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（須 active；D1/G1） |
 | photo_ids | 選填，≤ 5 張，**每張須滿足 `uploaded_by=本人` 且 `target_id IS NULL`**（後端強制） |
 | status（回報） | 必填：open / in_progress / done |
 | 廠商 name | 必填，1–50 字；phone 選填 ≤ 20 字 |
@@ -519,7 +520,9 @@ export function requireAuth(opts?: {
 - **committee 即使編自己的單也不可改 vendor_id**（廠商指派權限仍限 manager/admin）
 - 僅 open / in_progress 可編輯（已結案/作廢不可改）
 - 改類別/地點時快照 label 同步更新
-- 儲存後自動寫入時間軸：`kind='system'`、`status=NULL`、`note='已修改：類別 電梯→門禁；說明'`（before→after 摘要，無變動欄位不列出）
+- **改類別後若原地點不屬於新類別且非通用 → 回 `400 VALIDATION_ERROR` 要求重選地點**（A1，不再清空 location）
+- **vendor_id 三態**：不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（D1/G1）
+- 儲存後自動寫入時間軸：`kind='system'`、`status=NULL`、`note='已修改：類別 電梯→門禁；說明'`（before→after 摘要，無變動欄位不列出；**廠商變更留 `廠商 舊→新`**，G5）
 
 **POST `/api/tickets/:id/updates`**（manager/admin）
 
@@ -562,7 +565,7 @@ export function requireAuth(opts?: {
 - 僅限 done / void 的案件
 - ticket：`status`＝指定狀態、`closed_at/closed_by` 清空、更新 `last_activity_at`
 - 時間軸寫入 `kind='status'`、指定 status，note 模板帶入**實際前狀態**：
-  `重新開啟（原狀態：已完成）：<備註>` 或 `重新開啟（原狀態：已作廢）：<備註>`，禁止寫死
+  `重新開啟（原狀態：已完成）<備註>` 或 `重新開啟（原狀態：已作廢）<備註>`（備註選填，無備註不帶冒號，G6），禁止寫死
 
 **POST `/api/tickets/:id/share-token`**（manager/admin）
 
