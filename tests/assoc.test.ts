@@ -247,6 +247,9 @@ describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
     }
     expect(set.status).toBe(200)
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
+    if (r.status !== 200) {
+      console.log('查詢 body:', JSON.stringify(await r.json()), 'catId:', catId)
+    }
     expect(r.status).toBe(200)
     const body = await r.json()
     const target = body.data.find((o: { id: number }) => o.id === locId)
