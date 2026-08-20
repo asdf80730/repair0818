@@ -151,23 +151,25 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
 
   if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
 
-  // photos（target_type='ticket' 的 url 陣列）
-  const photos = await c.env.DB.prepare(
-    "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ? ORDER BY id",
-  ).bind(id).all<{ id: number }>()
-
-  // updates 時間軸（含留言者 display_name 與照片）
-  const updates = await c.env.DB.prepare(
-    `SELECT u.id, u.kind, u.status, u.note, u.created_at,
-            usr.display_name
-     FROM ticket_updates u
-     LEFT JOIN users usr ON usr.id = u.user_id
-     WHERE u.ticket_id = ?
-     ORDER BY u.created_at, u.id`,
-  ).bind(id).all<{
-    id: number; kind: string; status: string | null; note: string | null
-    created_at: string; display_name: string | null
-  }>()
+  // 優化（v1.1.9）：photos 與 updates 彼此獨立 → Promise.all 並行（減少串行 D1 連線延遲）
+  const [photosRes, updatesRes] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ? ORDER BY id",
+    ).bind(id).all<{ id: number }>(),
+    c.env.DB.prepare(
+      `SELECT u.id, u.kind, u.status, u.note, u.created_at,
+              usr.display_name
+       FROM ticket_updates u
+       LEFT JOIN users usr ON usr.id = u.user_id
+       WHERE u.ticket_id = ?
+       ORDER BY u.created_at, u.id`,
+    ).bind(id).all<{
+      id: number; kind: string; status: string | null; note: string | null
+      created_at: string; display_name: string | null
+    }>(),
+  ])
+  const photos = photosRes
+  const updates = updatesRes
 
   // 每筆 update 的照片
   const updateIds = updates.results.map((u) => u.id)

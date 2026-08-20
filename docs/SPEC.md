@@ -937,22 +937,6 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 ---
 
-## 9. 里程碑
-
-> **狀態：M1–M6 後端、前端 P0–P7 已全部完成並部署**（v1.1.9）。下表為施工時的驗收標準，保留供追溯。
-
-| # | 範圍 | 驗收 |
-|---|---|---|
-| **M0** | **LINE 後台開通**（§7 全部 8 步）：Login Channel、正式 LIFF app（**preview LIFF 已取消，v1.1.5**）、開官方帳號、OA 與 Channel 連動、圖文選單連結。**另：準備 2–3 個測試 LINE 帳號（可用家人／同事）** | 拿到 Channel ID＋LIFF ID；測試帳號已加入 OA 好友 |
-| M1 | 專案骨架：repo、wrangler、Hono 入口、D1/R2 binding、部署打通 | `GET /api/hello` 在正式網域回 200，**且 `GET /api/tickets`（未實作）回 404 而非 200**（順手驗證 basePath 無重複） |
-| M2 | 認證＋成員審核（依賴 M0 的 Channel ID 與測試帳號） | 三支角色帳號各自看到正確權限畫面；**pending 使用者打 `/api/auth/me` 回 200 且取得 display_name**，前端正確顯示 P0 |
-| M3 | 案件核心：options、建單（P2）、列表（P1）、詳情（P3）、照片上傳/讀取 | 建一單附 2 照片，三角色可見 |
-| M4 | 回報（P4）、留言、void、reopen、時間軸三 kind、編輯留痕 | 走完 open→in_progress→done→reopen→done，時間軸完整 |
-| M5 | 廠商/選項管理（P7）、統計（P5）、CSV 匯出 | **無 Cookie 的外部瀏覽器帶簽名連結成功下載 CSV**（軌 B），Excel 開啟無亂碼；已登入的外部瀏覽器直接下載（軌 A）；管委會可看統計但無匯出鈕 |
-| M6 | share 公開頁、token 重發、收尾驗收 | 無痕視窗開 share 連結僅見白名單內容，**照片可正常顯示**；token 重發後舊連結 404 |
-
----
-
 ## 10. v1 明確不做 與 後續工件
 
 **v1 不做**：關鍵字搜尋、LINE 推播通知、時間軸明細匯出、孤兒照片清理、留言通知、多社區（多 tenant）、`approved_by` 畫面（欄位保留）。
