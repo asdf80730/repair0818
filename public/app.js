@@ -315,6 +315,15 @@ async function ensureCatalog(force) {
   return catalogLoading
 }
 
+// 共用載入指示（v1.1.9：各頁面 await API 時避免白屏）
+function renderLoading(root, text) {
+  root.innerHTML = ''
+  root.appendChild(el('div', { class: 'loading-wrap' }, [
+    el('div', { class: 'spinner' }),
+    el('div', { class: 'loading-text', text: text || '載入中…' }),
+  ]))
+}
+
 // P0 等待開通頁（§5.0.1）
 pages.pending = function () {
   const root = document.getElementById('page')
@@ -347,10 +356,19 @@ pages.list = function () {
   async function load() {
     const qs = new URLSearchParams({ status: currentStatus, page: String(page), limit: '20' })
     if (currentCategory) qs.set('category_id', currentCategory)
+    // 首次載入或切換篩選（page=1）時顯示 loading；載入更多（page>1）不遮已有列表
+    if (page === 1) {
+      listEl.innerHTML = ''
+      listEl.appendChild(el('div', { class: 'loading-wrap' }, [
+        el('div', { class: 'spinner' }),
+        el('div', { class: 'loading-text', text: '載入中…' }),
+      ]))
+    }
     try {
       const body = await api('/api/tickets?' + qs.toString())
       const items = body.data.items
       hasMore = body.data.has_more
+      if (page === 1) listEl.innerHTML = '' // 清掉 loading
       for (const t of items) {
         listEl.appendChild(renderTicketCard(t))
       }
@@ -427,7 +445,7 @@ pages.new = function () {
 
   // ---- 使用全域選項快取（v1.1.7，進建單頁才確保讀取一次）----
   const catSelect = el('select', { class: 'select' })
-  catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
+  catSelect.appendChild(el('option', { value: '', text: '載入類別中…' }))
   let selectedCat = null
 
   // 本地過濾：回該類別關聯＋通用
@@ -473,6 +491,8 @@ pages.new = function () {
 
   // 建單頁：強制重讀（category/location 後端驗證，資料須最新，避免 400）
   ensureCatalog(true).then(() => {
+    catSelect.innerHTML = ''
+    catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
     const cats = (catalogCache?.categories) || []
     for (const o of cats) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
@@ -554,6 +574,8 @@ pages.new = function () {
     }
   }
 
+  root.querySelector('.loading-wrap')?.remove()
+
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
@@ -567,7 +589,7 @@ pages.new = function () {
 // P3 案件詳情（§5.3）
 pages.ticket = async function (id) {
   const root = document.getElementById('page')
-  root.innerHTML = ''
+  renderLoading(root, '載入案件…')
 
   let body
   try {
@@ -792,7 +814,7 @@ function renderUpdate(u) {
 // P3.5 編輯案件（問題5：詳情頁「編輯」原本跳 #/edit 但無此頁面）
 pages.edit = async function (id) {
   const root = document.getElementById('page')
-  root.innerHTML = ''
+  renderLoading(root, '載入案件…')
   root.appendChild(el('header', { class: 'topbar' }, [
     el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/ticket/' + id } }),
     el('h1', { text: '編輯案件' }),
@@ -846,6 +868,8 @@ pages.edit = async function (id) {
     } catch (e) { alert(e.message) }
   }
 
+  root.querySelector('.loading-wrap')?.remove()
+
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
@@ -863,6 +887,10 @@ pages.stats = function () {
   root.appendChild(el('header', { class: 'topbar' }, [
     el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/' } }),
     el('h1', { text: '統計' }),
+  ]))
+  root.appendChild(el('div', { class: 'loading-wrap' }, [
+    el('div', { class: 'spinner' }),
+    el('div', { class: 'loading-text', text: '載入統計…' }),
   ]))
 
   api('/api/stats/summary').then((b) => {
@@ -884,8 +912,12 @@ pages.stats = function () {
         el('div', { class: 'stat-label', text: label }),
       ]))
     }
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(grid)
-  }).catch((e) => root.appendChild(el('p', { class: 'error', text: e.message })))
+  }).catch((e) => {
+    root.querySelector('.loading-wrap')?.remove()
+    root.appendChild(el('p', { class: 'error', text: e.message }))
+  })
 
   // 匯出 CSV（僅 manager/admin，§5.5）
   if (me && (me.role === 'manager' || me.role === 'admin')) {
@@ -915,6 +947,10 @@ pages.users = function () {
   root.appendChild(el('header', { class: 'topbar' }, [
     el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/' } }),
     el('h1', { text: '成員管理' }),
+  ]))
+  root.appendChild(el('div', { class: 'loading-wrap' }, [
+    el('div', { class: 'spinner' }),
+    el('div', { class: 'loading-text', text: '載入成員…' }),
   ]))
 
   api('/api/users').then((b) => {
@@ -972,6 +1008,7 @@ pages.users = function () {
       }
     }
     filterSelect.addEventListener('change', render)
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('div', { class: 'filter-row' }, [el('label', { text: '篩選：' }), filterSelect]))
     root.appendChild(list)
     render()
@@ -995,7 +1032,12 @@ pages.admin = function () {
 
   function renderVendors() {
     content.innerHTML = ''
+    content.appendChild(el('div', { class: 'loading-wrap' }, [
+      el('div', { class: 'spinner' }),
+      el('div', { class: 'loading-text', text: '載入中…' }),
+    ]))
     api('/api/vendors').then((b) => {
+      content.innerHTML = ''
       const list = el('div', { class: 'option-list' })
       for (const v of b.data) {
         list.appendChild(el('div', { class: 'card option-row' }, [
@@ -1006,6 +1048,7 @@ pages.admin = function () {
           } }),
         ]))
       }
+      content.innerHTML = ''
       content.appendChild(list)
       const newVendor = el('input', { class: 'input', placeholder: '新廠商名稱' })
       content.appendChild(el('div', { class: 'add-row' }, [
@@ -1019,11 +1062,15 @@ pages.admin = function () {
           } catch (e) { alert(e.message) }
         } }),
       ]))
-    }).catch((e) => content.appendChild(el('p', { class: 'error', text: e.message })))
+    }).catch((e) => { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) })
   }
 
   function renderOptions() {
     content.innerHTML = ''
+    content.appendChild(el('div', { class: 'loading-wrap' }, [
+      el('div', { class: 'spinner' }),
+      el('div', { class: 'loading-text', text: '載入中…' }),
+    ]))
     // P7 用 include_inactive=1（含停用，修停用顯示 bug；限 manager/admin）
     api('/api/options?type=' + currentType + '&include_inactive=1').then((b) => {
       const list = el('div', { class: 'option-list' })
@@ -1044,8 +1091,9 @@ pages.admin = function () {
         }
         list.appendChild(row)
       }
+      content.innerHTML = ''
       content.appendChild(list)
-    }).catch((e) => content.appendChild(el('p', { class: 'error', text: e.message })))
+    }).catch((e) => { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) })
   }
 
   // 以類別為中心：點「設定關聯」開 modal，編輯該類別的地點/說明關聯（v1.1.7）

@@ -26,11 +26,16 @@ const statusMap = { open: ['待處理', 'red'], in_progress: ['處理中', 'yell
 async function load() {
   const root = document.getElementById('share-app')
   root.innerHTML = ''
+  root.appendChild(el('div', { class: 'loading-wrap' }, [
+    el('div', { class: 'spinner' }),
+    el('div', { class: 'loading-text', text: '載入中…' }),
+  ]))
   const token = new URLSearchParams(location.search).get('token') || location.pathname.split('/').filter(Boolean).pop()
 
   try {
     const res = await fetch('/api/share/' + token)
     if (!res.ok) {
+      root.querySelector('.loading-wrap')?.remove()
       root.appendChild(el('div', { class: 'pending' }, [
         el('h1', { text: '🔗 連結已失效' }),
         el('p', { text: '請向管理公司索取新連結' }),
@@ -41,6 +46,7 @@ async function load() {
     const t = body.data
     const [statusLabel, statusColor] = statusMap[t.status] || [t.status, 'gray']
 
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('div', { class: 'card' }, [
       el('h2', { text: t.title }),
       el('div', {}, [el('span', { class: `badge badge-${statusColor}`, text: statusLabel })]),
@@ -55,6 +61,7 @@ async function load() {
       root.appendChild(wall)
     }
   } catch (e) {
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('p', { class: 'error', text: '載入失敗' }))
   }
 }

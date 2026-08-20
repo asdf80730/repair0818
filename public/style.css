@@ -202,6 +202,12 @@ button { cursor: pointer; }
 
 /* 其他 */
 .loading, .error { text-align: center; padding: 40px 16px; color: var(--gray); }
+
+/* 載入指示器（v1.1.9：各頁面載入時避免白屏） */
+.loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 56px 16px; gap: 12px; }
+.loading-wrap .spinner { width: 32px; height: 32px; border: 3px solid var(--gray-light, #e0e0e0); border-top-color: var(--primary, #2f7cf6); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.loading-wrap .loading-text { color: var(--gray); font-size: 13px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .error { color: var(--red); }
 .pending { text-align: center; padding: 60px 20px; }
 .pending h1 { font-size: 24px; }
