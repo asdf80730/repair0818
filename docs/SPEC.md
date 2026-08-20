@@ -23,7 +23,7 @@
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 | v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
 | v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/archive/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
-| v1.1.9 | **回報範本（comment_desc）**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`；建單 label 改「故障類型範本」、回報框改用 `comment_descs`（通用不依類別過濾）label 改「回報範本」；P7 管理頁 tab 新增「回報範本」 |
+| v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
@@ -108,6 +108,11 @@ repair-system/
 │   ├── 0002_seed.sql              # seed 單一來源（v1.1.6，見 §2.3）
 │   └── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
 ├── CLAUDE.md                      # 見 §6
+├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
+├── docs/
+│   ├── SPEC.md                    # 最新規格（單一真相來源）
+│   ├── lib-spec.md / test-cases.md / page-api-map.md
+│   └── archive/                   # 歷史變更需求報告（已施工）
 └── wrangler.toml                  # 見 §8
 ```
 
@@ -934,6 +939,8 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 ## 9. 里程碑
 
+> **狀態：M1–M6 後端、前端 P0–P7 已全部完成並部署**（v1.1.9）。下表為施工時的驗收標準，保留供追溯。
+
 | # | 範圍 | 驗收 |
 |---|---|---|
 | **M0** | **LINE 後台開通**（§7 全部 8 步）：Login Channel、正式 LIFF app（**preview LIFF 已取消，v1.1.5**）、開官方帳號、OA 與 Channel 連動、圖文選單連結。**另：準備 2–3 個測試 LINE 帳號（可用家人／同事）** | 拿到 Channel ID＋LIFF ID；測試帳號已加入 OA 好友 |
@@ -952,9 +959,9 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **v1.1 選配**：Cloudflare Rate Limiting rule（Dashboard 設定，標的含 share 公開端點與 `/api/auth/session`）。
 
-**下一批文件（開工前產出）**：
-1. `src/lib/` 共用層介面規格（`resolveUser`／`requireAuth`／`csrfGuard`／`respond`／`taipeiMonthRangeUtc()` 正確實作範本）——§3.2 已定案 auth 介面，本工件補齊其餘四模組與細節
-2. 核心端點測試案例（輸入 JSON → 期望輸出，3–5 支端點，用 `@cloudflare/vitest-pool-workers`），**必含以下回歸斷言**：
+**下一批文件（已產出）**：
+1. `docs/lib-spec.md` — `src/lib/` 共用層介面規格（`resolveUser`／`requireAuth`／`csrfGuard`／`respond`／`taipeiMonthRangeUtc()` 正確實作範本）——§3.2 已定案 auth 介面，本文件補齊其餘四模組與細節
+2. `docs/test-cases.md` — 核心端點測試案例（`@cloudflare/vitest-pool-workers`），已含以下回歸斷言：
    - 未登入打 `/api/tickets` → `401`
    - **pending 打 `/api/auth/me` → `200`（含 display_name）**
    - **無 Cookie 帶有效 sig 打 `/api/exports/tickets.csv` → `200`**
