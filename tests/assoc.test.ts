@@ -242,6 +242,9 @@ describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
       body: JSON.stringify({ type: 'location', option_ids: [locId] }),
     })
+    if (set.status !== 200) {
+      console.log('POST assoc body:', JSON.stringify(await set.json()))
+    }
     expect(set.status).toBe(200)
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
     expect(r.status).toBe(200)
