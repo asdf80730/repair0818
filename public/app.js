@@ -1244,8 +1244,8 @@ async function boot() {
 
   // 測試模式：?mock=true 時用 liff-mock 插件（§1.2，繞過真實 LINE 登入）
   const isMock = new URLSearchParams(window.location.search).get('mock') === 'true'
-  // 非 mock 情境：登入後清掉 URL 上的 OAuth 殘留參數（LIFF 用 getIDToken，不需 URL code）
-  if (!isMock) cleanUrlParams()
+  // 注意：不可在此清 URL 參數！LIFF 的 OAuth 授權需要 URL 上的 code/state 才能完成登入。
+  // cleanUrlParams() 改在登入成功、取得 me 之後才呼叫（見 boot 尾端）。
   if (isMock && window.liff && window.liffMock) {
     try {
       // window.liffMock 本身就是 LiffMockPlugin 類別（UMD 掛載）
@@ -1345,7 +1345,8 @@ async function boot() {
         return
       }
     } else if (e.code === 'PENDING') {
-      // pending → P0
+      // pending → P0（LINE 已登入但尚未開通，同樣清掉 OAuth 殘留）
+      if (!isMock) cleanUrlParams()
       me = { id: 0, display_name: '', role: 'pending' }
       pages.pending()
       return
@@ -1365,6 +1366,9 @@ async function boot() {
     pages.pending()
     return
   }
+
+  // 登入成功：清掉 URL 上的 OAuth 殘留參數（code/state/liff*），保留 hash 路由
+  if (!isMock) cleanUrlParams()
 
   router()
 }
