@@ -90,11 +90,11 @@ describe('GET /api/options 三種模式（v1.1.7）', () => {
     expect(r.status).toBe(403)
   })
 
-  it('category_id 與 include_inactive 併用 → 400', async () => {
+  it('category_id 與 include_inactive 併用 → 200（P7 modal 用）', async () => {
     const { cookie } = await loginAs('U-assoc-5', '關聯5', 'admin')
     const catId = await optionId('category', '電梯')
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
-    expect(r.status).toBe(400)
+    expect(r.status).toBe(200)
   })
 })
 
@@ -242,14 +242,8 @@ describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
       body: JSON.stringify({ type: 'location', option_ids: [locId] }),
     })
-    if (set.status !== 200) {
-      console.log('POST assoc body:', JSON.stringify(await set.json()))
-    }
     expect(set.status).toBe(200)
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
-    if (r.status !== 200) {
-      console.log('查詢 body:', JSON.stringify(await r.json()), 'catId:', catId)
-    }
     expect(r.status).toBe(200)
     const body = await r.json()
     const target = body.data.find((o: { id: number }) => o.id === locId)

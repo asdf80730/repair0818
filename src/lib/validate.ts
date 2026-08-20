@@ -68,14 +68,11 @@ export const updateOptionSchema = z.object({
 })
 
 // 選項查詢（§4.6 GET /api/options）
+// category_id + include_inactive 可併用（P7 modal 查 associated 用；include_inactive 限 manager/admin）
 export const listOptionsQuerySchema = z.object({
   type: z.enum(['category', 'location', 'description']),
   category_id: z.coerce.number().int().positive().optional(),
   include_inactive: z.enum(['0', '1']).optional().transform(v => v === '1'),
-}).superRefine((val, ctx) => {
-  if (val.category_id !== undefined && val.include_inactive) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['include_inactive'], message: 'include_inactive 不可與 category_id 併用' })
-  }
 })
 
 // 廠商（§4.6）
