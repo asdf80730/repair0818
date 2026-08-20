@@ -293,6 +293,18 @@ function thumb(src) {
 
 // ---- 頁面渲染 ----
 const pages = {}
+// 全域選項快取（v1.1.7）：進建單頁才讀一次，之後詳情/編輯/列表共用
+let catalogCache = null
+let catalogLoading = null
+async function ensureCatalog(force) {
+  if (catalogCache && !force) return catalogCache
+  if (catalogLoading) return catalogLoading
+  catalogLoading = api('/api/options/catalog').then((b) => {
+    catalogCache = b.data
+    return catalogCache
+  }).finally(() => { catalogLoading = null })
+  return catalogLoading
+}
 
 // P0 等待開通頁（§5.0.1）
 pages.pending = function () {
@@ -382,8 +394,8 @@ pages.list = function () {
   // 類別篩選
   const catSelect = el('select', { class: 'select', onchange: (e) => { currentCategory = e.target.value; page = 1; listEl.innerHTML = ''; load() } })
   catSelect.appendChild(el('option', { value: '', text: '全部分類' }))
-  api('/api/options?type=category').then((b) => {
-    for (const o of b.data) catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
+  ensureCatalog().then(() => {
+    for (const o of (catalogCache?.categories || [])) catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
   }).catch(() => {})
   root.appendChild(el('div', { class: 'filter-row' }, [el('label', { text: '分類：' }), catSelect]))
 
@@ -404,15 +416,15 @@ pages.new = function () {
     el('h1', { text: '建單' }),
   ]))
 
-  // ---- 一次抓完所有選項＋關聯（v1.1.7，避免每次換類別重新請求）----
-  const catalog = { categories: [], locations: [], descriptions: [] }
+  // ---- 使用全域選項快取（v1.1.7，進建單頁才確保讀取一次）----
   const catSelect = el('select', { class: 'select' })
   catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
   let selectedCat = null
 
   // 本地過濾：回該類別關聯＋通用
   const filterByCat = (type, catId) => {
-    return catalog[type].filter(o => {
+    const items = (catalogCache || { categories: [], locations: [], descriptions: [] })[type] || []
+    return items.filter(o => {
       if (o.category_ids.length === 0) return true // 通用
       return o.category_ids.includes(catId)
     })
@@ -450,12 +462,10 @@ pages.new = function () {
     descSelect.disabled = false
   }
 
-  // 載入 catalog（一次抓完，本地過濾）
-  api('/api/options/catalog').then((b) => {
-    catalog.categories = b.data.categories
-    catalog.locations = b.data.locations
-    catalog.descriptions = b.data.descriptions
-    for (const o of catalog.categories) {
+  // 確保 catalog（首次進建單頁才讀，之後共用）
+  ensureCatalog().then(() => {
+    const cats = (catalogCache?.categories) || []
+    for (const o of cats) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
   }).catch(() => {})
@@ -473,10 +483,7 @@ pages.new = function () {
     if (locs.length === 0 || descs.length === 0) {
       alert('此類別尚無關聯的地點或說明，正在重新載入…')
       try {
-        const nb = await api('/api/options/catalog')
-        catalog.categories = nb.data.categories
-        catalog.locations = nb.data.locations
-        catalog.descriptions = nb.data.descriptions
+        await ensureCatalog(true) // 強制重新讀取最新
       } catch (err) { /* 保持原資料 */ }
     }
     renderLoc(selectedCat)
@@ -694,20 +701,18 @@ pages.ticket = async function (id) {
     const cDescSelect = el('select', { class: 'select' })
     cDescSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
     const catId = t.category_id
-    if (catId) {
-      api(`/api/options?type=description&category_id=${catId}`).then((b) => {
-        for (const o of b.data) {
-          cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
-        }
-      }).catch(() => {})
-    } else {
-      // category_id 為 null → 顯示全部通用說明
-      api('/api/options?type=description').then((b) => {
-        for (const o of b.data) {
-          cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
-        }
-      }).catch(() => {})
-    }
+    ensureCatalog().then(() => {
+      const allDescs = (catalogCache?.descriptions) || []
+      let descs
+      if (catId) {
+        descs = allDescs.filter(o => o.category_ids.length === 0 || o.category_ids.includes(catId))
+      } else {
+        descs = allDescs // category_id null → 全部通用
+      }
+      for (const o of descs) {
+        cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
+      }
+    }).catch(() => {})
     const cDescAdd = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
       const label = cDescSelect.value
       if (!label) return
@@ -793,15 +798,15 @@ pages.edit = async function (id) {
   }
 
   const catSelect = el('select', { class: 'select' })
-  api('/api/options?type=category').then((b) => {
-    for (const o of b.data) {
+  ensureCatalog().then(() => {
+    for (const o of (catalogCache?.categories || [])) {
       catSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.category_label ? 'selected' : null }))
     }
   }).catch(() => {})
 
   const locSelect = el('select', { class: 'select' })
-  api('/api/options?type=location').then((b) => {
-    for (const o of b.data) {
+  ensureCatalog().then(() => {
+    for (const o of (catalogCache?.locations || [])) {
       locSelect.appendChild(el('option', { value: String(o.id), text: o.label, selected: o.label === t.location_label ? 'selected' : null }))
     }
   }).catch(() => {})
