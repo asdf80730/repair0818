@@ -295,15 +295,17 @@ function thumb(src) {
 const pages = {}
 // 全域選項快取（v1.1.7）
 // 依「後端是否驗證」分層：
-//  - 建單/編輯（category/location 會 400）→ ensureCatalog(true) 進頁強制重讀
-//  - 留言/列表（純 UI，不驗證）→ ensureCatalog() 用 TTL 快取（10 分鐘）
+//  - 建單/編輯（category/location 會 400）→ ensureCatalog(true) 用短 TTL（30 秒）
+//  - 留言/列表（純 UI，不驗證）→ ensureCatalog() 用長 TTL（10 分鐘）
+// v1.1.8：建單/編輯由「每次強制重讀」改為「短 TTL」，避免每次進頁都吃一次 D1 連線延遲
 let catalogCache = null
 let catalogLoadedAt = 0
 let catalogLoading = null
-const CATALOG_TTL = 10 * 60 * 1000 // 10 分鐘
+const CATALOG_TTL = 10 * 60 * 1000 // 一般（列表/留言）：10 分鐘
+const CATALOG_TTL_STRICT = 30 * 1000 // 建單/編輯（後端驗證）：30 秒
 async function ensureCatalog(force) {
-  if (force) { catalogCache = null; catalogLoadedAt = 0 }
-  if (catalogCache && Date.now() - catalogLoadedAt < CATALOG_TTL) return catalogCache
+  const ttl = force ? CATALOG_TTL_STRICT : CATALOG_TTL
+  if (catalogCache && Date.now() - catalogLoadedAt < ttl) return catalogCache
   if (catalogLoading) return catalogLoading
   catalogLoading = api('/api/options/catalog').then((b) => {
     catalogCache = b.data
@@ -861,58 +863,6 @@ pages.edit = async function (id) {
   ]))
 }
 
-// P4 新增回報（§5.4）
-pages.report = function (id) {
-  const root = document.getElementById('page')
-  root.innerHTML = ''
-  root.appendChild(el('header', { class: 'topbar' }, [
-    el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/ticket/' + id } }),
-    el('h1', { text: '新增回報' }),
-  ]))
-
-  const statusSelect = el('select', { class: 'select' })
-  statusSelect.appendChild(el('option', { value: 'open', text: '待處理' }))
-  statusSelect.appendChild(el('option', { value: 'in_progress', text: '處理中' }))
-  statusSelect.appendChild(el('option', { value: 'done', text: '🟢 完成' }))
-
-  const noteEl = el('textarea', { class: 'textarea', placeholder: '說明（選填）' })
-  const photos = []
-  const fileInput = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
-  fileInput.addEventListener('change', async () => {
-    for (const file of fileInput.files) {
-      try {
-        const compressed = await compressPhoto(file)
-        const fd = new FormData()
-        fd.append('file', compressed)
-        const b = await api('/api/photos', { method: 'POST', body: fd })
-        photos.push(b.data.id)
-      } catch (e) {
-        if (e && e.code !== 'NETWORK') continue
-        alert(e.message)
-      }
-    }
-  })
-
-  async function submit() {
-    const status = statusSelect.value
-    if (status === 'done' && !confirm('標記為已完成並結案？')) return
-    try {
-      await api(`/api/tickets/${id}/updates`, {
-        method: 'POST',
-        body: JSON.stringify({ status, note: noteEl.value || undefined, photo_ids: photos.length ? photos : undefined }),
-      })
-      location.hash = '#/ticket/' + id
-    } catch (e) { alert(e.message) }
-  }
-
-  root.appendChild(el('div', { class: 'form' }, [
-    el('label', { text: '狀態' }), statusSelect,
-    el('label', { text: '說明' }), noteEl,
-    el('label', { text: '照片' }), fileInput,
-    el('button', { class: 'btn btn-primary', text: '送出回報', onclick: submit }),
-  ]))
-}
-
 // P5 統計（§5.5）
 pages.stats = function () {
   const root = document.getElementById('page')
@@ -1229,13 +1179,20 @@ function router() {
     case 'new': pages.new(); break
     case 'ticket': pages.ticket(param); break
     case 'edit': pages.edit(param); break
-    case 'report': pages.report(param); break
     case 'stats': pages.stats(); break
     case 'users': pages.users(); break
     case 'admin': pages.admin(); break
     default: pages.list()
   }
   renderNav()
+}
+
+// 清掉登入後殘留的 URL 參數（code/state/liff* 等），保留 hash 路由
+function cleanUrlParams() {
+  if (window.location.search) {
+    const url = window.location.pathname + window.location.hash
+    history.replaceState(null, '', url)
+  }
 }
 
 // ---- boot：LIFF init + 登入 + 取 me ----
@@ -1246,6 +1203,8 @@ async function boot() {
 
   // 測試模式：?mock=true 時用 liff-mock 插件（§1.2，繞過真實 LINE 登入）
   const isMock = new URLSearchParams(window.location.search).get('mock') === 'true'
+  // 非 mock 情境：登入後清掉 URL 上的 OAuth 殘留參數（LIFF 用 getIDToken，不需 URL code）
+  if (!isMock) cleanUrlParams()
   if (isMock && window.liff && window.liffMock) {
     try {
       // window.liffMock 本身就是 LiffMockPlugin 類別（UMD 掛載）

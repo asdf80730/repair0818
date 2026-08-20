@@ -23,6 +23,7 @@
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 | v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
 | v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
+| v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -79,7 +80,8 @@ repair-system/
 │   ├── app.js / share.js
 │   ├── style.css
 │   ├── vendor/
-│   │   └── browser-image-compression.js   # vendored UMD build（檔頭註明版本與來源）
+│   │   ├── browser-image-compression.js   # vendored UMD build（檔頭註明版本與來源）
+│   │   └── liff-mock.js                    # 測試模式 ?mock=true 用（§1.2）
 │   ├── _routes.json               # 只讓 /api/* 走 Functions
 │   └── _headers                   # 靜態檔標頭（CSP、安全標頭）
 ├── functions/
@@ -101,8 +103,9 @@ repair-system/
 │       ├── time.ts                # taipeiMonthRangeUtc() 等
 │       └── db.ts                  # 共用查詢
 ├── migrations/
-│   └── 0001_init.sql              # 見 §2
-├── seed.sql                       # 見 §2.3
+│   ├── 0001_init.sql              # 見 §2
+│   ├── 0002_seed.sql              # seed 單一來源（v1.1.6，見 §2.3）
+│   └── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
 ├── CLAUDE.md                      # 見 §6
 └── wrangler.toml                  # 見 §8
 ```
@@ -712,7 +715,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.2 P2 建單
 
-- **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，**分層快取**：建單頁每次進強制重讀確保不 400，換類別本地過濾即時；詳情/列表用 10 分鐘 TTL 快取）
+- **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，**分層快取**：建單/編輯用短 TTL（30 秒），列表/留言用長 TTL（10 分鐘）——v1.1.8 優化，取代「每次進頁強制重讀」，避免每次進建單/編輯頁都吃一次 D1 連線延遲；換類別本地過濾即時）
 - **常用說明下拉＋附加按鈕**（v1.1.5）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
@@ -729,10 +732,14 @@ WHERE kind = 'status' AND status = 'done'
 - **縮圖點開放大**（lightbox，v1.1.4）
 - **指派廠商在編輯頁內**（v1.1.5：保全/秘書層級，不再塞列表/詳情頁）
 
-### 5.4 P4 新增回報
+### 5.4 P4 回報／留言（v1.1.5 起併入 P3 詳情頁留言框）
 
-- 狀態選擇（待處理／處理中／🟢 完成，預設選中目前狀態）、說明（選填）、照片
-- 按 🟢 送出即結案，需二次確認彈窗：「標記為已完成並結案？」
+> **已移除獨立「新增回報」頁**（v1.1.5 起）：回報統一走 P3 詳情頁底部的「💬 留言／回報」留言框，含狀態更新。v1.1.8 清理死碼，移除 `pages.report` 與 `#/report` 路由。
+
+- 狀態更新（kind=status）限 **manager/admin**，可選 待處理／處理中／🟢 完成
+- 按 🟢 完成即結案，需二次確認彈窗：「標記為已完成並結案？」
+- 純留言（kind=comment）**三角色皆可**，不改狀態
+- 委員不可變狀態，僅能留言（§0.3 規則 2）
 
 ### 5.5 P5 統計（**三角色皆可**，D6）
 
