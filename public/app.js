@@ -458,13 +458,13 @@ pages.new = function () {
   locSelect.disabled = true
   locSelect.addEventListener('change', (e) => { selectedLoc = e.target.value ? Number(e.target.value) : null })
 
-  // 常用說明（依類別本地過濾，未選類別 disabled）
+  // 故障類型範本（依類別本地過濾，未選類別 disabled）
   const descSelect = el('select', { class: 'select' })
   descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' }))
   descSelect.disabled = true
   const renderDesc = (catId) => {
     descSelect.innerHTML = ''
-    descSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
+    descSelect.appendChild(el('option', { value: '', text: '選擇故障類型範本…' }))
     for (const o of filterByCat('descriptions', catId)) {
       descSelect.appendChild(el('option', { value: o.label, text: o.label }))
     }
@@ -557,7 +557,7 @@ pages.new = function () {
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
-    el('label', { text: '常用說明' }), descRow,
+    el('label', { text: '故障類型範本' }), descRow,
     el('label', { text: '說明' }), descEl,
     el('label', { text: '照片' }), photoInput, photoPreview,
     el('button', { class: 'btn btn-primary', text: '送出建單', onclick: submit }),
@@ -712,21 +712,14 @@ pages.ticket = async function (id) {
     }
   })
 
-  // 常用說明下拉＋附加（manager/admin，v1.1.7 需求2；依案件 category_id 過濾）
+  // 回報範本下拉＋附加（manager/admin，v1.1.9；改 type='comment_desc'，通用不依類別過濾）
   let commentDescRow = null
   if (isMgr) {
     const cDescSelect = el('select', { class: 'select' })
-    cDescSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
-    const catId = t.category_id
+    cDescSelect.appendChild(el('option', { value: '', text: '選擇回報範本…' }))
     ensureCatalog().then(() => {
-      const allDescs = (catalogCache?.descriptions) || []
-      let descs
-      if (catId) {
-        descs = allDescs.filter(o => o.category_ids.length === 0 || o.category_ids.includes(catId))
-      } else {
-        descs = allDescs // category_id null → 全部通用
-      }
-      for (const o of descs) {
+      const allDescs = (catalogCache?.comment_descs) || []
+      for (const o of allDescs) {
         cDescSelect.appendChild(el('option', { value: o.label, text: o.label }))
       }
     }).catch(() => {})
@@ -995,7 +988,7 @@ pages.admin = function () {
   ]))
 
   // 選項管理 + 廠商管理 tab（問題9：廠商管理獨立 tab，不再每個類別都顯示）
-  const types = [['category', '類別'], ['location', '地點'], ['description', '常用說明'], ['vendors', '廠商']]
+  const types = [['category', '類別'], ['location', '地點'], ['description', '故障類型範本'], ['comment_desc', '回報範本'], ['vendors', '廠商']]
   const tabBar = el('div', { class: 'tabs' })
   const content = el('div', {})
   let currentType = 'category'
@@ -1066,7 +1059,7 @@ pages.admin = function () {
     const locWrap = el('div', { class: 'assoc-list' })
     modal.appendChild(locWrap)
     // 說明區
-    modal.appendChild(el('h4', { class: 'modal-sub', text: '常用說明' }))
+    modal.appendChild(el('h4', { class: 'modal-sub', text: '故障類型範本' }))
     const descWrap = el('div', { class: 'assoc-list' })
     modal.appendChild(descWrap)
     // 儲存

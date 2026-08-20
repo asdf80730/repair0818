@@ -230,6 +230,8 @@ describe('GET /api/options/catalog 一次抓完（v1.1.7）', () => {
     expect(body.data.categories.length).toBeGreaterThan(0)
     expect(body.data.locations.length).toBeGreaterThan(0)
     expect(body.data.descriptions.length).toBeGreaterThan(0)
+    // v1.1.9：回報範本 comment_desc 獨立於故障類型 description
+    expect(body.data.comment_descs.length).toBeGreaterThan(0)
     // 每個 location 都有 category_ids 欄位
     for (const l of body.data.locations) {
       expect(l).toHaveProperty('category_ids')

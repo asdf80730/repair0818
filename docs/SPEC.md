@@ -23,6 +23,8 @@
 | v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
 | v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
 | v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
+| v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
+| v1.1.9 | **回報範本（comment_desc）**（詳見 `docs/v1.1.9-變更需求報告.md`）：建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`；建單 label 改「故障類型範本」、回報框改用 `comment_descs`（通用不依類別過濾）label 改「回報範本」；P7 管理頁 tab 新增「回報範本」 |
 | v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
@@ -182,7 +184,7 @@ CREATE TABLE vendors (
 
 CREATE TABLE options (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  type       TEXT NOT NULL,                        -- category / location / description
+  type       TEXT NOT NULL,                        -- category / location / description / comment_desc
   label      TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   active     INTEGER NOT NULL DEFAULT 1,
@@ -283,6 +285,16 @@ INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALU
   ('description', '油漆剝落',     5, 1, '2026-01-01T00:00:00.000Z'),
   ('description', '其他',        99, 1, '2026-01-01T00:00:00.000Z');
 ```
+
+> **回報範本 seed**（migration `0004_comment_desc.sql`，v1.1.9）另新增 `type='comment_desc'`（建單用「故障類型範本」與回報用「回報範本」分開）：
+> ```
+> INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
+>   ('comment_desc', '已通知廠商處理', 1, 1, '2026-01-01T00:00:00.000Z'),
+>   ('comment_desc', '已到場勘查',     2, 1, '2026-01-01T00:00:00.000Z'),
+>   ('comment_desc', '待料中',         3, 1, '2026-01-01T00:00:00.000Z'),
+>   ('comment_desc', '已修復完成',     4, 1, '2026-01-01T00:00:00.000Z'),
+>   ('comment_desc', '需追蹤',         5, 1, '2026-01-01T00:00:00.000Z');
+> ```
 
 （預設選項為初始值，上線後由管理公司在 P7 自行維護。）
 
@@ -716,7 +728,7 @@ WHERE kind = 'status' AND status = 'done'
 ### 5.2 P2 建單
 
 - **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，**分層快取**：建單/編輯用短 TTL（30 秒），列表/留言用長 TTL（10 分鐘）——v1.1.8 優化，取代「每次進頁強制重讀」，避免每次進建單/編輯頁都吃一次 D1 連線延遲；換類別本地過濾即時）
-- **常用說明下拉＋附加按鈕**（v1.1.5）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加
+- **故障類型範本下拉＋附加按鈕**（v1.1.5 改下拉＋附加；v1.1.9 正名「故障類型範本」）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
 - **無關聯類別**（v1.1.7）：選到地點/說明全空的類別時，alert 提示並重新讀取 catalog（**不重整頁面，保留已輸入資料**）
@@ -740,6 +752,7 @@ WHERE kind = 'status' AND status = 'done'
 - 按 🟢 完成即結案，需二次確認彈窗：「標記為已完成並結案？」
 - 純留言（kind=comment）**三角色皆可**，不改狀態
 - 委員不可變狀態，僅能留言（§0.3 規則 2）
+- **回報範本下拉＋附加**（v1.1.7 加，v1.1.9 改 `type='comment_desc'`）：manager/admin 留言框有「選擇回報範本…」下拉，選取後按「＋ 附加」附加至留言 textarea；**通用不依類別過濾**（追蹤說明，全部顯示）
 
 ### 5.5 P5 統計（**三角色皆可**，D6）
 
@@ -755,7 +768,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.7 P7 管理（manager/admin，D5）
 
-- 選項管理 tab：**類別／地點／常用說明／廠商**（v1.1.4 起廠商獨立成 tab，不再每個類別都顯示在最底部）
+- 選項管理 tab：**類別／地點／故障類型範本／回報範本／廠商**（v1.1.4 起廠商獨立成 tab；v1.1.9 加「回報範本」tab 並正名「故障類型範本」）
 - 選項：新增、改名、排序、停用（停用紅）
 - 廠商：新增、修改、停用（停用紅／啟用藍）
 - **類別關聯（v1.1.7 以類別為中心）**：類別 tab 每列顯示「📍N 地點 · 💬N 說明」關聯計數＋「設定關聯」按鈕；點開 modal 才載入該類別的地點/說明（checkbox 勾選），儲存走 `POST /api/options/:id/assoc` 全量覆寫。**不在列表逐項載入，避免 N+1**。

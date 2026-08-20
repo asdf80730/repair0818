@@ -133,8 +133,9 @@ optionRoutes.get('/catalog', requireAuth(), async (c) => {
   const categories = options.filter(o => o.type === 'category').map(o => ({ id: o.id, label: o.label }))
   const locations = options.filter(o => o.type === 'location').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
   const descriptions = options.filter(o => o.type === 'description').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
+  const comment_descs = options.filter(o => o.type === 'comment_desc').map(o => ({ id: o.id, label: o.label }))
 
-  return ok(c, { categories, locations, descriptions })
+  return ok(c, { categories, locations, descriptions, comment_descs })
 })
 
 // POST /api/options — manager/admin（§4.6）

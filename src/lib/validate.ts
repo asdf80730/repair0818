@@ -50,7 +50,7 @@ export const reopenTicketSchema = z.object({
 // 選項（§4.6）
 const categoryIds = z.array(z.number().int().positive()).max(20).optional()
 export const createOptionSchema = z.object({
-  type: z.enum(['category', 'location', 'description']),
+  type: z.enum(['category', 'location', 'description', 'comment_desc']),
   label: z.string().trim().min(1).max(30),
   sort_order: z.number().int().default(0),
   category_ids: categoryIds,
@@ -70,7 +70,7 @@ export const updateOptionSchema = z.object({
 // 選項查詢（§4.6 GET /api/options）
 // category_id + include_inactive 可併用（P7 modal 查 associated 用；include_inactive 限 manager/admin）
 export const listOptionsQuerySchema = z.object({
-  type: z.enum(['category', 'location', 'description']),
+  type: z.enum(['category', 'location', 'description', 'comment_desc']),
   category_id: z.coerce.number().int().positive().optional(),
   include_inactive: z.enum(['0', '1']).optional().transform(v => v === '1'),
 })
