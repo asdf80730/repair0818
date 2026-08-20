@@ -67,6 +67,10 @@
 - `GET /api/options` 三模式：`?type`（僅 active）、`?type&category_id`（關聯+通用）、`?type&include_inactive=1`（附 category_ids，**限 manager/admin，handler 內判**）。
 - `category_ids` 三態：**未帶=不動關聯、[]=清空、有值=全量覆寫**。zod 用 `.optional()` 不用 `.default([])`。
 - `include_inactive` 用 `z.enum(['0','1']).transform()`，**不可用 `z.coerce.boolean()`**（`"false"` 也是 true）。
+
+## 登入（硬性規則，勿再犯）
+- **`cleanUrlParams()` 只能在登入成功（取 me）之後呼叫**，絕不可放 boot 開頭或 `liff.init()` 之前——LIFF 的 OAuth 授權需要 URL 上的 `code`/`state`，提前清掉會讓一般瀏覽器無法跳 LINE 登入頁（時好時壞的 bug）。
+- 一般瀏覽器 `liff.init()` 其實會成功、`liff.login()` 能跳 LINE 登入頁（已實測），**不需**做網頁 OAuth。
 - `option_categories` 的 INSERT/DELETE 只允許出現在 `POST`/`PATCH /api/options` 兩處；DELETE WHERE 只能是 `option_id = ?`。
 - POST upsert 為「規則 2」明文例外（兩階段：先 `RETURNING id` 再 batch 寫關聯）；禁用 `meta.last_row_id` 當 upsert 後 id。
 - join 表 type 由應用層強制（`assertValidAssoc`/`assertCategoryIds`），SQLite CHECK 不能跨表。
