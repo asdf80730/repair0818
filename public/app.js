@@ -56,6 +56,24 @@ function mockApi(path, options = {}) {
     const includeInactive = url.searchParams.get('include_inactive') === '1'
     const noAssoc = url.searchParams.get('assoc') === '0'
     let items = mockOptions[type] || []
+    // 類別計數（P7 類別列表）
+    if (type === 'category' && includeInactive) {
+      const cats = items.map(c => {
+        const locs = mockAssoc.filter(a => a.category_id === c.id && mockOptions.location.some(l => l.id === a.option_id))
+        const descs = mockAssoc.filter(a => a.category_id === c.id && mockOptions.description.some(d => d.id === a.option_id))
+        return { ...c, active: 1, location_count: locs.length, description_count: descs.length }
+      })
+      return { ok: true, data: cats }
+    }
+    // 該類別所有項附 associated（P7 modal）
+    if (type !== 'category' && categoryId && includeInactive) {
+      const cid = Number(categoryId)
+      const items2 = items.map(o => ({
+        ...o, active: 1,
+        associated: noAssoc ? 0 : (mockAssoc.some(a => a.option_id === o.id && a.category_id === cid) ? 1 : 0),
+      }))
+      return { ok: true, data: items2 }
+    }
     // category_id 過濾：該類別關聯＋通用（無關聯者）
     if (categoryId && type !== 'category') {
       const cid = Number(categoryId)
@@ -78,6 +96,11 @@ function mockApi(path, options = {}) {
       }))
     }
     return { ok: true, data: items }
+  }
+  // 以類別為中心設定關聯（P7 modal，v1.1.7）
+  const assocMatch = pathname.match(/^\/api\/options\/(\d+)\/assoc$/)
+  if (assocMatch && method === 'POST') {
+    return { ok: true, data: { category_id: Number(assocMatch[1]), count: 0 } }
   }
   // tickets 列表
   if (pathname === '/api/tickets' && method === 'GET') {
@@ -1018,34 +1041,70 @@ pages.admin = function () {
             catch (e) { alert(e.message) }
           } }),
         ])
-        // location/description 顯示所屬類別勾選矩陣（category 不顯示）
-        if (currentType === 'location' || currentType === 'description') {
-          const catWrap = el('div', { class: 'assoc-wrap' })
-          const catBoxes = []
-          api('/api/options?type=category&include_inactive=1').then((cb) => {
-            for (const cat of cb.data) {
-              const box = el('label', { class: 'assoc-check' }, [
-                el('input', { type: 'checkbox', value: String(cat.id), checked: (o.category_ids || []).includes(cat.id) ? 'checked' : null }),
-                el('span', { text: cat.label }),
-              ])
-              catBoxes.push(box)
-              catWrap.appendChild(box)
-            }
-          }).catch(() => {})
-          const saveBtn = el('button', { class: 'btn', text: '儲存關聯', onclick: async () => {
-            const ids = catBoxes.filter(b => b.querySelector('input').checked).map(b => Number(b.querySelector('input').value))
-            try {
-              await api('/api/options/' + o.id, { method: 'PATCH', body: JSON.stringify({ category_ids: ids }) })
-              alert('已儲存')
-            } catch (e) { alert(e.message) }
-          } })
-          row.appendChild(catWrap)
-          row.appendChild(saveBtn)
+        // 類別 tab：顯示關聯計數 + 設定關聯按鈕（v1.1.7 改以類別為中心）
+        if (currentType === 'category') {
+          const count = el('span', { class: 'assoc-count', text: `📍${o.location_count ?? 0} 地點 · 💬${o.description_count ?? 0} 說明` })
+          const assocBtn = el('button', { class: 'btn btn-ghost', text: '設定關聯', onclick: () => openAssocModal(o) })
+          row.appendChild(count)
+          row.appendChild(assocBtn)
         }
         list.appendChild(row)
       }
       content.appendChild(list)
     }).catch((e) => content.appendChild(el('p', { class: 'error', text: e.message })))
+  }
+
+  // 以類別為中心：點「設定關聯」開 modal，編輯該類別的地點/說明關聯（v1.1.7）
+  function openAssocModal(cat) {
+    const mask = el('div', { class: 'modal-mask', onclick: (e) => { if (e.target === mask) mask.remove() } })
+    const modal = el('div', { class: 'modal' }, [
+      el('h3', { text: `設定「${cat.label}」關聯` }),
+    ])
+    // 地點區
+    modal.appendChild(el('h4', { class: 'modal-sub', text: '地點' }))
+    const locWrap = el('div', { class: 'assoc-list' })
+    modal.appendChild(locWrap)
+    // 說明區
+    modal.appendChild(el('h4', { class: 'modal-sub', text: '常用說明' }))
+    const descWrap = el('div', { class: 'assoc-list' })
+    modal.appendChild(descWrap)
+    // 儲存
+    const saveBtn = el('button', { class: 'btn btn-primary', text: '儲存', onclick: async () => {
+      try {
+        const locIds = [...locWrap.querySelectorAll('input:checked')].map(i => Number(i.value))
+        const descIds = [...descWrap.querySelectorAll('input:checked')].map(i => Number(i.value))
+        // 以類別為中心，全量覆寫該類別的地點/說明關聯
+        await api(`/api/options/${cat.id}/assoc`, { method: 'POST', body: JSON.stringify({ type: 'location', option_ids: locIds }) })
+        await api(`/api/options/${cat.id}/assoc`, { method: 'POST', body: JSON.stringify({ type: 'description', option_ids: descIds }) })
+        mask.remove()
+        renderOptions()
+      } catch (e) { alert(e.message) }
+    } })
+    modal.appendChild(el('div', { class: 'modal-actions' }, [
+      el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => mask.remove() }),
+      saveBtn,
+    ]))
+    mask.appendChild(modal)
+    document.body.appendChild(mask)
+
+    // 載入該類別的地點（含 associated）
+    api(`/api/options?type=location&category_id=${cat.id}&include_inactive=1`).then((b) => {
+      for (const o of b.data) {
+        locWrap.appendChild(el('label', { class: 'assoc-check' }, [
+          el('input', { type: 'checkbox', value: String(o.id), checked: o.associated ? 'checked' : null }),
+          el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
+        ]))
+      }
+    }).catch(() => {})
+    // 載入該類別的說明（含 associated）
+    api(`/api/options?type=description&category_id=${cat.id}&include_inactive=1`).then((b) => {
+      for (const o of b.data) {
+        descWrap.appendChild(el('label', { class: 'assoc-check' }, [
+          el('input', { type: 'checkbox', value: String(o.id), checked: o.associated ? 'checked' : null }),
+          el('span', { text: o.label + (o.active ? '' : '（已停用）') }),
+        ]))
+      }
+    }).catch(() => {})
   }
 
   for (const [val, label] of types) {

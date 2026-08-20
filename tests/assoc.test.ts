@@ -220,3 +220,63 @@ describe('inactive category 行為（v1.1.7）', () => {
     expect(r.status).toBe(400)
   })
 })
+
+describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
+  it('type=category&include_inactive=1 附 location_count/description_count', async () => {
+    const { cookie } = await loginAs('U-assoc-16', '關聯16', 'admin')
+    const r = await worker.fetch('http://example.com/api/options?type=category&include_inactive=1', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.length).toBeGreaterThan(0)
+    expect(body.data[0]).toHaveProperty('location_count')
+    expect(body.data[0]).toHaveProperty('description_count')
+  })
+
+  it('type=location&category_id=N&include_inactive=1 附 associated', async () => {
+    const { cookie } = await loginAs('U-assoc17', '關聯17', 'admin')
+    const catId = await optionId('category', '電梯')
+    const locId = await optionId('location', '頂樓')
+    await setAssoc(cookie, locId, [catId])
+    const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}&include_inactive=1`, { headers: { Cookie: cookie } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    const target = body.data.find((o: { id: number }) => o.id === locId)
+    expect(target.associated).toBe(1)
+  })
+})
+
+describe('POST /api/options/:id/assoc 以類別為中心（v1.1.7）', () => {
+  it('全量覆寫該類別對 type 的關聯', async () => {
+    const { cookie } = await loginAs('U-assoc18', '關聯18', 'admin')
+    const catId = await optionId('category', '電梯')
+    const locIds = [await optionId('location', '停車場'), await optionId('location', '大廳')]
+    // 電梯 ← 停車場、大廳
+    const r = await worker.fetch(`http://example.com/api/options/${catId}/assoc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ type: 'location', option_ids: locIds }),
+    })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.count).toBe(2)
+    // 驗證頂樓不在電梯關聯
+    const assocRows = await env.DB.prepare(
+      'SELECT option_id FROM option_categories WHERE category_id = ?',
+    ).bind(catId).all<{ option_id: number }>()
+    const ids = assocRows.results.map(x => x.option_id)
+    expect(ids).toContain(locIds[0])
+    expect(ids).toContain(locIds[1])
+  })
+
+  it('option_ids 含非該 type → 400', async () => {
+    const { cookie } = await loginAs('U-assoc19', '關聯19', 'admin')
+    const catId = await optionId('category', '電梯')
+    const badId = await optionId('category', '門禁') // 是 category 不是 location
+    const r = await worker.fetch(`http://example.com/api/options/${catId}/assoc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ type: 'location', option_ids: [badId] }),
+    })
+    expect(r.status).toBe(400)
+  })
+})

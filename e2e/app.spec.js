@@ -61,11 +61,14 @@ test('切換狀態 tab 篩選', async ({ page }) => {
   await expect(page.getByText('電梯－停車場 #0001')).toBeVisible()
 })
 
-test('管理頁渲染（admin 專屬）', async ({ page }) => {
+test('管理頁渲染（admin 專屬）+ 類別關聯計數', async ({ page }) => {
   await page.getByText('⚙ 管理').click()
   await page.waitForSelector('text=管理', { timeout: 10000 })
   await expect(page.getByText('類別')).toBeVisible()
   await expect(page.getByText('廠商').first()).toBeVisible()
+  // 類別 tab 顯示關聯計數 + 設定關聯按鈕（v1.1.7 以類別為中心）
+  await expect(page.getByText('設定關聯').first()).toBeVisible()
+  await expect(page.locator('.assoc-count').first()).toBeVisible()
 })
 
 test('統計頁渲染（含 CSV 匯出）', async ({ page }) => {

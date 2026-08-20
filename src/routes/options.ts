@@ -2,6 +2,7 @@
 // 註冊於全域 requireAuth() 之下
 
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
@@ -16,6 +17,8 @@ export const optionRoutes = new Hono<Env>()
 // ?type=X                     → 僅 active（建單用，不附 category_ids）
 // ?type=X&category_id=N       → 該類別關聯＋通用，僅 active
 // ?type=X&include_inactive=1  → 含停用，附 category_ids（P7 用，限 manager/admin）
+//   type=category             → 每個類別附 location_count/description_count（P7 類別列表）
+//   type=location|description & category_id=N → 回該類別所有項附 associated（P7 modal）
 optionRoutes.get('/', requireAuth(), zValidator('query', listOptionsQuerySchema), async (c) => {
   const q = c.req.valid('query')
   const user = c.get('user')
@@ -26,9 +29,40 @@ optionRoutes.get('/', requireAuth(), zValidator('query', listOptionsQuerySchema)
   }
 
   const activeClause = q.include_inactive ? '' : ' AND o.active = 1'
+
+  // 模式一：type=category 且 include_inactive → 類別列表附關聯計數（P7）
+  if (q.type === 'category' && q.include_inactive) {
+    const rows = await c.env.DB.prepare(
+      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+        (SELECT COUNT(*) FROM option_categories oc WHERE oc.category_id = o.id
+          JOIN options oo ON oo.id = oc.option_id AND oo.type = 'location') AS location_count,
+        (SELECT COUNT(*) FROM option_categories oc WHERE oc.category_id = o.id
+          JOIN options oo ON oo.id = oc.option_id AND oo.type = 'description') AS description_count
+       FROM options o WHERE o.type = 'category'${activeClause}
+       ORDER BY o.sort_order, o.id`,
+    ).all<{ id: number; type: string; label: string; sort_order: number; active: number; location_count: number; description_count: number }>()
+    return ok(c, rows.results)
+  }
+
+  // 模式二：type=location|description & category_id & include_inactive → 該類別所有項附 associated（P7 modal）
+  if (q.type !== 'category' && q.category_id !== undefined && q.include_inactive) {
+    // 驗證類別存在
+    const cat = await c.env.DB.prepare(
+      "SELECT id FROM options WHERE id = ? AND type = 'category'",
+    ).bind(q.category_id).first()
+    if (!cat) return fail(c, 400, 'VALIDATION_ERROR', '類別不存在')
+    const rows = await c.env.DB.prepare(
+      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+        EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?) AS associated
+       FROM options o WHERE o.type = ?${activeClause}
+       ORDER BY o.sort_order, o.id`,
+    ).bind(q.category_id, q.type).all<{ id: number; type: string; label: string; sort_order: number; active: number; associated: number }>()
+    return ok(c, rows.results)
+  }
+
+  // 模式三：建單用過濾（category_id 關聯＋通用）
   let sql: string
   let binds: unknown[]
-
   if (q.category_id !== undefined) {
     // 驗證 category_id 存在且 type=category（不存在 → 400 非回空）
     const cat = await c.env.DB.prepare(
@@ -115,6 +149,48 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
   }
 
   return ok(c, { id: optionId, reactivated }, reactivated ? 200 : 201)
+})
+
+// POST /api/options/:id/assoc — 以類別為中心設定關聯（v1.1.7）
+// :id 是 category，body { type: 'location'|'description', option_ids: number[] }
+// 全量覆寫該類別對該 type 的關聯（P7 類別 modal 用）
+optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', z.object({
+  type: z.enum(['location', 'description']),
+  option_ids: z.array(z.number().int().positive()).max(200),
+})), async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的類別 id')
+  const body = c.req.valid('json')
+
+  // 驗證 :id 是 category
+  const cat = await c.env.DB.prepare(
+    "SELECT id FROM options WHERE id = ? AND type = 'category'",
+  ).bind(id).first()
+  if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在')
+
+  const optionIds = [...new Set(body.option_ids)]
+
+  // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前）
+  if (optionIds.length > 0) {
+    const placeholders = optionIds.map(() => '?').join(',')
+    const opts = await c.env.DB.prepare(
+      `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
+    ).bind(...optionIds, body.type).all<{ id: number }>()
+    if (opts.results.length !== optionIds.length) return fail(c, 400, 'VALIDATION_ERROR', `option_ids 含非${body.type}`)
+  }
+
+  // 全量覆寫：先刪該類別對該 type 的所有關聯，再插入
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
+        (SELECT id FROM options WHERE type = ?)`,
+    ).bind(id, body.type),
+    ...optionIds.map(oid => c.env.DB.prepare(
+      'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
+    ).bind(oid, id)),
+  ])
+
+  return ok(c, { category_id: id, type: body.type, count: optionIds.length })
 })
 
 // PATCH /api/options/:id — manager/admin（§4.6）

@@ -252,3 +252,8 @@ button { cursor: pointer; }
 .assoc-wrap { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 8px 0; }
 .assoc-check { display: flex; align-items: center; gap: 4px; font-size: 13px; }
 .assoc-check input { width: 18px; height: 18px; }
+/* v1.1.7：類別關聯計數 + modal */
+.assoc-count { font-size: 12px; color: var(--gray); }
+.modal-sub { margin: 12px 0 6px; font-size: 14px; color: var(--gray); }
+.assoc-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+.assoc-list .assoc-check { display: flex; align-items: center; gap: 6px; }
