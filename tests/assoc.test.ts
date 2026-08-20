@@ -221,6 +221,22 @@ describe('inactive category 行為（v1.1.7）', () => {
   })
 })
 
+describe('GET /api/options/catalog 一次抓完（v1.1.7）', () => {
+  it('回傳 categories/locations/descriptions，location 附 category_ids', async () => {
+    const { cookie } = await loginAs('U-assoc20', '關聯20', 'committee')
+    const r = await worker.fetch('http://example.com/api/options/catalog', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.categories.length).toBeGreaterThan(0)
+    expect(body.data.locations.length).toBeGreaterThan(0)
+    expect(body.data.descriptions.length).toBeGreaterThan(0)
+    // 每個 location 都有 category_ids 欄位
+    for (const l of body.data.locations) {
+      expect(l).toHaveProperty('category_ids')
+    }
+  })
+})
+
 describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
   it('type=category&include_inactive=1 附 location_count/description_count', async () => {
     const { cookie } = await loginAs('U-assoc-16', '關聯16', 'admin')

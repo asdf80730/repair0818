@@ -113,6 +113,30 @@ optionRoutes.get('/', requireAuth(), zValidator('query', listOptionsQuerySchema)
   return ok(c, rows.results)
 })
 
+// GET /api/options/catalog — 建單用：一次抓完所有選項＋關聯（v1.1.7）
+// 回傳 { categories:[], locations:[{id,label,category_ids}], descriptions:[{id,label,category_ids}] }
+// 前端本地過濾，避免每次換類別都重新請求
+optionRoutes.get('/catalog', requireAuth(), async (c) => {
+  const options = (await c.env.DB.prepare(
+    "SELECT id, type, label, sort_order FROM options WHERE active = 1 ORDER BY type, sort_order, id",
+  ).all<{ id: number; type: string; label: string; sort_order: number }>()).results
+
+  const assoc = new Map<number, number[]>()
+  const assocRows = await c.env.DB.prepare(
+    'SELECT option_id, category_id FROM option_categories',
+  ).all<{ option_id: number; category_id: number }>()
+  for (const a of assocRows.results) {
+    if (!assoc.has(a.option_id)) assoc.set(a.option_id, [])
+    assoc.get(a.option_id)!.push(a.category_id)
+  }
+
+  const categories = options.filter(o => o.type === 'category').map(o => ({ id: o.id, label: o.label }))
+  const locations = options.filter(o => o.type === 'location').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
+  const descriptions = options.filter(o => o.type === 'description').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
+
+  return ok(c, { categories, locations, descriptions })
+})
+
 // POST /api/options — manager/admin（§4.6）
 // upsert：兩階段寫入（先取 id 再寫關聯），為 CLAUDE.md 規則 2 明文例外
 optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createOptionSchema), async (c) => {

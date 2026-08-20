@@ -49,6 +49,20 @@ function mockApi(path, options = {}) {
   if (pathname === '/api/auth/me') {
     return { ok: true, data: { id: 1, display_name: '測試用戶', role: 'admin' } }
   }
+  // 建單 catalog：一次抓完（v1.1.7）
+  if (pathname === '/api/options/catalog') {
+    const noAssoc = url.searchParams.get('assoc') === '0'
+    const cats = (mockOptions.category || [])
+    const locs = (mockOptions.location || []).map(l => ({
+      ...l,
+      category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === l.id).map(a => a.category_id),
+    }))
+    const descs = (mockOptions.description || []).map(d => ({
+      ...d,
+      category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === d.id).map(a => a.category_id),
+    }))
+    return { ok: true, data: { categories: cats, locations: locs, descriptions: descs } }
+  }
   // options（v1.1.7：支援 category_id 過濾、include_inactive、assoc=0 零關聯）
   if (pathname === '/api/options') {
     const type = url.searchParams.get('type')
@@ -390,17 +404,21 @@ pages.new = function () {
     el('h1', { text: '建單' }),
   ]))
 
-  // 類別下拉
+  // ---- 一次抓完所有選項＋關聯（v1.1.7，避免每次換類別重新請求）----
+  const catalog = { categories: [], locations: [], descriptions: [] }
   const catSelect = el('select', { class: 'select' })
   catSelect.appendChild(el('option', { value: '', text: '請選擇類別' }))
   let selectedCat = null
-  api('/api/options?type=category').then((b) => {
-    for (const o of b.data) {
-      catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
-    }
-  }).catch(() => {})
 
-  // 地點下拉（依類別過濾，未選類別 disabled）
+  // 本地過濾：回該類別關聯＋通用
+  const filterByCat = (type, catId) => {
+    return catalog[type].filter(o => {
+      if (o.category_ids.length === 0) return true // 通用
+      return o.category_ids.includes(catId)
+    })
+  }
+
+  // 地點下拉（依類別本地過濾，未選類別 disabled）
   const locSelect = el('select', { class: 'select' })
   let selectedLoc = null
   const resetLoc = (msg) => {
@@ -408,46 +426,61 @@ pages.new = function () {
     locSelect.appendChild(el('option', { value: '', text: msg }))
     selectedLoc = null
   }
-  const loadLoc = (catId) => {
-    resetLoc('載入地點…')
-    api(`/api/options?type=location&category_id=${catId}`).then((b) => {
-      locSelect.innerHTML = ''
-      locSelect.appendChild(el('option', { value: '', text: '請選擇地點' }))
-      for (const o of b.data) {
-        locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
-      }
-      locSelect.disabled = false
-    }).catch(() => { resetLoc('請選擇地點'); locSelect.disabled = false })
+  const renderLoc = (catId) => {
+    resetLoc('請選擇地點')
+    for (const o of filterByCat('locations', catId)) {
+      locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
+    }
+    locSelect.disabled = false
   }
   resetLoc('請先選擇類別')
   locSelect.disabled = true
   locSelect.addEventListener('change', (e) => { selectedLoc = e.target.value ? Number(e.target.value) : null })
 
-  // 常用說明（依類別過濾，未選類別 disabled）
+  // 常用說明（依類別本地過濾，未選類別 disabled）
   const descSelect = el('select', { class: 'select' })
   descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' }))
   descSelect.disabled = true
-  const loadDesc = (catId) => {
-    api(`/api/options?type=description&category_id=${catId}`).then((b) => {
-      descSelect.innerHTML = ''
-      descSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
-      for (const o of b.data) {
-        descSelect.appendChild(el('option', { value: o.label, text: o.label }))
-      }
-      descSelect.disabled = false
-    }).catch(() => { descSelect.disabled = false })
+  const renderDesc = (catId) => {
+    descSelect.innerHTML = ''
+    descSelect.appendChild(el('option', { value: '', text: '選擇常用說明…' }))
+    for (const o of filterByCat('descriptions', catId)) {
+      descSelect.appendChild(el('option', { value: o.label, text: o.label }))
+    }
+    descSelect.disabled = false
   }
-  descSelect.disabled = true
 
-  catSelect.addEventListener('change', (e) => {
+  // 載入 catalog（一次抓完，本地過濾）
+  api('/api/options/catalog').then((b) => {
+    catalog.categories = b.data.categories
+    catalog.locations = b.data.locations
+    catalog.descriptions = b.data.descriptions
+    for (const o of catalog.categories) {
+      catSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
+    }
+  }).catch(() => {})
+
+  // 選類別：本地過濾；若該類別無關聯（全空），提示並重新讀取最新
+  catSelect.addEventListener('change', async (e) => {
     selectedCat = e.target.value ? Number(e.target.value) : null
-    if (selectedCat) {
-      loadLoc(selectedCat)
-      loadDesc(selectedCat)
-    } else {
+    if (!selectedCat) {
       resetLoc('請先選擇類別'); locSelect.disabled = true
       descSelect.innerHTML = ''; descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' })); descSelect.disabled = true
+      return
     }
+    const locs = filterByCat('locations', selectedCat)
+    const descs = filterByCat('descriptions', selectedCat)
+    if (locs.length === 0 || descs.length === 0) {
+      alert('此類別尚無關聯的地點或說明，正在重新載入…')
+      try {
+        const nb = await api('/api/options/catalog')
+        catalog.categories = nb.data.categories
+        catalog.locations = nb.data.locations
+        catalog.descriptions = nb.data.descriptions
+      } catch (err) { /* 保持原資料 */ }
+    }
+    renderLoc(selectedCat)
+    renderDesc(selectedCat)
   })
 
   const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
