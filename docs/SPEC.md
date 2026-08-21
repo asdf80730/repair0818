@@ -26,7 +26,7 @@
 | v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
-| v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
+| v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -108,7 +108,9 @@ repair-system/
 ├── migrations/
 │   ├── 0001_init.sql              # 見 §2
 │   ├── 0002_seed.sql              # seed 單一來源（v1.1.6，見 §2.3）
-│   └── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
+│   ├── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
+│   ├── 0004_comment_desc.sql      # 回報範本選項類型（v1.1.9）
+│   └── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
@@ -780,7 +782,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.7 P7 管理（manager/admin，D5）
 
-- 選項管理 tab：**類別／地點／故障類型範本／回報範本／廠商**（v1.1.4 起廠商獨立成 tab；v1.1.9 加「回報範本」tab 並正名「故障類型範本」）
+- 選項管理 tab：**類別／地點／使用範本／回報範本／廠商**（v1.1.4 起廠商獨立成 tab；v1.1.9 加「回報範本」tab 並正名「故障類型範本」；v1.1.11 統一「使用範本」）
 - 選項：新增、改名、排序、停用（停用紅）
 - 廠商：新增、修改、停用（停用紅／啟用藍）
 - **類別關聯（v1.1.7 以類別為中心）**：類別 tab 每列顯示「📍N 地點 · 💬N 說明」關聯計數＋「設定關聯」按鈕；點開 modal 才載入該類別的地點/說明（checkbox 勾選），儲存走 `POST /api/options/:id/assoc` 全量覆寫。**不在列表逐項載入，避免 N+1**。

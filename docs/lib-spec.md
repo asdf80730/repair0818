@@ -110,7 +110,7 @@ clearSessionCookie(c)                            // 清除 Cookie（§3.5）
 **規則**：
 - JWT payload 只放 `{ sub: user_id }`，不放 role（每請求從 D1 讀 role/active，禁止只信 JWT）
 - `auth/me`、`auth/logout` 用 `requireAuth({ allowPending: true })`
-- DISABLED 區分：`resolveUser` 維持回 null，middleware 層另查（`isDisabledUser`）
+- DISABLED 區分：`resolveUser` 查到 active=0 時設 `disabledUser` 標記，維持回 null，middleware 層讀標記回 403 DISABLED（不再重查 D1）
 
 ## 6. csrf.ts — CSRF 防護（§3.3）
 

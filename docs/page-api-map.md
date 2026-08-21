@@ -23,7 +23,7 @@
 | | | `/api/exports/sign` | 匯出 CSV 時 |
 | **成員** | `#/users` | `/api/users` | 列表 |
 | | | `/api/users/:id`(PATCH) | 改權限/停用時 |
-| **管理** | `#/admin` | `/api/options` | 類別/地點/故障類型範本/回報範本 |
+| **管理** | `#/admin` | `/api/options` | 類別/地點/使用範本/回報範本 |
 | | | `/api/options/:id`(PATCH) | 編輯選項 |
 | | | `/api/vendors` | 廠商 tab |
 | | | `/api/vendors/:id`(PATCH) | 編輯廠商 |
@@ -34,7 +34,7 @@
 - `ensureCatalog(force)` → `/api/options/catalog`
   - `force=true`（建單/編輯進頁）：**短 TTL 30 秒**（v1.1.8 起，取代每次強制重讀，避免每次進頁吃一次 D1 連線）
   - `force=false`（列表/詳情）：10 分鐘 TTL 快取
-  - catalog 回應含 `categories`/`locations`/`descriptions`(故障類型範本)/`comment_descs`(回報範本)
+  - catalog 回應含 `categories`/`locations`/`descriptions`(使用範本)/`comment_descs`(回報範本)
 
 ## 實測耗時（登入狀態，2026-08-20）
 | API | 耗時 |

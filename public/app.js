@@ -1162,7 +1162,7 @@ pages.admin = function () {
   ]))
 
   // 選項管理 + 廠商管理 tab（問題9：廠商管理獨立 tab，不再每個類別都顯示）
-  const types = [['category', '類別'], ['location', '地點'], ['description', '故障類型範本'], ['comment_desc', '回報範本'], ['vendors', '廠商']]
+  const types = [['category', '類別'], ['location', '地點'], ['description', '使用範本'], ['comment_desc', '回報範本'], ['vendors', '廠商']]
   const tabBar = el('div', { class: 'tabs' })
   const content = el('div', {})
   let currentType = 'category'
@@ -1256,7 +1256,7 @@ pages.admin = function () {
     const locWrap = el('div', { class: 'assoc-list' })
     modal.appendChild(locWrap)
     // 說明區
-    modal.appendChild(el('h4', { class: 'modal-sub', text: '故障類型範本' }))
+    modal.appendChild(el('h4', { class: 'modal-sub', text: '使用範本' }))
     const descWrap = el('div', { class: 'assoc-list' })
     modal.appendChild(descWrap)
     // 儲存（F1：載入完成前 disabled，避免誤點清空關聯）
