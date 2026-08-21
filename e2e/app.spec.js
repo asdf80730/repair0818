@@ -23,8 +23,8 @@ test('卡片：顯示維修內容、建立/最後活動日期、標題補天數�
   await expect(firstDesc).toBeVisible()
   const descText = await firstDesc.textContent()
   expect(descText.trim().length).toBeGreaterThan(0)
-  // 建立/最後活動同行、只顯示日期（含「建立」「最後活動」）
-  const metaText = await page.locator('.ticket-meta').first().textContent()
+  // 建立/最後活動同行、只顯示日期（第二個 .ticket-meta 是「建立… · 最後活動…」）
+  const metaText = await page.locator('.ticket-meta').nth(1).textContent()
   expect(metaText).toContain('建立')
   expect(metaText).toContain('最後活動')
   expect(metaText).toMatch(/\d{4}\/\d{1,2}\/\d{1,2}/) // 日期格式 YYYY/M/D
