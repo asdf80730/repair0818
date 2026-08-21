@@ -328,8 +328,14 @@ async function compressPhoto(file) {
   }
 }
 
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag)
+// G3：判斷文字是否已含某附加片段（以「、」為分隔的獨立項目，避免子字串誤判）
+// 建單與留言框共用，需為全域（原先誤放在 pages.new 內導致留言框 ReferenceError）
+function hasSegment(cur, label) {
+  if (!cur) return false
+  return cur.split('、').some((s) => s.trim() === label)
+}
+
+function el(tag, attrs = {}, children = []) {  const node = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined) continue // 跳過 null/undefined
     if (k === 'class') node.className = v
@@ -656,13 +662,7 @@ pages.new = function () {
     renderDesc(selectedCat)
   })
 
-  // G3：判斷文字是否已含某附加片段（以「、」為分隔的獨立項目，避免子字串誤判）
-function hasSegment(cur, label) {
-  if (!cur) return false
-  return cur.split('、').some((s) => s.trim() === label)
-}
-
-const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
+  const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () => {
     const label = descSelect.value
     if (!label) return
     const cur = descEl.value

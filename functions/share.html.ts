@@ -43,6 +43,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  <!-- v1.1.12：og 標籤讓通訊軟體分享卡片顯示案件標題＋有意義描述（而非「載入中…」） -->
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="社區修繕派工單">
+  <meta name="description" content="社區修繕派工單">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
