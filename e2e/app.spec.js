@@ -153,3 +153,23 @@ test('案件詳情：重新產生分享連結更新輸入框', async ({ page }) 
   const shareVal = await page.locator('.menu-popover .share-row input').inputValue()
   expect(shareVal).toContain('/share.html?token=')
 })
+
+test('v1.1.12：已發包顯示金額 + 發包必填金額', async ({ page }) => {
+  // 直接進已發包案件（id=2，mock 含 amount=12000）
+  await page.goto(`${BASE}/?mock=true#/ticket/2`)
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  // 資訊卡顯示發包金額
+  await expect(page.getByText('發包金額：$12,000').first()).toBeVisible()
+  // 展開留言框，選「已發包」→ 金額框出現，不填送出 → 警示
+  await page.getByText('💬 留言／回報').click()
+  await page.waitForTimeout(300)
+  const statusSel = page.locator('.comment-box select').last()
+  await statusSel.selectOption('in_progress')
+  await page.waitForTimeout(200)
+  await expect(page.locator('.comment-box input[type=number]')).toBeVisible()
+  // 填留言但不填金額 → 送出 → 應被擋
+  await page.locator('.comment-box textarea').fill('測試發包')
+  page.once('dialog', (d) => { expect(d.message()).toContain('已發包需填寫金額'); d.dismiss() })
+  await page.locator('.comment-box button:has-text("送出")').click()
+  await page.waitForTimeout(300)
+})
