@@ -65,14 +65,14 @@ button { cursor: pointer; }
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 13px;
-  color: #fff;
   margin-right: 6px;
 }
-.badge-red { background: var(--red); }
-.badge-yellow { background: var(--yellow); }
-.badge-green { background: var(--green); }
-.badge-black { background: var(--black); }
-.badge-gray { background: var(--gray); }
+/* v1.1.13：狀態色對比（WCAG AA）——淺底深字，避免黃底白字難讀 */
+.badge-red { background: #fee2e2; color: #991b1b; }
+.badge-yellow { background: #fef3c7; color: #92400e; }
+.badge-green { background: #dcfce7; color: #166534; }
+.badge-black { background: #374151; color: #fff; }
+.badge-gray { background: #e5e7eb; color: #4b5563; }
 
 /* tabs */
 .tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--border); -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -130,7 +130,7 @@ button { cursor: pointer; }
 .ticket-card { cursor: pointer; }
 .ticket-title { display: flex; align-items: center; font-weight: 600; }
 .ticket-meta { color: var(--gray); font-size: 14px; margin-top: 4px; }
-.stale { color: var(--red); font-size: 14px; margin-top: 4px; }
+.stale { color: #b45309; font-size: 14px; margin-top: 4px; } /* v1.1.13：橘色區隔，避免與詢價中紅混淆 */
 
 /* 表單 */
 .form { padding: 16px; }
@@ -143,6 +143,7 @@ button { cursor: pointer; }
   background: var(--card);
   min-height: 44px;
 }
+.select { padding-right: 32px; } /* v1.1.13：預留 iOS 原生箭頭空間 */
 .textarea { min-height: 80px; resize: vertical; }
 /* 送出/主操作按鈕滿寬，方便手指點擊 */
 .form .btn-primary { width: 100%; margin-top: 16px; }
@@ -153,7 +154,7 @@ button { cursor: pointer; }
 .photo { width: 100%; max-width: 300px; border-radius: 8px; cursor: pointer; } /* H5 */
 /* E1：縮圖容器與 ✕ 刪除鍵 */
 .photo-thumb { position: relative; display: inline-block; }
-.thumb-del { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: #e02424; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
+.thumb-del { position: absolute; top: -6px; right: -6px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #e02424; color: #fff; font-size: 15px; line-height: 1; cursor: pointer; padding: 0; } /* v1.1.13：22px→32px 觸控 */
 
 /* 時間軸 */
 .timeline { padding: 8px; }
@@ -243,6 +244,7 @@ button { cursor: pointer; }
 }
 .modal {
   background: var(--card); border-radius: 12px; padding: 20px; width: 90%; max-width: 400px;
+  max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; /* v1.1.13：選項多時不超出視窗 */
 }
 .modal h3 { margin: 0 0 12px; }
 .modal label { display: block; font-weight: 600; margin: 10px 0 4px; }

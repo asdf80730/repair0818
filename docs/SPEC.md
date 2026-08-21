@@ -52,6 +52,15 @@
 7. 公開派工頁不顯示廠商名稱、不顯示時間軸、不顯示內部人員
 8. 結案（done）後不可再回報，但可留言（留言不會重開案件）；作廢（void）案件不可留言
 
+**明確不做（v1.1.13 確認，勿擅自加入）**：
+- **不上 React/Vue 等框架**：維持純原生 JS + vendored，避免建置與依賴。
+- **不開 `nodejs_compat`**：維持 Workers 純 API，不引 Node 相容。
+- **不做多社區／多 tenant**：單一社區，不建 tenant 隔離。
+- **不做 LINE Messaging API 推播**：規格列 v1 不做；若未來要做需獨立後端＋OA 開通，非本專案範圍。
+- **不做孤兒照片大清理**：v1 保留「未綁定照片只能本人 GET」政策，不設 cron 清掃。
+- **不把 vendor 下拉塞回列表卡片/詳情頁**：指派廠商只在編輯頁（v1.1.5 定案）。
+- **不建 staging 測試環境**（單人開發）；E2E 用 `?mock=true` 前端記憶體 mock，不碰正式資料（見 §8.7）。
+
 ---
 
 ## 1. 技術棧與專案結構
@@ -739,6 +748,14 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 觸控目標 ≥ 44px、內文字級 ≥ 16px（input 也 16px，避免 iOS 自動縮放）
 - 狀態色：🔴詢價中／🟡處理中（已發包）／🟢已完成／⚫作廢
 
+**v1.1.13 觸控與可讀性補強**：
+- **照片刪除鍵 `.thumb-del` ≥ 32px**（原 22px 過小，觸控不佳）
+- **狀態徽章對比**：黃底改深琥珀字（`#92400e`）、紅底改淺紅底深紅字、綠底改淺綠底深綠字（WCAG AA 可讀）
+- **`<select>` 統一 `padding-right: 32px`**：避免長文字被 iOS 原生箭頭覆蓋
+- **`.modal` 加 `max-height: 85vh; overflow-y: auto; display:flex; flex-direction:column`**（選項多時不超出視窗）
+
+**v1.1.13 提示統一**：操作回饋/錯誤改用既有 `toast()`（底部滑出、自動消失），**不再用原生 `alert()`**（WebView 中會中斷體驗）。
+
 ### 5.0.1 P0 等待開通頁
 
 ```
@@ -926,16 +943,19 @@ LINE_CHANNEL_ID = "2008484338"
 { "version": 1, "include": ["/api/*", "/share.html"], "exclude": [] }
 ```
 
-**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則）：
+**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則；**v1.1.13 加主站 CSP**）：
 
 ```
 /index.html
   Cache-Control: no-cache
 
 /*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.line-scdn.net https://api.line.me; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.line.me https://access.line.me; font-src 'self'; object-src 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
 ```
+
+> 主站 CSP 需白名單 LINE 網域（`static.line-scdn.net` 載入 LIFF SDK、`api.line.me`/`access.line.me` 供 SDK 與登入）——實測確認不擋 LIFF 後定案。
 
 > `X-Frame-Options`／`frame-ancestors`：LIFF 是 WebView 而非 iframe，理論上可設 `DENY`/`'none'`，但**實測確認不影響 LINE 開啟後再鎖**（避免誤擋）。故首版 `_headers` 先不加，列入施工驗證項。
 
@@ -968,13 +988,31 @@ npx wrangler d1 time-travel repair-db0818 --timestamp <unix_timestamp>
 
 v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Worker** 設定 cron trigger（Pages Functions 不支援 cron）。
 
+### 8.7 測試與 CI（v1.1.13 確認）
+
+**E2E 不會碰正式資料**（審查曾誤判為「E2E 可能寫入 production」，實際不成立）：
+
+- `public/app.js` 的 `api()` 開頭是 `if (IS_MOCK) return mockApi(path, options)`——**`?mock=true` 時所有 API 呼叫都走前端記憶體 mock（`mockApi`），完全不 `fetch` 正式網域**。
+- `liff-mock.js` 僅模擬 LINE 登入；`mockTickets`/`mockOptions`/`mockVendors` 都是記憶體寫死，新增/留言/重發 token 只改記憶體，**不碰正式 D1/R2**。
+- 因此**不建 staging 測試環境**（單人開發，見 §0.3 明確不做），E2E 對正式網域跑 `?mock=true` 是安全且正確的。
+
+**單元測試**：`@cloudflare/vitest-pool-workers` 在本地 workerd runtime 跑真實 D1/R2（miniflare），不碰正式資料。
+
+**CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。
+
 ---
 
 ## 10. v1 明確不做 與 後續工件
 
 **v1 不做**：關鍵字搜尋、LINE 推播通知、時間軸明細匯出、孤兒照片清理、留言通知、多社區（多 tenant）、`approved_by` 畫面（欄位保留）。
 
-**v1.1 選配**：Cloudflare Rate Limiting rule（Dashboard 設定，標的含 share 公開端點與 `/api/auth/session`）。
+**Rate Limiting（v1.1.13 確認，於 Cloudflare Dashboard 設定，非改程式）**：公開端點建議加每 IP 速率限制，避免被濫用（UUID 已擋列舉，但無每 IP 上限）：
+- `GET /api/share/:token`
+- `GET /api/share/:token/photos/:id`
+- `POST /api/auth/session`
+- `GET /api/exports/tickets.csv`（簽名連結）
+
+設定方式：Cloudflare Dashboard → 該 Pages 專案 → Security/Rate limiting rules。**本專案不寫 code 實作**（靠 CF 邊緣層），故屬維運作業，非程式施工項。
 
 **下一批文件（已產出）**：
 1. `docs/lib-spec.md` — `src/lib/` 共用層介面規格（`resolveUser`／`requireAuth`／`csrfGuard`／`respond`／`taipeiMonthRangeUtc()` 正確實作範本）——§3.2 已定案 auth 介面，本文件補齊其餘四模組與細節

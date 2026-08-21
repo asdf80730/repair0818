@@ -2,5 +2,6 @@
   Cache-Control: no-cache
 
 /*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.line-scdn.net https://api.line.me; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.line.me https://access.line.me; font-src 'self'; object-src 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer

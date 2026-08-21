@@ -323,7 +323,7 @@ async function compressPhoto(file) {
     })
     return compressed
   } catch (e) {
-    alert('此照片格式無法處理，請改用相機拍攝或先在相簿轉存')
+    toast('此照片格式無法處理，請改用相機拍攝或先在相簿轉存')
     throw e
   }
 }
@@ -679,7 +679,7 @@ pages.new = function () {
   photoInput.addEventListener('change', async () => {
     // E1：先算「已上傳 + 本次選取」是否超過 5，超過則阻斷（避免傳到 R2 才被拒）
     if (selectedPhotos.length + photoInput.files.length > 5) {
-      alert('最多上傳 5 張照片')
+      toast('最多上傳 5 張照片')
       photoInput.value = ''
       return
     }
@@ -702,7 +702,7 @@ pages.new = function () {
         photoPreview.appendChild(wrap)
       } catch (e) {
         if (e && e.code !== 'NETWORK') continue
-        alert(e.message)
+        toast(e.message)
       }
     }
   })
@@ -710,7 +710,7 @@ pages.new = function () {
   let submitting = false // D5：防重複點擊
   async function submit() {
     if (submitting) return
-    if (!selectedCat || !selectedLoc) { alert('請選擇類別與地點'); return }
+    if (!selectedCat || !selectedLoc) { toast('請選擇類別與地點'); return }
     submitting = true
     try {
       const body = await api('/api/tickets', {
@@ -725,7 +725,7 @@ pages.new = function () {
       location.hash = '#/ticket/' + body.data.id
     } catch (e) {
       submitting = false
-      alert(e.message + '，已重新載入最新選項，請重新選擇')
+      toast(e.message + '，已重新載入最新選項，請重新選擇')
       // 400 後強制重讀 catalog 更新下拉（不重整頁面，保留已輸入資料）
       try {
         await ensureCatalog(true)
@@ -805,7 +805,7 @@ pages.ticket = async function (id) {
           if (note === null) return
           if (!confirm('確定作廢此案件？')) return
           try { await api(`/api/tickets/${id}/void`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) }); location.reload() }
-          catch (e) { alert(e.message) }
+          catch (e) { toast(e.message) }
         } }))
       }
       if (canReopen) {
@@ -824,7 +824,7 @@ pages.ticket = async function (id) {
                 el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => modal.remove() }),
                 el('button', { class: 'btn btn-primary', text: '確認重新開啟', onclick: async () => {
                   try { await api(`/api/tickets/${id}/reopen`, { method: 'POST', body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }) }); location.reload() }
-                  catch (e) { alert(e.message) }
+                  catch (e) { toast(e.message) }
                 } }),
               ]),
             ]),
@@ -837,7 +837,7 @@ pages.ticket = async function (id) {
           try {
             const b = await api(`/api/tickets/${id}/share-token`, { method: 'POST' })
             if (shareInput) shareInput.value = location.origin + b.data.share_url
-          } catch (e) { alert(e.message) }
+          } catch (e) { toast(e.message) }
         } }))
       }
       overlay.appendChild(menu)
@@ -890,7 +890,7 @@ pages.ticket = async function (id) {
   commentFile.addEventListener('change', async () => {
     // E1：累積計數 ≤5，超過阻斷（避免傳到 R2 才被拒）
     if (commentPhotos.length + commentFile.files.length > 5) {
-      alert('最多上傳 5 張照片')
+      toast('最多上傳 5 張照片')
       commentFile.value = ''
       return
     }
@@ -913,7 +913,7 @@ pages.ticket = async function (id) {
         commentPreview.appendChild(wrap)
       } catch (e) {
         if (e && e.code !== 'NETWORK') continue
-        alert(e.message)
+        toast(e.message)
       }
     }
   })
@@ -963,12 +963,12 @@ pages.ticket = async function (id) {
     canStatus ? amountInput : null,
     el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
       if (commentSubmitting) return // D5：防重複點擊
-      if (!commentInput.value.trim()) { alert('請輸入留言'); return }
+      if (!commentInput.value.trim()) { toast('請輸入留言'); return }
       const status = statusSelect.value
       if (status === 'done' && !confirm('標記為已完成並結案？')) return
       // v1.1.12：已發包必填金額
       if (status === 'in_progress' && (!amountInput.value || Number(amountInput.value) <= 0)) {
-        alert('已發包需填寫金額'); return
+        toast('已發包需填寫金額'); return
       }
       commentSubmitting = true
       try {
@@ -980,7 +980,7 @@ pages.ticket = async function (id) {
           await api(`/api/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         }
         location.reload()
-      } catch (e) { commentSubmitting = false; alert(e.message) }
+      } catch (e) { commentSubmitting = false; toast(e.message) }
     } }),
   ]))
   commentWrap.style.display = 'none'
@@ -1089,7 +1089,7 @@ pages.edit = async function (id) {
     try {
       await api(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
       location.hash = '#/ticket/' + id
-    } catch (e) { alert(e.message) }
+    } catch (e) { toast(e.message) }
   }
 
   root.querySelector('.loading-wrap')?.remove()
@@ -1195,7 +1195,7 @@ async function exportCsv() {  try {
       // D6：await 後 window.open 失去手勢信任（iOS Safari 攔截），改用 location.href 導向
       location.href = url
     }
-  } catch (e) { alert(e.message) }
+  } catch (e) { toast(e.message) }
 }
 
 // P6 成員管理（admin，§5.6）
@@ -1244,7 +1244,7 @@ pages.users = function () {
             await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ role: roleSelect.value }) })
             u.role = roleSelect.value
             render()
-          } catch (e) { alert(e.message); render() } // D7：失敗回滾下拉到實際角色
+          } catch (e) { toast(e.message); render() } // D7：失敗回滾下拉到實際角色
         })
         const activeBtn = el('button', {
           class: 'btn ' + (u.active ? 'btn-danger' : 'btn-primary'), // 問題15：停用紅/啟用藍
@@ -1254,7 +1254,7 @@ pages.users = function () {
               await api('/api/users/' + u.id, { method: 'PATCH', body: JSON.stringify({ active: u.active ? 0 : 1 }) })
               u.active = u.active ? 0 : 1
               render()
-            } catch (e) { alert(e.message) }
+            } catch (e) { toast(e.message) }
           },
         })
         list.appendChild(el('div', { class: 'card user-row' }, [
@@ -1307,7 +1307,7 @@ pages.admin = function () {
           el('span', { text: v.name + (v.active ? '' : '（已停用）') }),
           el('button', { class: 'btn ' + (v.active ? 'btn-danger' : 'btn-primary'), text: v.active ? '停用' : '啟用', onclick: async () => {
             try { await api('/api/vendors/' + v.id, { method: 'PATCH', body: JSON.stringify({ active: v.active ? 0 : 1 }) }); renderVendors() }
-            catch (e) { alert(e.message) }
+            catch (e) { toast(e.message) }
           } }),
         ]))
       }
@@ -1325,7 +1325,7 @@ pages.admin = function () {
             await api('/api/vendors', { method: 'POST', body: JSON.stringify({ name: newVendor.value.trim() }) })
             newVendor.value = ''
             renderVendors()
-          } catch (e) { alert(e.message) }
+          } catch (e) { toast(e.message) }
         } }),
       ]))
     }).catch((e) => { if (currentType === 'vendors') { content.innerHTML = ''; content.appendChild(el('p', { class: 'error', text: e.message })) } })
@@ -1355,7 +1355,7 @@ pages.admin = function () {
               catalogCache = null // E10：停用/啟用後清全域快取，避免建單/詳情頁讀舊
               renderOptions()
             }
-            catch (e) { alert(e.message) }
+            catch (e) { toast(e.message) }
           } }),
         ])
         // 類別 tab：顯示關聯計數 + 設定關聯按鈕（v1.1.7 改以類別為中心）
@@ -1400,7 +1400,7 @@ pages.admin = function () {
         catalogCache = null // E10：關聯變更後清全域快取
         mask.remove()
         renderOptions()
-      } catch (e) { alert(e.message) }
+      } catch (e) { toast(e.message) }
     } })
     modal.appendChild(el('div', { class: 'modal-actions' }, [
       el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => mask.remove() }),
@@ -1466,7 +1466,7 @@ pages.admin = function () {
         newLabel.value = ''
         catalogCache = null // E10：新增選項後清全域快取
         renderOptions()
-      } catch (e) { alert(e.message) }
+      } catch (e) { toast(e.message) }
     } }),
   ])
   // 切換 tab 時更新新增列（廠商 tab 不顯示選項新增列）
