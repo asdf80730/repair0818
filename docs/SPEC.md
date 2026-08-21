@@ -27,7 +27,7 @@
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
 | v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
-| v1.1.12 | **處理中拆為詢價中/已發包＋金額統計**：① 狀態語意——`open` 顯示改「詢價中」、`in_progress` 代表「已發包」（不新增狀態值，Tab 結構不變）；② **金額**——migration 0006 加 `tickets.amount`/`amount_at`，回報選「已發包」必填金額（zod superRefine＋前端金額輸入框），`amount_at` 為發包時間；③ **統計**——新增 `GET /api/stats/amount-by-category`，各類別金額以發包時間為月份基準加總，統計頁加「各類別金額」區塊；④ 首頁 Tab 僅「待處理」改名「詢價中」。CI 全綠、0006 已套 production、已部署 |
+| v1.1.12 | **處理中拆為詢價中/已發包＋金額統計＋分享動態標題**：① 狀態語意——`open` 顯示改「詢價中」、`in_progress` 代表「已發包」（不新增狀態值，Tab 結構不變）；② **金額**——migration 0006 加 `tickets.amount`/`amount_at`、0007 加 `ticket_updates.amount`，回報選「已發包」必填金額（zod superRefine＋前端金額輸入框），`amount_at` 為發包時間；③ **統計**——新增 `GET /api/stats/amount-by-category`，各類別金額以發包時間為月份基準加總，統計頁加「各類別金額」區塊；④ 首頁 Tab 僅「待處理」改名「詢價中」；⑤ **金額顯示**——詳情頁資訊卡＋時間軸顯示「發包金額：$X」；⑥ **分享動態標題**——`/share.html` 改由 Pages Function 動態渲染，`<title>` 依 token 顯示案件標題（通訊軟體分享卡片顯示「{類別}－{地點} #{id}」而非「派工單」）。CI 全綠、0006/0007 已套 production、已部署 |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -112,7 +112,8 @@ repair-system/
 │   ├── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
 │   ├── 0004_comment_desc.sql      # 回報範本選項類型（v1.1.9）
 │   ├── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
-│   └── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
+│   ├── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
+│   └── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
@@ -535,7 +536,7 @@ export function requireAuth(opts?: {
 ```
 
 - ticket.status 同步更新；done 時設 `closed_at`／`closed_by`
-- **v1.1.12：`in_progress` 代表「已發包」，必填 `amount`（正整數）**；寫入 `tickets.amount` 與 `amount_at`（發包時間，統計月份基準）
+- **v1.1.12：`in_progress` 代表「已發包」，必填 `amount`（正整數）**；寫入 `tickets.amount` 與 `amount_at`（發包時間，統計月份基準），同時寫入該筆 `ticket_updates.amount`（時間軸顯示發包金額用）
 - 更新 `last_activity_at`；照片綁定 `target_type='update'` + 該筆 update id
 - 多步驟寫入用 `env.DB.batch()`
 - 已結案（done）或作廢（void）的單 → 回 `VALIDATION_ERROR`
@@ -772,6 +773,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 - **右上角 ⋮ 選單**（v1.1.6）：利用返回右邊空間，點開下拉顯示 **分享連結（複製）／✏️ 編輯／🗑 作廢／↩️ 重新開啟／🔄 重新產生分享連結**。分享連結不再佔主版面。
 - 案件資訊卡（緊湊：detail-head/detail-line）、照片牆、**時間軸為主角**。時間軸依 `kind` 三種樣式：狀態回報（徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
+- **發包金額顯示（v1.1.12）**：案件已發包（`amount` 非空）時，資訊卡顯示「發包金額：$X」；時間軸的「已發包(in_progress)」回報更新若帶 `amount`，也在該筆時間軸顯示「發包金額：$X」
 - **底部留言框改隱藏式**（v1.1.6）：頁面底部只有「💬 留言／回報」按鈕，點開才展開留言框＋可選狀態更新（manager/admin 可標記處理中/完成，委員僅留言）
 - **⋮ 選單**：編輯（D7：committee 僅自己建的單；manager/admin 全部，open/in_progress）、作廢（manager/admin，二次確認含選填原因）、重新開啟（僅 admin 且 done/void → modal 選狀態＋備註）、重新產生分享連結（manager/admin，直接更新輸入框）
 - 🟢 完成（P4 回報選 done）需二次確認彈窗
@@ -813,6 +815,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 進入方式：**`/share.html?token={share_token}`**（v1.1.4 起；share.js 從 query 取 token，相容從 pathname 取）
 - 顯示白名單欄位＋照片（照片 url 指向 `/api/share/{token}/photos/{id}`）
 - 顯示「狀態更新於 {last_activity_at 換算台灣時間}」（此為 share 回傳 last_activity_at 的用途）
+- **動態頁標題（v1.1.12）**：`/share.html` 由 Pages Function（`functions/share.html.ts`）動態渲染，依 token 查 D1 把 `<title>` 組成為「{類別}－{地點} #{id}」，讓通訊軟體分享卡片顯示案件標題（而非寫死「派工單」）；token 無效時回「派工單」預設標題。`_routes.json` 已加入 `/share.html` 走 function
 - token 無效顯示「連結已失效，請向管理公司索取新連結」
 - 內建 print CSS：管理公司可用瀏覽器「列印→儲存為 PDF」
 - 安全標頭由 `public/_headers` 設定（見 §8.2）
@@ -919,7 +922,7 @@ LINE_CHANNEL_ID = "2008484338"
 { "version": 1, "include": ["/api/*"], "exclude": [] }
 ```
 
-**`public/_headers`**（Pages 靜態檔標頭的唯一設定管道，Functions 碰不到 share.html）：
+**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，與下方規則一致）：
 
 ```
 /share.html
