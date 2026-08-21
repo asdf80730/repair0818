@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.12（已擴充至 110 單元測試 + 14 E2E）
+> 版本：v1.1.13（已擴充至 110 單元測試 + 14 E2E）
 
 ## 執行方式
 
@@ -23,7 +23,7 @@ npm test   # 等於 vitest run
 
 > 斷言 2–4 依賴 M2/M5 實作（auth/session 目前 501、CSV 簽名需 JWT_SECRET），測試中先 `it.skip`，里程碑完成後移除 `.skip` 即可驗證。
 
-## 測試檔結構（v1.1.12，110 單元測試）
+## 測試檔結構（v1.1.13，110 單元測試）
 
 ```
 tests/
@@ -34,7 +34,7 @@ tests/
 ├── coverage.test.ts       # 覆蓋補齊（photos/users防呆/options/vendors/logout/void/篩選/share photos）（28）
 ├── boundary.test.ts       # 邊界與例外（權限邊界/欄位驗證/D7/reopen/comments/分頁/auth/session/404/已發包必填金額）（29）
 ├── assoc.test.ts          # v1.1.7 類別關聯（join 表/三模式/category_ids 三態/assoc 端點/catalog）（20）
-├── share-html.test.ts     # v1.1.12 分享頁動態標題 + og 標籤（5）
+├── share-html.test.ts     # v1.1.13 分享頁動態標題 + og 標籤（5）
 ├── apply-migrations.ts    # setup：套用 D1 migrations（cloudflare:test）
 └── env.d.ts               # 測試環境型別（DB/PHOTOS/TEST_MIGRATIONS）
 ```

@@ -267,7 +267,7 @@ describe('vendors 寫操作（§4.6）', () => {
     const r = await worker.fetch('http://example.com/api/vendors', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
-      body: JSON.stringify({ name: '水電行', phone: '0912' }),
+      body: JSON.stringify({ name: '水電行' }),
     })
     expect(r.status).toBe(201)
   })
@@ -298,6 +298,34 @@ describe('vendors 寫操作（§4.6）', () => {
       body: JSON.stringify({ name: 'X' }),
     })
     expect(r.status).toBe(403)
+  })
+
+  it('PATCH sort_order 後列表依 active DESC, sort_order 排序（v1.1.13）', async () => {
+    const { cookie } = await loginAs('U-cov-v4', '廠商4', 'manager')
+    // 新增兩家廠商
+    const a = await (await worker.fetch('http://example.com/api/vendors', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ name: '甲廠商' }),
+    })).json()
+    const b = await (await worker.fetch('http://example.com/api/vendors', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ name: '乙廠商' }),
+    })).json()
+    // 把甲廠商 sort_order 調成 10，應排在乙廠商(0)之後
+    const patch = await worker.fetch(`http://example.com/api/vendors/${a.data.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ sort_order: 10 }),
+    })
+    expect(patch.status).toBe(200)
+
+    const list = await worker.fetch('http://example.com/api/vendors', { headers: { Cookie: cookie } })
+    const { data } = await list.json()
+    const names = data.map((v: any) => v.name)
+    // 甲(10) 應在乙(0) 之後
+    expect(names.indexOf('乙廠商')).toBeLessThan(names.indexOf('甲廠商'))
+    // phone 欄位已移除
+    expect(data[0]).not.toHaveProperty('phone')
+    expect(data[0]).toHaveProperty('sort_order')
   })
 })
 

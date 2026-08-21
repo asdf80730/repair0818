@@ -2,7 +2,7 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.12（定稿，可施工）** ｜ 日期：2026-08-21
+**版本：v1.1.13（定稿，可施工）** ｜ 日期：2026-08-22
 
 > 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 十二版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
@@ -27,7 +27,7 @@
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
 | v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
-| v1.1.12 | **處理中拆為詢價中/已發包＋金額統計＋分享動態標題**：① 狀態語意——`open` 顯示改「詢價中」、`in_progress` 代表「已發包」（不新增狀態值，Tab 結構不變）；② **金額**——migration 0006 加 `tickets.amount`/`amount_at`、0007 加 `ticket_updates.amount`，回報選「已發包」必填金額（zod superRefine＋前端金額輸入框），`amount_at` 為發包時間；③ **統計**——新增 `GET /api/stats/amount-by-category`，各類別金額以發包時間為月份基準加總，統計頁加「各類別金額」區塊；④ 首頁 Tab 僅「待處理」改名「詢價中」；⑤ **金額顯示**——詳情頁資訊卡＋時間軸顯示「發包金額：$X」；⑥ **分享動態標題**——`/share.html` 改由 Pages Function 動態渲染，`<title>` 依 token 顯示案件標題（通訊軟體分享卡片顯示「{類別}－{地點} #{id}」而非「派工單」）。CI 全綠、0006/0007 已套 production、已部署 |
+| v1.1.13 | **廠商排序欄位＋移除無用 phone**：migration 0008 移除 `vendors.phone`（後端有存但前端完全無 UI，已確認無資料可放心丟）、加 `vendors.sort_order`（預設 0，排序用；與 options.sort_order 同模式，**後台直接改資料庫，無前端排序介面**）。後端 `GET /api/vendors` 改 `ORDER BY active DESC, sort_order, id`；PATCH 支援改 `sort_order`；create/update schema 移除 phone。CI 全綠、0008 已套 production |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -113,7 +113,8 @@ repair-system/
 │   ├── 0004_comment_desc.sql      # 回報範本選項類型（v1.1.9）
 │   ├── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
 │   ├── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
-│   └── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
+│   ├── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
+│   └── 0008_vendors_sort.sql      # 移除 vendors.phone、加 vendors.sort_order（v1.1.13）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
@@ -188,7 +189,7 @@ CREATE TABLE users (
 CREATE TABLE vendors (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
-  phone      TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,   -- 排序（v1.1.13，後台改資料庫；與 options.sort_order 同模式）
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -471,7 +472,7 @@ export function requireAuth(opts?: {
 | vendor_id | **僅 PATCH 適用**：選填，**三態**——不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（須 active；D1/G1） |
 | photo_ids | 選填，≤ 5 張，**每張須滿足 `uploaded_by=本人` 且 `target_id IS NULL`**（後端強制） |
 | status（回報） | 必填：open / in_progress / done |
-| 廠商 name | 必填，1–50 字；phone 選填 ≤ 20 字 |
+| 廠商 name | 必填，1–50 字；sort_order 選填，非負整數（預設 0） |
 | 選項 label | 必填，1–30 字 |
 | 成員 display_name | 必填，1–20 字 |
 
@@ -623,9 +624,9 @@ export function requireAuth(opts?: {
 | POST `/api/options` | manager/admin | `{ type, label, sort_order, category_ids? }`；若 `(type,label)` 已存在 → 該筆 `active=1` 並更新 `sort_order`，否則新增；`category_ids` 三態（undefined 不動／[] 清空／有值全量覆寫） |
 | PATCH `/api/options/:id` | manager/admin | 改 label／sort_order／active（停用）／category_ids |
 | POST `/api/options/:id/assoc` | manager/admin | 以類別為中心全量覆寫關聯（v1.1.7） |
-| GET `/api/vendors` | manager/admin | 列表（含停用） |
-| POST `/api/vendors` | manager/admin | 新增 |
-| PATCH `/api/vendors/:id` | manager/admin | 修改／停用 |
+| GET `/api/vendors` | manager/admin | 列表（含停用）；排序 `active DESC, sort_order, id`（v1.1.13） |
+| POST `/api/vendors` | manager/admin | 新增（name） |
+| PATCH `/api/vendors/:id` | manager/admin | 修改／停用／改 `sort_order` |
 | GET `/api/users` | admin | 列表（含 pending 與停用） |
 | PATCH `/api/users/:id` | admin | 可改 `role`、`active`、`display_name`；**防呆規則見下** |
 

@@ -89,11 +89,10 @@ export const listOptionsQuerySchema = z.object({
 // 廠商（§4.6）
 export const createVendorSchema = z.object({
   name: z.string().trim().min(1).max(50),
-  phone: z.string().trim().max(20).optional().or(z.literal('')),
 })
 export const updateVendorSchema = z.object({
   name: z.string().trim().min(1).max(50).optional(),
-  phone: z.string().trim().max(20).optional().or(z.literal('')),
+  sort_order: z.number().int().min(0).optional(),
   active: z.number().int().min(0).max(1).optional(),
 })
 

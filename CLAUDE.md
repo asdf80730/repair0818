@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.12 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.13 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -47,6 +47,7 @@
 - 編輯、void、reopen 都必須寫入時間軸；reopen 訊息須帶入實際前狀態（已完成／已作廢）。
 - month_done 從 ticket_updates 計算（見 §4.7），禁止用 tickets.closed_at。
 - 建單不接受 vendor_id；廠商僅在 PATCH 由 manager/admin 指派。
+- **廠商排序（v1.1.13）**：`vendors.sort_order` 排序用（與 options.sort_order 同模式），後台直接改資料庫、無前端排序介面；`GET /api/vendors` 依 `active DESC, sort_order, id`。**phone 欄位已移除（0008），勿再引用**。
 - **指派廠商只在編輯頁（pages.edit）提供**（v1.1.5），不要塞進列表卡片或詳情頁；權限 manager/admin（保全/秘書層級）。
 - **權限中文對照**：主管=admin、保全/秘書=manager、委員=committee（v1.1.5 定案，勿寫反）。
 - 編輯權限：committee 僅自己建的單；manager/admin 全部（D7）。

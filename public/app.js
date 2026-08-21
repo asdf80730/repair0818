@@ -47,7 +47,7 @@ const mockUsers = [
   { id: 5, display_name: '待開通者', role: 'pending', active: 1 },
   { id: 6, display_name: '已停用者', role: 'committee', active: 0 },
 ]
-const mockVendors = [{ id: 1, name: '測試廠商', phone: '0912345678', active: 1 }]
+const mockVendors = [{ id: 1, name: '測試廠商', sort_order: 0, active: 1 }]
 
 function mockApi(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase()

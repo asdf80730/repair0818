@@ -12,9 +12,10 @@ import type { Env } from '../lib/env'
 export const vendorRoutes = new Hono<Env>()
 
 // GET /api/vendors — manager/admin，列表（含停用）（§4.6）
+// 排序：啟用在前、停用在後；同狀態依 sort_order 再依 id（v1.1.13，與 options.sort_order 同模式）
 vendorRoutes.get('/', requireAuth({ roles: ['manager', 'admin'] }), async (c) => {
   const rows = await c.env.DB.prepare(
-    'SELECT id, name, phone, active, created_at FROM vendors ORDER BY active DESC, id',
+    'SELECT id, name, sort_order, active, created_at FROM vendors ORDER BY active DESC, sort_order, id',
   ).all()
   return ok(c, rows.results)
 })
@@ -23,8 +24,8 @@ vendorRoutes.get('/', requireAuth({ roles: ['manager', 'admin'] }), async (c) =>
 vendorRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createVendorSchema), async (c) => {
   const body = c.req.valid('json')
   const insert = await c.env.DB.prepare(
-    'INSERT INTO vendors (name, phone, active, created_at) VALUES (?, ?, 1, ?)',
-  ).bind(body.name, body.phone ?? null, nowIso()).run()
+    'INSERT INTO vendors (name, active, created_at) VALUES (?, 1, ?)',
+  ).bind(body.name, nowIso()).run()
   return ok(c, { id: insert.meta.last_row_id }, 201)
 })
 
@@ -42,7 +43,7 @@ vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValida
   const sets: string[] = []
   const binds: unknown[] = []
   if (body.name !== undefined) { sets.push('name = ?'); binds.push(body.name) }
-  if (body.phone !== undefined) { sets.push('phone = ?'); binds.push(body.phone) }
+  if (body.sort_order !== undefined) { sets.push('sort_order = ?'); binds.push(body.sort_order) }
   if (body.active !== undefined) { sets.push('active = ?'); binds.push(body.active) }
   if (sets.length === 0) return ok(c, { id, updated: false })
 
