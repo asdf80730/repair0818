@@ -163,14 +163,14 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
       "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ? ORDER BY id",
     ).bind(id).all<{ id: number }>(),
     c.env.DB.prepare(
-      `SELECT u.id, u.kind, u.status, u.note, u.created_at,
+      `SELECT u.id, u.kind, u.status, u.note, u.created_at, u.amount,
               usr.display_name
        FROM ticket_updates u
        LEFT JOIN users usr ON usr.id = u.user_id
        WHERE u.ticket_id = ?
        ORDER BY u.created_at, u.id`,
     ).bind(id).all<{
-      id: number; kind: string; status: string | null; note: string | null
+      id: number; kind: string; status: string | null; note: string | null; amount: number | null
       created_at: string; display_name: string | null
     }>(),
   ])
@@ -215,6 +215,8 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
     description: ticket.description,
     status: ticket.status,
     vendor_name: vendorName,
+    amount: ticket.amount,
+    amount_at: ticket.amount_at,
     created_at: ticket.created_at,
     last_activity_at: ticket.last_activity_at,
     closed_at: ticket.closed_at,
@@ -225,6 +227,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
       kind: u.kind,
       status: u.status,
       note: u.note,
+      amount: u.amount,
       display_name: u.display_name,
       created_at: u.created_at,
       photo_urls: updatePhotos.get(u.id) ?? [],
@@ -384,11 +387,11 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
       `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ?,
          amount = ?, amount_at = ? WHERE id = ?`,
     ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, amount, amountAt, id),
-    // 寫入時間軸（kind=status）
+    // 寫入時間軸（kind=status），含發包金額
     c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'status', ?, ?, ?)`,
-    ).bind(id, user.id, body.status, body.note ?? null, now),
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at, amount)
+       VALUES (?, ?, 'status', ?, ?, ?, ?)`,
+    ).bind(id, user.id, body.status, body.note ?? null, now, isContracted ? body.amount : null),
   ]
 
   // 多步驟寫入用 env.DB.batch()（原子），從 batch 回傳結果拿 last_row_id（避免並發回報時 ORDER BY DESC 抓錯）

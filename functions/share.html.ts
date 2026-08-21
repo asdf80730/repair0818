@@ -56,6 +56,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   return new Response(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
+      // 與原本 _headers 對 /share.html 的 CSP 規則一致（function 回傳不會套用 _headers）
+      'Content-Security-Policy': "default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
       'X-Robots-Tag': 'noindex',

@@ -33,6 +33,7 @@ const mockOptions = {
   category: [{ id: 1, label: '電梯' }, { id: 2, label: '門禁' }, { id: 3, label: '水泵' }],
   location: [{ id: 1, label: '停車場' }, { id: 2, label: '大廳' }, { id: 3, label: '頂樓' }],
   description: [{ id: 1, label: '水泵浦異音' }, { id: 2, label: '照明故障' }],
+  comment_desc: [{ id: 1, label: '已通知廠商處理' }, { id: 2, label: '已到場勘查' }],
 }
 const mockUsers = [
   { id: 1, display_name: '測試用戶', role: 'admin', active: 1 },
@@ -65,7 +66,8 @@ function mockApi(path, options = {}) {
       ...d,
       category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === d.id).map(a => a.category_id),
     }))
-    return { ok: true, data: { categories: cats, locations: locs, descriptions: descs } }
+    const commentDescs = (mockOptions.comment_desc || []).map(d => ({ id: d.id, label: d.label }))
+    return { ok: true, data: { categories: cats, locations: locs, descriptions: descs, comment_descs: commentDescs } }
   }
   // options（v1.1.7：支援 category_id 過濾、include_inactive、assoc=0 零關聯）
   if (pathname === '/api/options') {
@@ -800,6 +802,7 @@ pages.ticket = async function (id) {
     ]),
     el('p', { class: 'detail-line', text: `類別：${t.category_label}｜地點：${t.location_label}` }),
     el('p', { class: 'detail-line', text: `廠商：${t.vendor_name || '未指派'}` }),
+    t.amount != null ? el('p', { class: 'detail-line amount-line', text: `發包金額：$${t.amount.toLocaleString()}` }) : null,
     t.description ? el('p', { class: 'desc', text: t.description }) : null,
     el('p', { class: 'meta', text: `建立 ${fmtTime(t.created_at)} · 最後活動 ${fmtTime(t.last_activity_at)}` }),
   ])
@@ -948,6 +951,7 @@ function renderUpdate(u) {
   // status
   return el('div', { class: 'update status' }, [
     el('div', { class: 'update-head' }, [statusBadge(u.status), el('span', { text: ` ${u.display_name || ''} · ${fmtTime(u.created_at)}` })]),
+    u.amount != null ? el('div', { class: 'update-body amount-line', text: `發包金額：$${u.amount.toLocaleString()}` }) : null,
     u.note ? el('div', { class: 'update-body', text: u.note }) : null,
     ...(u.photo_urls || []).map((p) => thumb(p)),
   ])
