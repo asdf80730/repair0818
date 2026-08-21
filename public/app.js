@@ -541,7 +541,7 @@ pages.new = function () {
   descSelect.disabled = true
   const renderDesc = (catId) => {
     descSelect.innerHTML = ''
-    descSelect.appendChild(el('option', { value: '', text: '選擇使用範本…' }))
+    descSelect.appendChild(el('option', { value: '', text: '使用範本…' }))
     for (const o of filterByCat('descriptions', catId)) {
       descSelect.appendChild(el('option', { value: o.label, text: o.label }))
     }
@@ -669,7 +669,7 @@ const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () 
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
     el('label', { text: '說明' }), descEl,
-    el('label', { text: '使用範本（選填）' }), descRow,
+    descRow,
     el('label', { text: '照片' }), photoInput, photoPreview,
     el('button', { class: 'btn btn-primary', text: '送出建單', onclick: submit }),
   ]))
