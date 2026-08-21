@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.12（已擴充至 110 單元測試 + 12 E2E）
+> 版本：v1.1.12（已擴充至 110 單元測試 + 14 E2E）
 
 ## 執行方式
 
@@ -39,7 +39,7 @@ tests/
 └── env.d.ts               # 測試環境型別（DB/PHOTOS/TEST_MIGRATIONS）
 ```
 
-E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**12 個測試**涵蓋列表/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁。
+E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**14 個測試**涵蓋列表/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填。
 
 ## 核心端點案例（輸入 → 期望輸出）
 
