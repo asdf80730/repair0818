@@ -538,6 +538,7 @@ export function requireAuth(opts?: {
 
 - ticket.status 同步更新；done 時設 `closed_at`／`closed_by`
 - **v1.1.12：`in_progress` 代表「已發包」，必填 `amount`（正整數）**；寫入 `tickets.amount` 與 `amount_at`（發包時間，統計月份基準），同時寫入該筆 `ticket_updates.amount`（時間軸顯示發包金額用）
+- **v1.1.13：`amount/amount_at` 只在 in_progress 時更新，其他狀態（含 done）保留既有值不清空**（結案後發包金額與統計月份基準不消失）
 - 更新 `last_activity_at`；照片綁定 `target_type='update'` + 該筆 update id
 - 多步驟寫入用 `env.DB.batch()`
 - 已結案（done）或作廢（void）的單 → 回 `VALIDATION_ERROR`
