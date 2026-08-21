@@ -142,7 +142,8 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   const ticket = await c.env.DB.prepare(
     `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label, t.description, t.status,
             t.vendor_id, v.name AS vendor_name, v.active AS vendor_active,
-            t.created_at, t.last_activity_at, t.closed_at, t.share_token
+            t.created_at, t.last_activity_at, t.closed_at, t.share_token,
+            t.amount, t.amount_at
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      WHERE t.id = ?`,
@@ -151,6 +152,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
     location_id: number | null; location_label: string; description: string | null
     status: string; vendor_id: number | null; vendor_name: string | null; vendor_active: number | null
     created_at: string; last_activity_at: string; closed_at: string | null; share_token: string
+    amount: number | null; amount_at: string | null
   }>()
 
   if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
