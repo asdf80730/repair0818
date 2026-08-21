@@ -71,7 +71,7 @@ export async function csvDownload(c: AppContext) {
   // 軌 A：有效 session 且 role 為 manager/admin
   const user = await resolveUser(c)
   if (user && (user.role === 'manager' || user.role === 'admin')) {
-    return buildCsv(c, user.id)
+    return buildCsv(c)
   }
 
   // 軌 B：驗 uid/exp/sig
@@ -107,11 +107,11 @@ export async function csvDownload(c: AppContext) {
   if (!row || row.active !== 1 || (row.role !== 'manager' && row.role !== 'admin')) {
     return fail(c, 401, 'UNAUTHORIZED', '簽名錯誤')
   }
-  return buildCsv(c, uid)
+  return buildCsv(c)
 }
 
 /** 產生 CSV（§4.8 內容規格） */
-async function buildCsv(c: AppContext, uid: number) {
+async function buildCsv(c: AppContext) {
   const status = c.req.query('status') ?? ''
   const from = c.req.query('from') ?? ''
   const to = c.req.query('to') ?? ''
