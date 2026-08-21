@@ -56,7 +56,7 @@ test('案件詳情：分享連結格式正確、可進編輯頁（含指派廠�
 test('切換狀態 tab 篩選', async ({ page }) => {
   await page.locator('.tab', { hasText: '已完成' }).click()
   await page.waitForTimeout(500)
-  await page.locator('.tab', { hasText: '待處理' }).click()
+  await page.locator('.tab', { hasText: '詢價中' }).click()
   await page.waitForSelector('.ticket-card', { timeout: 10000 })
   await expect(page.getByText('電梯－停車場 #0001')).toBeVisible()
 })
