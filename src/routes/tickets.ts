@@ -375,7 +375,8 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
 
   const now = nowIso()
   const isDone = body.status === 'done'
-  // v1.1.12：in_progress 代表「已發包」，寫入金額與發包時間（amount_at 為統計月份基準）
+  // v1.1.13：發包金額只在 in_progress（已發包）時更新；done/其他狀態保留既有金額，不覆寫、不清空
+  // （done 若清空 amount，結案後發包金額消失；統計 month 基準也消失——語意鎖死，勿改回）
   const isContracted = body.status === 'in_progress'
   const amount = isContracted ? body.amount : null
   const amountAt = isContracted ? now : null
@@ -385,7 +386,7 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
     // 更新 ticket status（含金額/發包時間）
     c.env.DB.prepare(
       `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ?,
-         amount = ?, amount_at = ? WHERE id = ?`,
+         amount = COALESCE(?, amount), amount_at = COALESCE(?, amount_at) WHERE id = ?`,
     ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, amount, amountAt, id),
     // 寫入時間軸（kind=status），含發包金額
     c.env.DB.prepare(
