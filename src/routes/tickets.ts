@@ -370,13 +370,18 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
 
   const now = nowIso()
   const isDone = body.status === 'done'
+  // v1.1.12：in_progress 代表「已發包」，寫入金額與發包時間（amount_at 為統計月份基準）
+  const isContracted = body.status === 'in_progress'
+  const amount = isContracted ? body.amount : null
+  const amountAt = isContracted ? now : null
 
   // 多步驟寫入用 env.DB.batch()
   const stmts = [
-    // 更新 ticket status
+    // 更新 ticket status（含金額/發包時間）
     c.env.DB.prepare(
-      `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ? WHERE id = ?`,
-    ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, id),
+      `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ?,
+         amount = ?, amount_at = ? WHERE id = ?`,
+    ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, amount, amountAt, id),
     // 寫入時間軸（kind=status）
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)

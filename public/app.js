@@ -152,6 +152,10 @@ function mockApi(path, options = {}) {
   if (pathname === '/api/stats/summary') {
     return { ok: true, data: { open_count: 1, in_progress_count: 1, month_new: 2, month_done: 0 } }
   }
+  // v1.1.12：各類別金額統計（mock）
+  if (pathname === '/api/stats/amount-by-category') {
+    return { ok: true, data: { items: [{ category_label: '電梯', total_amount: 12000, count: 2 }, { category_label: '門禁', total_amount: 5000, count: 1 }] } }
+  }
   // users
   if (pathname === '/api/users' && method === 'GET') {
     return { ok: true, data: mockUsers }
@@ -292,7 +296,8 @@ function fmtTime(iso) {
 }
 
 function statusBadge(status) {
-  const map = { open: ['待處理', 'red'], in_progress: ['處理中', 'yellow'], done: ['已完成', 'green'], void: ['已作廢', 'black'] }
+  // v1.1.12：open 改「詢價中」；in_progress「處理中」維持（代表已發包）
+  const map = { open: ['詢價中', 'red'], in_progress: ['處理中', 'yellow'], done: ['已完成', 'green'], void: ['已作廢', 'black'] }
   const [label, color] = map[status] || [status, 'gray']
   return el('span', { class: `badge badge-${color}`, text: label })
 }
@@ -384,6 +389,11 @@ function renderEmpty(root, text) {
   root.appendChild(el('p', { class: 'empty-state', text: text || '沒有符合條件的項目' }))
 }
 
+// 當月 YYYY-MM（台灣時區）
+function taipeiMonth() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).format(new Date())
+}
+
 // P0 等待開通頁（§5.0.1）
 pages.pending = function () {
   const root = document.getElementById('page')
@@ -402,7 +412,7 @@ pages.list = function () {
   const root = document.getElementById('page')
   root.innerHTML = ''
   const tabs = [
-    ['active', '未結案'], ['open', '待處理'], ['in_progress', '處理中'],
+    ['active', '未結案'], ['open', '詢價中'], ['in_progress', '處理中'],
     ['done', '已完成'], ['void', '已作廢'], ['all', '全部'],
   ]
   let currentStatus = 'active'
@@ -875,9 +885,14 @@ pages.ticket = async function (id) {
   const statusSelect = el('select', { class: 'select' })
   statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
   if (canStatus) {
-    statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記處理中' }))
+    statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記已發包' }))
     statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
   }
+  // v1.1.12：選「已發包」時顯示金額輸入框（必填）
+  const amountInput = el('input', { type: 'number', class: 'input', placeholder: '發包金額（必填）', style: 'display:none' })
+  statusSelect.addEventListener('change', () => {
+    amountInput.style.display = statusSelect.value === 'in_progress' ? '' : 'none'
+  })
   const fileRow = el('div', { class: 'file-row' }, [
     commentFile,
     el('span', { text: '可附照片' }),
@@ -888,15 +903,22 @@ pages.ticket = async function (id) {
     fileRow,
     commentPreview,
     canStatus ? statusSelect : null,
+    canStatus ? amountInput : null,
     el('button', { class: 'btn btn-primary', text: '送出', onclick: async () => {
       if (commentSubmitting) return // D5：防重複點擊
       if (!commentInput.value.trim()) { alert('請輸入留言'); return }
       const status = statusSelect.value
       if (status === 'done' && !confirm('標記為已完成並結案？')) return
+      // v1.1.12：已發包必填金額
+      if (status === 'in_progress' && (!amountInput.value || Number(amountInput.value) <= 0)) {
+        alert('已發包需填寫金額'); return
+      }
       commentSubmitting = true
       try {
         if (status) {
-          await api(`/api/tickets/${id}/updates`, { method: 'POST', body: JSON.stringify({ status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
+          const payload = { status, note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }
+          if (status === 'in_progress') payload.amount = Number(amountInput.value)
+          await api(`/api/tickets/${id}/updates`, { method: 'POST', body: JSON.stringify(payload) })
         } else {
           await api(`/api/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         }
@@ -1042,7 +1064,7 @@ pages.stats = function () {
     const openTotal = s.open_count + s.in_progress_count
     const doneRate = s.month_new > 0 ? Math.round((s.month_done / s.month_new) * 100) : 0
     const cards = [
-      ['待處理', s.open_count, 'red'],
+      ['詢價中', s.open_count, 'red'],
       ['處理中', s.in_progress_count, 'yellow'],
       ['未結案總數', openTotal, 'blue'],
       ['本月新增', s.month_new, 'blue'],
@@ -1058,6 +1080,8 @@ pages.stats = function () {
     }
     root.querySelector('.loading-wrap')?.remove()
     root.appendChild(grid)
+    // v1.1.12：各類別金額（以發包時間為月份基準）
+    loadAmountByCategory(root)
   }).catch((e) => {
     root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('p', { class: 'error', text: e.message }))
@@ -1072,8 +1096,39 @@ pages.stats = function () {
   }
 }
 
-async function exportCsv() {
+// v1.1.12：各類別金額（以發包時間為月份基準）
+async function loadAmountByCategory(root) {
+  const month = taipeiMonth()
+  const title = el('h3', { class: 'section-title', text: `各類別金額（${month}，以發包時間計）` })
+  const wrap = el('div', { class: 'amount-box' })
+  root.appendChild(title)
+  root.appendChild(wrap)
   try {
+    const b = await api(`/api/stats/amount-by-category?month=${month}`)
+    const items = b.data.items
+    if (!items || items.length === 0) {
+      renderEmpty(wrap, '本月尚無已發包案件')
+      return
+    }
+    let grand = 0
+    for (const it of items) {
+      grand += it.total_amount
+      wrap.appendChild(el('div', { class: 'amount-row' }, [
+        el('span', { text: it.category_label }),
+        el('span', { text: `${it.count} 件` }),
+        el('span', { class: 'amount-val', text: `$${it.total_amount.toLocaleString()}` }),
+      ]))
+    }
+    wrap.appendChild(el('div', { class: 'amount-row amount-total' }, [
+      el('span', { text: '合計' }),
+      el('span', { class: 'amount-val', text: `$${grand.toLocaleString()}` }),
+    ]))
+  } catch (e) {
+    wrap.appendChild(el('p', { class: 'error', text: e.message }))
+  }
+}
+
+async function exportCsv() {  try {
     const b = await api('/api/exports/sign', { method: 'POST', body: JSON.stringify({}) })
     const url = location.origin + b.data.url
     if (window.liff && liffReady) {

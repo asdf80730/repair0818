@@ -56,11 +56,11 @@ describe('M4 案件動作（§4.3）', () => {
     const admin = await loginAs('U-m4-admin', '管理員', 'admin')
     const ticketId = await createTicket(mgr.cookie)
 
-    // 回報 in_progress
+    // 回報 in_progress（v1.1.12：已發包需填金額）
     const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
-      body: JSON.stringify({ status: 'in_progress', note: '已派員處理' }),
+      body: JSON.stringify({ status: 'in_progress', note: '已派員處理', amount: 5000 }),
     })
     expect(r1.status).toBe(200)
 

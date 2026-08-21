@@ -26,10 +26,17 @@ export const updateTicketSchema = z.object({
 })
 
 // 回報（§4.3 POST /api/tickets/:id/updates）
+// v1.1.12：in_progress 代表「已發包」，改成已發包時必填金額（amount）
 export const createUpdateSchema = z.object({
   status: z.enum(['open', 'in_progress', 'done']),
   note: optionalText(500),
   photo_ids: z.array(id).max(5).optional(),
+  amount: z.number().int().positive().optional(),
+}).superRefine((val, ctx) => {
+  // 改成已發包（in_progress）時必填金額
+  if (val.status === 'in_progress' && (val.amount === undefined || val.amount === null)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['amount'], message: '已發包需填寫金額' })
+  }
 })
 
 // 留言（§4.3 POST /api/tickets/:id/comments）
