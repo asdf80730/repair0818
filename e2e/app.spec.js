@@ -16,6 +16,23 @@ test('案件列表渲染（含 mock 資料）', async ({ page }) => {
   await expect(page.getByText('👥 成員')).toBeVisible()
 })
 
+test('卡片：顯示維修內容、建立/最後活動日期、標題補天數（v1.1.13）', async ({ page }) => {
+  await page.waitForSelector('.ticket-card', { timeout: 10000 })
+  // 維修內容一行
+  const firstDesc = page.locator('.ticket-desc').first()
+  await expect(firstDesc).toBeVisible()
+  const descText = await firstDesc.textContent()
+  expect(descText.trim().length).toBeGreaterThan(0)
+  // 建立/最後活動同行、只顯示日期（含「建立」「最後活動」）
+  const metaText = await page.locator('.ticket-meta').first().textContent()
+  expect(metaText).toContain('建立')
+  expect(metaText).toContain('最後活動')
+  expect(metaText).toMatch(/\d{4}\/\d{1,2}\/\d{1,2}/) // 日期格式 YYYY/M/D
+  // 標題後補「(N 天)」（#1 建立於 08-18，距今 ≥1 天）
+  const titleText = await page.locator('.ticket-card').first().locator('.ticket-title').textContent()
+  expect(titleText).toMatch(/\(\d+ 天\)/)
+})
+
 test('建單完整流程：選類別→地點→填說明→送出→跳詳情頁', async ({ page }) => {
   await page.getByText('＋ 建單').first().click()
   await page.waitForSelector('.form select', { timeout: 10000 })

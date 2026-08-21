@@ -545,4 +545,23 @@ describe('share photos 端點（§4.5）', () => {
     const r = await worker.fetch(`http://example.com/api/share/${shareToken}/photos/${photoId}`)
     expect(r.status).toBe(404)
   })
+
+  it('綁到 update 的照片透過 share 讀取 → 404（target_type 限 ticket）', async () => {
+    const { cookie } = await loginAs('U-cov-sp3', '分享3', 'manager')
+    const photoId = await uploadPhoto(cookie, JPEG)
+    const ticketId = await createTicket(cookie)
+    // 回報帶照片 → 綁到 update（target_type='update'）
+    const upd = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '回報', amount: 1000, photo_ids: [photoId] }),
+    })
+    expect(upd.status).toBe(200)
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: cookie } })
+    const detailBody = await detail.json()
+    const shareToken = new URL('http://x' + detailBody.data.share_url).searchParams.get('token')
+    // 該照片綁在 update 上，share 端點只認 target_type='ticket' → 404
+    const r = await worker.fetch(`http://example.com/api/share/${shareToken}/photos/${photoId}`)
+    expect(r.status).toBe(404)
+  })
 })
