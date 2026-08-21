@@ -16,12 +16,12 @@ let liffReady = false
 // 後端 API 已由 vitest 覆蓋；此層讓前端互動（填表單→送出→跳轉）可自動化測
 const IS_MOCK = new URLSearchParams(window.location.search).get('mock') === 'true'
 let mockTickets = [
-  { id: 1, title: '電梯－停車場 #0001', status: 'open', category_label: '電梯', location_label: '停車場', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T10:00:00.000Z', last_activity_at: '2026-08-18T10:00:00.000Z' },
-  { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', vendor_name: '測試廠商', amount: 12000, amount_at: '2026-08-18T11:00:00.000Z', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
-  { id: 3, title: '門禁－車道 #0003', status: 'void', category_label: '門禁', location_label: '車道', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T08:00:00.000Z', last_activity_at: '2026-08-18T12:00:00.000Z' },
-  { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
-  { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', vendor_name: null, amount: 8000, amount_at: '2026-08-20T08:00:00.000Z', created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
-  { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
+  { id: 1, title: '電梯－停車場 #0001', status: 'open', category_label: '電梯', location_label: '停車場', description: '電梯無法關門', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T10:00:00.000Z', last_activity_at: '2026-08-18T10:00:00.000Z' },
+  { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', description: '大門感應故障', vendor_name: '測試廠商', amount: 12000, amount_at: '2026-08-18T11:00:00.000Z', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
+  { id: 3, title: '門禁－車道 #0003', status: 'void', category_label: '門禁', location_label: '車道', description: null, vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T08:00:00.000Z', last_activity_at: '2026-08-18T12:00:00.000Z' },
+  { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', description: '地磚破損', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
+  { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', description: '水泵漏水', vendor_name: null, amount: 8000, amount_at: '2026-08-20T08:00:00.000Z', created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
+  { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', description: '頂樓水塔噪音', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
 ]
 let mockNextId = 7
 // mock 時間軸（v1.1.12：測金額顯示；id=2 已發包含金額）
@@ -328,6 +328,50 @@ async function compressPhoto(file) {
   }
 }
 
+// 共用照片選擇器（v1.1.13：建單/留言框/編輯 三處共用，避免重複邏輯）
+// photos：外部持有的照片 id 陣列（mutable），函式會同步 push/splice 維持清單
+// initialPhotos：選填 [{id, url}]，編輯頁的既有照片（自動加入清單並顯示）
+// 回傳 { input, preview }，呼叫端把 input/preview 放進表單，submit 時讀 photos 陣列
+function attachPhotoPicker(photos, initialPhotos = []) {
+  const input = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
+  const preview = el('div', { class: 'photo-preview' })
+  function addThumb(pid, url) {
+    const wrap = el('div', { class: 'photo-thumb' }, [
+      thumb(url),
+      el('button', { class: 'thumb-del', text: '✕', onclick: () => {
+        const idx = photos.indexOf(pid)
+        if (idx >= 0) photos.splice(idx, 1)
+        wrap.remove()
+      } }),
+    ])
+    preview.appendChild(wrap)
+  }
+  for (const p of initialPhotos) { photos.push(p.id); addThumb(p.id, p.url) }
+  input.addEventListener('change', async () => {
+    // E1：先算「已上傳 + 本次選取」是否超過 5，超過則阻斷（避免傳到 R2 才被拒）
+    if (photos.length + input.files.length > 5) {
+      toast('最多上傳 5 張照片')
+      input.value = ''
+      return
+    }
+    for (const file of input.files) {
+      try {
+        const compressed = await compressPhoto(file)
+        const fd = new FormData()
+        fd.append('file', compressed)
+        const b = await api('/api/photos', { method: 'POST', body: fd })
+        photos.push(b.data.id)
+        addThumb(b.data.id, b.data.url)
+      } catch (e) {
+        if (e && e.code !== 'NETWORK') continue
+        toast(e.message)
+      }
+    }
+    input.value = ''
+  })
+  return { input, preview }
+}
+
 // G3：判斷文字是否已含某附加片段（以「、」為分隔的獨立項目，避免子字串誤判）
 // 建單與留言框共用，需為全域（原先誤放在 pages.new 內導致留言框 ReferenceError）
 function hasSegment(cur, label) {
@@ -517,12 +561,17 @@ pages.list = function () {
   function renderTicketCard(t) {
     const stale = (t.status === 'open' || t.status === 'in_progress') &&
       (Date.now() - new Date(t.last_activity_at).getTime() > 7 * 24 * 3600 * 1000)
-    const days = Math.floor((Date.now() - new Date(t.last_activity_at).getTime()) / (24 * 3600 * 1000))
+    const staleDays = Math.floor((Date.now() - new Date(t.last_activity_at).getTime()) / (24 * 3600 * 1000))
+    // v1.1.13：標題後補「建立至今 N 天」顯示 (N 天)；建立/最後活動只顯示日期（省空間、同行）
+    const createdDays = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (24 * 3600 * 1000))
+    const dateOnly = (iso) => { const d = new Date(iso); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` }
+    const age = createdDays >= 1 ? `(${createdDays} 天)` : ''
     return el('div', { class: 'card ticket-card', onclick: () => { location.hash = '#/ticket/' + t.id } }, [
-      el('div', { class: 'ticket-title' }, [statusBadge(t.status), el('span', { text: t.title })]),
+      el('div', { class: 'ticket-title' }, [statusBadge(t.status), el('span', { text: `${t.title} ${age}`.trim() })]),
+      t.description ? el('div', { class: 'ticket-desc', text: t.description }) : null,
       el('div', { class: 'ticket-meta', text: `廠商：${t.vendor_name || '未指派'}` }),
-      el('div', { class: 'ticket-meta', text: `最後活動：${fmtTime(t.last_activity_at)}` }),
-      stale ? el('div', { class: 'stale', text: `⚠ ${days} 天未更新` }) : null,
+      el('div', { class: 'ticket-meta', text: `建立 ${dateOnly(t.created_at)} · 最後活動 ${dateOnly(t.last_activity_at)}` }),
+      stale ? el('div', { class: 'stale', text: `⚠ ${staleDays} 天未更新` }) : null,
     ])
   }
 
@@ -673,39 +722,10 @@ pages.new = function () {
   } })
   const descRow = el('div', { class: 'add-row' }, [descSelect, descAddBtn])
 
-  // 照片上傳（E1：累積計數 ≤5、縮圖可刪除）
-  const photoInput = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
-  const photoPreview = el('div', { class: 'photo-preview' })
-  photoInput.addEventListener('change', async () => {
-    // E1：先算「已上傳 + 本次選取」是否超過 5，超過則阻斷（避免傳到 R2 才被拒）
-    if (selectedPhotos.length + photoInput.files.length > 5) {
-      toast('最多上傳 5 張照片')
-      photoInput.value = ''
-      return
-    }
-    for (const file of photoInput.files) {
-      try {
-        const compressed = await compressPhoto(file)
-        const fd = new FormData()
-        fd.append('file', compressed)
-        const body = await api('/api/photos', { method: 'POST', body: fd })
-        selectedPhotos.push(body.data.id)
-        // E1：縮圖加 ✕ 刪除鍵
-        const wrap = el('div', { class: 'photo-thumb' }, [
-          thumb(body.data.url),
-          el('button', { class: 'thumb-del', text: '✕', onclick: () => {
-            const idx = selectedPhotos.indexOf(body.data.id)
-            if (idx >= 0) selectedPhotos.splice(idx, 1)
-            wrap.remove()
-          } }),
-        ])
-        photoPreview.appendChild(wrap)
-      } catch (e) {
-        if (e && e.code !== 'NETWORK') continue
-        toast(e.message)
-      }
-    }
-  })
+  // 照片上傳（E1：累積計數 ≤5、縮圖可刪除；共用 photo picker）
+  const photoPicker = attachPhotoPicker(selectedPhotos)
+  const photoInput = photoPicker.input
+  const photoPreview = photoPicker.preview
 
   let submitting = false // D5：防重複點擊
   async function submit() {
@@ -865,7 +885,7 @@ pages.ticket = async function (id) {
   // ---- 照片牆（F7：主照片也用 thumb() 支援 Lightbox，與時間軸一致）----
   if (t.photos && t.photos.length) {
     const wall = el('div', { class: 'photo-wall' })
-    for (const url of t.photos) wall.appendChild(thumb(url))
+    for (const p of t.photos) wall.appendChild(thumb(p.url)) // v1.1.13：photos 為 {id,url}
     root.appendChild(wall)
   }
 
@@ -885,38 +905,10 @@ pages.ticket = async function (id) {
   const commentInput = el('textarea', { class: 'textarea', placeholder: '留言…' })
   const commentPhotos = []
   let commentSubmitting = false // D5：防重複點擊
-  const commentFile = el('input', { type: 'file', accept: 'image/*', multiple: 'true' })
-  const commentPreview = el('div', { class: 'photo-preview' })
-  commentFile.addEventListener('change', async () => {
-    // E1：累積計數 ≤5，超過阻斷（避免傳到 R2 才被拒）
-    if (commentPhotos.length + commentFile.files.length > 5) {
-      toast('最多上傳 5 張照片')
-      commentFile.value = ''
-      return
-    }
-    for (const file of commentFile.files) {
-      try {
-        const compressed = await compressPhoto(file)
-        const fd = new FormData()
-        fd.append('file', compressed)
-        const b = await api('/api/photos', { method: 'POST', body: fd })
-        commentPhotos.push(b.data.id)
-        // E1：補縮圖預覽 + ✕ 刪除鍵
-        const wrap = el('div', { class: 'photo-thumb' }, [
-          thumb(b.data.url),
-          el('button', { class: 'thumb-del', text: '✕', onclick: () => {
-            const idx = commentPhotos.indexOf(b.data.id)
-            if (idx >= 0) commentPhotos.splice(idx, 1)
-            wrap.remove()
-          } }),
-        ])
-        commentPreview.appendChild(wrap)
-      } catch (e) {
-        if (e && e.code !== 'NETWORK') continue
-        toast(e.message)
-      }
-    }
-  })
+  // 共用 photo picker（v1.1.13）
+  const commentPicker = attachPhotoPicker(commentPhotos)
+  const commentFile = commentPicker.input
+  const commentPreview = commentPicker.preview
 
   // 回報範本下拉＋附加（manager/admin，v1.1.9；改 type='comment_desc'，通用不依類別過濾）
   let commentDescRow = null
@@ -1067,6 +1059,14 @@ pages.edit = async function (id) {
 
   const descEl = el('textarea', { class: 'textarea', value: t.description || '' })
 
+  // 照片管理（v1.1.13）：顯示既有 + 可刪除 + 可補上傳；submit 送 photo_ids 全量覆寫
+  const initialPhotos = (t.photos || []).map((p) => ({ id: p.id, url: p.url }))
+  const editPhotoIds = [] // 最終要保留的案件照片 id（attachPhotoPicker 會填 initialPhotos）
+  // 共用 photo picker（v1.1.13：帶既有照片）
+  const editPicker = attachPhotoPicker(editPhotoIds, initialPhotos)
+  const photoPreview = editPicker.preview
+  const photoInput = editPicker.input
+
   // 指派廠商（保全/秘書 manager 層級，即 manager/admin；問題3：放進編輯頁）
   const canAssignVendor = me && (me.role === 'manager' || me.role === 'admin')
   const vendorSelect = el('select', { class: 'select' })
@@ -1086,6 +1086,10 @@ pages.edit = async function (id) {
     if (locSelect.value) body.location_id = Number(locSelect.value)
     if (descEl.value !== (t.description || '')) body.description = descEl.value
     if (canAssignVendor && vendorSelect.value) body.vendor_id = Number(vendorSelect.value)
+    // 照片有增刪才送（photo_ids 全量覆寫綁定）
+    const initIds = (t.photos || []).map((p) => p.id).sort().join(',')
+    const curIds = [...editPhotoIds].sort().join(',')
+    if (initIds !== curIds) body.photo_ids = editPhotoIds.length ? editPhotoIds : []
     try {
       await api(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
       location.hash = '#/ticket/' + id

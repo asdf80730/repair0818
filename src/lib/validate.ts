@@ -18,11 +18,13 @@ export const createTicketSchema = z.object({
 
 // 編輯（§4.3 PATCH /api/tickets/:id）
 // vendor_id 三態（D1/G1）：undefined=不變、null=清空指派、正整數=指派新廠商
+// photo_ids（v1.1.13）：選填，最終要保留的案件主照片清單（全量覆寫綁定）
 export const updateTicketSchema = z.object({
   category_id: id.optional(),
   location_id: id.optional(),
   description: optionalText(500),
   vendor_id: id.nullable().optional(),
+  photo_ids: z.array(id).max(5).optional(),
 })
 
 // 回報（§4.3 POST /api/tickets/:id/updates）

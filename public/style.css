@@ -129,6 +129,7 @@ button { cursor: pointer; }
 .ticket-list { padding: 8px; }
 .ticket-card { cursor: pointer; }
 .ticket-title { display: flex; align-items: center; font-weight: 600; }
+.ticket-desc { color: var(--text); font-size: 14px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* v1.1.13：維修內容一行截斷 */
 .ticket-meta { color: var(--gray); font-size: 14px; margin-top: 4px; }
 .stale { color: #b45309; font-size: 14px; margin-top: 4px; } /* v1.1.13：橘色區隔，避免與詢價中紅混淆 */
 

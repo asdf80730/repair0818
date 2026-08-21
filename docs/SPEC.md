@@ -27,7 +27,7 @@
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
 | v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
-| v1.1.13 | **廠商排序欄位＋移除無用 phone**：migration 0008 移除 `vendors.phone`（後端有存但前端完全無 UI，已確認無資料可放心丟）、加 `vendors.sort_order`（預設 0，排序用；與 options.sort_order 同模式，**後台直接改資料庫，無前端排序介面**）。後端 `GET /api/vendors` 改 `ORDER BY active DESC, sort_order, id`；PATCH 支援改 `sort_order`；create/update schema 移除 phone。CI 全綠、0008 已套 production |
+| v1.1.13 | **廠商排序＋共用照片選擇器＋編輯照片＋卡片列表改版**：① **廠商排序欄位**——migration 0008 移除無用 `vendors.phone`、加 `vendors.sort_order`（後台改 DB，無 UI）；② **共用照片選擇器**——抽出 `attachPhotoPicker()` 全域函式，建單/留言框/編輯三處共用同一份照片邏輯（壓縮/≤5 張/縮圖/✕ 刪除）；③ **編輯照片**——編輯頁可補上傳＋刪除既有照片，儲存送 `photo_ids` 全量覆寫（新增綁定、移除解綁 `target_id=NULL` 不刪 R2），時間軸以 system 留痕；④ **卡片列表改版**——顯示一行維修內容、最後活動只顯示日期（同行放建立日期）、標題後補「(N 天)」建立至今天數。CI 全綠、0008 已套 production |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -786,6 +786,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **類別下拉、地點下拉**（v1.1.7 起用 `GET /api/options/catalog` 一次抓完所有選項＋關聯，**分層快取**：建單/編輯用短 TTL（30 秒），列表/留言用長 TTL（10 分鐘）——v1.1.8 優化，取代「每次進頁強制重讀」，避免每次進建單/編輯頁都吃一次 D1 連線延遲；換類別本地過濾即時）
 - **使用範本下拉＋附加按鈕**（v1.1.5 改下拉＋附加；v1.1.9 正名「故障類型範本」；v1.1.11 改「使用範本」並移到說明之下）：選取後按「＋ 附加」將文字附加至 textarea，已有內容時以「、」串接；同一說明不重複附加。**順序：類別 → 地點 → 說明 → 使用範本（選填）→ 照片**，範本為選填輔助，位在主要說明欄位之下
 - 說明 textarea（選填）、照片上傳（先壓縮 → POST /api/photos → 收 id）
+- **照片上傳共用函式（v1.1.13）**：`attachPhotoPicker(photos, initialPhotos?)` 為全域共用（`public/app.js`），建單/留言框/編輯三處**共用同一份**照片選擇邏輯——壓縮、≤5 張上限、縮圖預覽、✕ 刪除鍵、上傳回傳 id。呼叫端持有 `photos` 陣列（mutable），函式同步 push/splice 維護；`initialPhotos`（選填）供編輯頁帶入既有照片。**禁止各頁複製貼上照片邏輯**
 - **無廠商欄位**（建單不指派廠商；廠商僅在 PATCH 由 manager/admin 指派）
 - **無關聯類別**（v1.1.7）：選到地點/說明全空的類別時，alert 提示並重新讀取 catalog（**不重整頁面，保留已輸入資料**）
 - 送出 → POST /api/tickets → 跳 P3
@@ -800,6 +801,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 🟢 完成（P4 回報選 done）需二次確認彈窗
 - **縮圖點開放大**（lightbox，v1.1.4）
 - **指派廠商在編輯頁內**（v1.1.5：保全/秘書層級，不再塞列表/詳情頁）
+- **編輯照片（v1.1.13）**：編輯頁可**補上傳新照片**（共用 `attachPhotoPicker`）、可**刪除既有照片**（✕ 移除清單）。儲存時送 `photo_ids`（**最終要保留的案件主照片清單，全量覆寫**）——新增的照片綁定到該案、被移除的照片**解除綁定（`target_id=NULL`），不刪 R2**。照片有增刪才送；時間軸以 `system` 紀錄「新增 N 張照片／移除 N 張照片」
 
 ### 5.4 P4 回報／留言（v1.1.5 起併入 P3 詳情頁留言框）
 

@@ -149,6 +149,74 @@ describe('photos 上傳/讀取/驗證/歸屬（§4.4）', () => {
   })
 })
 
+describe('編輯照片全量覆寫（v1.1.13 §4.3）', () => {
+  it('PATCH 加新照片綁定 + 移除既有照片解綁 + 時間軸留痕', async () => {
+    const a = await loginAs('U-cov-ep1', '編輯照1', 'manager')
+    const cat = await getOptionId('category')
+    const loc = await getOptionId('location')
+    // 建單帶 photoA
+    const photoA = await uploadPhoto(a.cookie, JPEG)
+    const create = await worker.fetch('http://example.com/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: a.cookie },
+      body: JSON.stringify({ category_id: cat, location_id: loc, description: '編輯照', photo_ids: [photoA] }),
+    })
+    const { data } = await create.json()
+    const ticketId = data.id
+
+    // 上傳新照片 photoB
+    const photoB = await uploadPhoto(a.cookie, JPEG)
+    // PATCH：最終清單 = [photoB]（移除 photoA、綁定 photoB）
+    const patch = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: a.cookie },
+      body: JSON.stringify({ photo_ids: [photoB] }),
+    })
+    expect(patch.status).toBe(200)
+    const patchBody = await patch.json()
+    expect(patchBody.data.changes.join('；')).toContain('新增 1 張照片')
+    expect(patchBody.data.changes.join('；')).toContain('移除 1 張照片')
+
+    // 詳情照片牆只剩 photoB
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: a.cookie } })
+    const detailBody = await detail.json()
+    const photoIds = detailBody.data.photos.map((p: any) => p.id)
+    expect(photoIds).toEqual([photoB])
+
+    // photoA 已解綁（target_id=NULL）：他人不可讀（歸屬檢查）
+    const b = await loginAs('U-cov-ph8', '照8', 'committee')
+    const r = await worker.fetch(`http://example.com/api/photos/${photoA}`, { headers: { Cookie: b.cookie } })
+    expect(r.status).toBe(404)
+    // photoB 綁定後：他人可讀
+    const r2 = await worker.fetch(`http://example.com/api/photos/${photoB}`, { headers: { Cookie: b.cookie } })
+    expect(r2.status).toBe(200)
+    await r2.arrayBuffer()
+  })
+
+  it('PATCH photo_ids 為空陣列 → 全移除（全解綁）', async () => {
+    const a = await loginAs('photo3a', '照3A', 'manager')
+    const cat = await getOptionId('category')
+    const loc = await getOptionId('location')
+    const photoA = await uploadPhoto(a.cookie, JPEG)
+    const create = await worker.fetch('http://example.com/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: a.cookie },
+      body: JSON.stringify({ category_id: cat, location_id: loc, description: '清空照', photo_ids: [photoA] }),
+    })
+    const { data } = await create.json()
+    const ticketId = data.id
+    const patch = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: a.cookie },
+      body: JSON.stringify({ photo_ids: [] }),
+    })
+    expect(patch.status).toBe(200)
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: a.cookie } })
+    const detailBody = await detail.json()
+    expect(detailBody.data.photos.length).toBe(0)
+  })
+})
+
 describe('users PATCH 防呆（§4.6 ADMIN_LOCKED）', () => {
   it('不可停用自己 → 400', async () => {
     const { userId, cookie } = await loginAs('U-cov-u1', '管理員1', 'admin')

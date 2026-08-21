@@ -101,7 +101,7 @@ ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema)
   // 查 limit+1 筆判斷 has_more（§4.3）
   const offset = (page - 1) * limit
   const rows = await c.env.DB.prepare(
-    `SELECT t.id, t.category_label, t.location_label, t.status,
+    `SELECT t.id, t.category_label, t.location_label, t.status, t.description,
             v.name AS vendor_name, v.active AS vendor_active, t.created_at, t.last_activity_at
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
@@ -109,7 +109,7 @@ ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema)
      ORDER BY t.last_activity_at DESC, t.id DESC
      LIMIT ? OFFSET ?`,
   ).bind(...binds, limit + 1, offset).all<{
-    id: number; category_label: string; location_label: string; status: string
+    id: number; category_label: string; location_label: string; status: string; description: string | null
     vendor_name: string | null; vendor_active: number | null; created_at: string; last_activity_at: string
   }>()
 
@@ -119,6 +119,7 @@ ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema)
     status: r.status,
     category_label: r.category_label,
     location_label: r.location_label,
+    description: r.description, // v1.1.13：卡片顯示維修內容
     // G4：與詳情端一致，停用廠商後綴「（已停用）」
     vendor_name: r.vendor_name
       ? (r.vendor_active === 0 ? `${r.vendor_name}（已停用）` : r.vendor_name)
@@ -220,7 +221,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
     created_at: ticket.created_at,
     last_activity_at: ticket.last_activity_at,
     closed_at: ticket.closed_at,
-    photos: photos.results.map((p) => `/api/photos/${p.id}`),
+    photos: photos.results.map((p) => ({ id: p.id, url: `/api/photos/${p.id}` })),
     share_url: `/share.html?token=${ticket.share_token}`,
     updates: updates.results.map((u) => ({
       id: u.id,
@@ -321,8 +322,44 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
     }
     newVendorId = body.vendor_id
     // G5：留痕帶舊→新廠商名（null 表示清空指派）
-    const oldName = ticket.vendor_name ?? '未指派'
+  const oldName = ticket.vendor_name ?? '未指派'
     changes.push(`廠商 ${oldName}→${newVendorName ?? '未指派'}`)
+  }
+
+  // 照片全量覆寫（v1.1.13）：body.photo_ids 提供時＝最終要保留的案件主照片清單
+  // 新增：未綁定且本人的 → 綁定到 ticket；移除：此 ticket 既有但不在新清單 → 解綁（target_id=NULL，R2 不刪）
+  let photoStmts: D1PreparedStatement[] = []
+  if (body.photo_ids !== undefined) {
+    const curRes = await c.env.DB.prepare(
+      "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ?",
+    ).bind(id).all<{ id: number }>()
+    const curIds = curRes.results.map((r) => r.id)
+
+    const newOnes = body.photo_ids.filter((pid) => !curIds.includes(pid))
+    const removed = curIds.filter((cid) => !body.photo_ids!.includes(cid))
+
+    // 新增的照片必須是本人上傳且未綁定
+    if (newOnes.length > 0) {
+      const valid = await validateOwnUnboundPhotos(c, newOnes, user.id)
+      if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '無效的照片')
+    }
+
+    if (newOnes.length > 0) {
+      for (const pid of newOnes) {
+        photoStmts.push(c.env.DB.prepare(
+          'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL',
+        ).bind('ticket', id, pid))
+      }
+      changes.push(`新增 ${newOnes.length} 張照片`)
+    }
+    if (removed.length > 0) {
+      for (const pid of removed) {
+        photoStmts.push(c.env.DB.prepare(
+          'UPDATE photos SET target_type = NULL, target_id = NULL WHERE id = ? AND target_type = ? AND target_id = ?',
+        ).bind(pid, 'ticket', id))
+      }
+      changes.push(`移除 ${removed.length} 張照片`)
+    }
   }
 
   if (changes.length === 0) {
@@ -344,6 +381,7 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
        VALUES (?, ?, 'system', NULL, ?, ?)`,
     ).bind(id, user.id, `已修改：${changes.join('；')}`, now),
+    ...photoStmts,
   ])
 
   return ok(c, { id, updated: true, changes })
