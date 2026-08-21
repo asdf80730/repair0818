@@ -341,6 +341,7 @@ function el(tag, attrs = {}, children = []) {  const node = document.createEleme
     if (k === 'class') node.className = v
     else if (k === 'text') node.textContent = v
     else if (k === 'selected') node.selected = !!v
+    else if (k === 'value') node.value = v // textarea/select 用 property（setAttribute 對 textarea 無效）
     else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
     else node.setAttribute(k, v)
   }

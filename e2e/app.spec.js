@@ -53,6 +53,26 @@ test('案件詳情：分享連結格式正確、可進編輯頁（含指派廠�
   await expect(page.locator('.form label', { hasText: '指派廠商' })).toBeVisible()
 })
 
+test('編輯頁：四欄都從原案件資料帶入（類別/地點/說明/廠商）', async ({ page }) => {
+  // 進 #2（有 vendor 測試廠商、description 測試說明）
+  await page.goto(`${BASE}/?mock=true#/edit/2`)
+  await page.waitForSelector('text=編輯案件', { timeout: 10000 })
+  await page.waitForTimeout(800) // 等 catalog + vendors 載入
+
+  // 類別帶入（門禁 id=2）
+  const cat = page.locator('.form select').nth(0)
+  await expect(cat).toHaveValue('2')
+  // 地點帶入（大廳 id=2）
+  const loc = page.locator('.form select').nth(1)
+  await expect(loc).toHaveValue('2')
+  // 說明帶入（textarea 用 property，非 setAttribute）
+  const desc = page.locator('.form textarea')
+  await expect(desc).toHaveValue('測試說明')
+  // 指派廠商帶入（測試廠商）
+  const vendor = page.locator('.form select').nth(2)
+  await expect(vendor).toHaveValue('1') // mock 測試廠商 id=1
+})
+
 test('切換狀態 tab 篩選', async ({ page }) => {
   await page.locator('.tab', { hasText: '已完成' }).click()
   await page.waitForTimeout(500)
