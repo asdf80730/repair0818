@@ -285,7 +285,11 @@ async function refreshSession() {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ id_token: idToken }),
     })
-    return sessionRes.ok
+    if (sessionRes.ok) return true
+    // v1.1.13：後端 session 重建失敗（idToken 過期等）→ 強制重新授權取得新 token
+    // LINE 內已授權過會無感回新 token；外部瀏覽器會跳 LINE 登入頁
+    liff.login()
+    return false
   })().finally(() => { sessionRefreshPromise = null })
   return sessionRefreshPromise
 }

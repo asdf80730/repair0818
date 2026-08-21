@@ -413,6 +413,7 @@ export function requireAuth(opts?: {
 1. 收到 `401 UNAUTHORIZED`
 2. `liff.isLoggedIn()` 為 false → `liff.login()`（LINE 內無感完成；外部瀏覽器會出現 LINE 登入畫面）
 3. 取 id_token → `POST /api/auth/session` 換新 Cookie → **重送原請求一次**
+   - **v1.1.13：若 `POST /api/auth/session` 重建失敗**（LINE idToken 已過期等，後端回 401）→ **fallback 呼叫 `liff.login()` 強制重新授權**取得新 token，避免「後端 session 過期但 LINE 仍登入」時卡住不重登。LINE 內已授權過會無感取得新 token；外部瀏覽器會跳 LINE 登入頁。
 4. 重送後仍 401 → 顯示「請重新從 LINE 圖文選單開啟本系統」，**不再重試**
 5. `403 DISABLED` / `403 PENDING` 不觸發重登（避免停用帳號無限重登迴圈），直接顯示對應訊息
 
