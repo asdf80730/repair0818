@@ -21,7 +21,7 @@ npm test   # 等於 vitest run
 | 3 | 無 Cookie 帶有效 sig 打 `GET /api/exports/tickets.csv` | `200` |
 | 4 | 無 Cookie 且 sig 錯誤打 `GET /api/exports/tickets.csv` | `401` |
 
-> 斷言 2–4 依賴 M2/M5 實作（auth/session 目前 501、CSV 簽名需 JWT_SECRET），測試中先 `it.skip`，里程碑完成後移除 `.skip` 即可驗證。
+> 斷言 1–4 均已實作並通過（見 `tests/app.test.ts` 對應案例）；不再有 `it.skip` 或 501。
 
 ## 測試檔結構（v1.1.13，110 單元測試）
 
@@ -81,7 +81,7 @@ E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**14 個�
 ### 6. 帶 CSRF header `POST /api/auth/session`
 ```
 輸入：{ "id_token": "x" }，帶 X-Requested-With: fetch
-期望：501（M2 未實作，進到 handler）
+期望：LINE 驗證成功 → 200 並建 pending user + Set-Cookie（見 tests/app.test.ts）
 ```
 驗證：csrfGuard 放行後進到 handler。
 
@@ -99,12 +99,4 @@ E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**14 個�
 ```
 驗證：M1 部署驗證端點。
 
-## 里程碑完成後補驗證
-
-M2 完成後：
-- pending 打 `GET /api/auth/me` → 200（含 display_name）
-- 建立 pending user → 簽 JWT → 帶 Cookie 打 me
-
-M5 完成後：
-- 用 JWT_SECRET 簽出有效 sig → 帶 query 打 CSV → 200
-- sig 錯誤 → 401
+> 上述 M1–M5 里程碑案例均已實作並有對應單元測試（見 `tests/app.test.ts`、`tests/coverage.test.ts`），不再有「補驗證」未完成項。

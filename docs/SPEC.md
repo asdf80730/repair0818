@@ -85,7 +85,7 @@ repair-system/
 │   ├── vendor/
 │   │   ├── browser-image-compression.js   # vendored UMD build（檔頭註明版本與來源）
 │   │   └── liff-mock.js                    # 測試模式 ?mock=true 用（§1.2）
-│   ├── _routes.json               # 只讓 /api/* 走 Functions
+│   ├── _routes.json               # 只讓 /api/* 走 Functions；v1.1.12 起含 /share.html 走 Function
 │   └── _headers                   # 靜態檔標頭（CSP、安全標頭）
 ├── functions/
 │   ├── api/
@@ -920,7 +920,7 @@ LINE_CHANNEL_ID = "2008484338"
 **`public/_routes.json`**：
 
 ```json
-{ "version": 1, "include": ["/api/*"], "exclude": [] }
+{ "version": 1, "include": ["/api/*", "/share.html"], "exclude": [] }
 ```
 
 **`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則）：

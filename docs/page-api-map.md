@@ -28,7 +28,7 @@
 | | | `/api/vendors` | 廠商 tab |
 | | | `/api/vendors/:id`(PATCH) | 編輯廠商 |
 | | | `/api/auth/me` | 權限檢查 |
-| **公開派工頁** | `/share.html?token=` | `/api/share/:token` | 免登入；308→/share 回 200 |
+| **公開派工頁** | `/share.html?token=` | `/api/share/:token` | 免登入；**v1.1.12 起由 Pages Function 動態渲染**（無 308） |
 
 ## 共用函式
 - `ensureCatalog(force)` → `/api/options/catalog`
