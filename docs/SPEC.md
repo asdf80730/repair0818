@@ -571,6 +571,7 @@ export function requireAuth(opts?: {
 
 - 僅限 done / void 的案件
 - ticket：`status`＝指定狀態、`closed_at/closed_by` 清空、更新 `last_activity_at`
+- **reopen 不接受 `amount`，也不動既有 `amount/amount_at`**（v1.1.13 語意鎖死）：若 reopen 回 `in_progress`（=已發包），沿用原發包金額與發包時間；統計月份基準不因 reopen 改變
 - 時間軸寫入 `kind='status'`、指定 status，note 模板帶入**實際前狀態**：
   `重新開啟（原狀態：已完成）<備註>` 或 `重新開啟（原狀態：已作廢）<備註>`（備註選填，無備註不帶冒號，G6），禁止寫死
 
@@ -671,6 +672,7 @@ WHERE kind = 'status' AND status = 'done'
 - **以發包時間（`tickets.amount_at`）為記錄基準**：某月內 `amount_at` 落點的案件，其金額納入該月該類別
 - 缺省查當月（`taipeiMonthRangeUtc()`），可傳 `month=YYYY-MM` 查指定月份
 - `amount_at` 為 NULL（未發包/詢價中）不計入
+- **多次發包語意（v1.1.13 鎖死）**：同一張單若多次回報 `in_progress`，`tickets.amount/amount_at` 會被**覆寫為最後一次**；統計以最終 `amount_at` 落點月份計一次，**不加總歷史各次金額**（時間軸每筆 `ticket_updates.amount` 保留歷史，供詳情查看）
 
 ```sql
 SELECT category_label, COALESCE(SUM(amount),0) AS total_amount, COUNT(*) AS count

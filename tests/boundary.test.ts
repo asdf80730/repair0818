@@ -417,4 +417,59 @@ describe('v1.1.12 已發包必填金額（§4.3）', () => {
     })
     expect(r.status).toBe(200)
   })
+
+  it('reopen 到 in_progress 不重置 amount/amount_at（v1.1.13 金額語意鎖死）', async () => {
+    const mgr = await loginAs('U-bd-am4', '金額4', 'manager')
+    const admin = await loginAs('U-bd-am5', '金額5', 'admin')
+    const ticketId = await createTicket(mgr.cookie)
+    // 發包 5000
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '已發包', amount: 5000 }),
+    })
+    expect(r1.status).toBe(200)
+    // 結案
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'done', note: '完成' }),
+    })
+    expect(r2.status).toBe(200)
+    // admin reopen 回 in_progress（reopen 不接受 amount，不該動舊金額）
+    const r3 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/reopen`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: admin.cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '重新檢查' }),
+    })
+    expect(r3.status).toBe(200)
+    // 金額/發包時間保留
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: mgr.cookie } })
+    const detailBody = await detail.json()
+    expect(detailBody.data.status).toBe('in_progress')
+    expect(detailBody.data.amount).toBe(5000)
+    expect(detailBody.data.amount_at).toBeTruthy()
+  })
+
+  it('同一張單多次發包，amount 覆寫為最後一次（統計取最終 amount_at）', async () => {
+    const { cookie } = await loginAs('U-bd-am6', '金額6', 'manager')
+    const ticketId = await createTicket(cookie)
+    // 第一次發包 5000
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '第一次發包', amount: 5000 }),
+    })
+    expect(r1.status).toBe(200)
+    // 第二次發包 9000 → 覆寫
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '第二次發包', amount: 9000 }),
+    })
+    expect(r2.status).toBe(200)
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: cookie } })
+    const detailBody = await detail.json()
+    // tickets.amount 被覆寫為最後一次（9000）
+    expect(detailBody.data.amount).toBe(9000)
+    // 時間軸保留兩筆歷史金額（5000 與 9000）
+    const inProgress = detailBody.data.updates.filter((u: any) => u.status === 'in_progress')
+    expect(inProgress.length).toBe(2)
+    expect(inProgress.map((u: any) => u.amount).sort()).toEqual([5000, 9000])
+  })
 })
