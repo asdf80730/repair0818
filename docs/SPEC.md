@@ -2,7 +2,7 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.11（定稿，可施工）** ｜ 日期：2026-08-21
+**版本：v1.1.12（定稿，可施工）** ｜ 日期：2026-08-21
 
 > 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 十二版合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
@@ -27,6 +27,7 @@
 | v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
 | v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
 | v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
+| v1.1.12 | **處理中拆為詢價中/已發包＋金額統計**：① 狀態語意——`open` 顯示改「詢價中」、`in_progress` 代表「已發包」（不新增狀態值，Tab 結構不變）；② **金額**——migration 0006 加 `tickets.amount`/`amount_at`，回報選「已發包」必填金額（zod superRefine＋前端金額輸入框），`amount_at` 為發包時間；③ **統計**——新增 `GET /api/stats/amount-by-category`，各類別金額以發包時間為月份基準加總，統計頁加「各類別金額」區塊；④ 首頁 Tab 僅「待處理」改名「詢價中」。CI 全綠、0006 已套 production、已部署 |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -110,7 +111,8 @@ repair-system/
 │   ├── 0002_seed.sql              # seed 單一來源（v1.1.6，見 §2.3）
 │   ├── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
 │   ├── 0004_comment_desc.sql      # 回報範本選項類型（v1.1.9）
-│   └── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
+│   ├── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
+│   └── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
@@ -529,10 +531,11 @@ export function requireAuth(opts?: {
 **POST `/api/tickets/:id/updates`**（manager/admin）
 
 ```json
-請求：{ "status": "in_progress", "note": "選填", "photo_ids": [21] }
+請求：{ "status": "in_progress", "note": "選填", "photo_ids": [21], "amount": 5000 }
 ```
 
 - ticket.status 同步更新；done 時設 `closed_at`／`closed_by`
+- **v1.1.12：`in_progress` 代表「已發包」，必填 `amount`（正整數）**；寫入 `tickets.amount` 與 `amount_at`（發包時間，統計月份基準）
 - 更新 `last_activity_at`；照片綁定 `target_type='update'` + 該筆 update id
 - 多步驟寫入用 `env.DB.batch()`
 - 已結案（done）或作廢（void）的單 → 回 `VALIDATION_ERROR`
@@ -656,6 +659,23 @@ WHERE kind = 'status' AND status = 'done'
   AND created_at <  :month_end_utc
 ```
 
+**GET `/api/stats/amount-by-category?month=YYYY-MM`**（**三角色皆可**，v1.1.12）
+
+| 欄位 | 定義 |
+|---|---|
+| `month` | 台灣當月（缺省為當月） |
+| `items` | `[{ category_label, total_amount, count }]`——以發包時間為月份基準，各類別 `amount` 加總 |
+
+- **以發包時間（`tickets.amount_at`）為記錄基準**：某月內 `amount_at` 落點的案件，其金額納入該月該類別
+- 缺省查當月（`taipeiMonthRangeUtc()`），可傳 `month=YYYY-MM` 查指定月份
+- `amount_at` 為 NULL（未發包/詢價中）不計入
+
+```sql
+SELECT category_label, COALESCE(SUM(amount),0) AS total_amount, COUNT(*) AS count
+FROM tickets WHERE amount IS NOT NULL AND amount_at >= :start AND amount_at < :end
+GROUP BY category_label ORDER BY total_amount DESC
+```
+
 ### 4.8 CSV 匯出（D3）
 
 > 背景：iOS LINE WebView 對 `Content-Disposition: attachment` 支援不穩，而使用者 100% 從圖文選單進入。故採「簽名連結＋外部瀏覽器」方案。
@@ -712,7 +732,7 @@ WHERE kind = 'status' AND status = 'done'
 - 前端 fetch wrapper 統一自動帶 `X-Requested-With: fetch`（見 §4.0）
 - 照片壓縮：`browser-image-compression`（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG）；**解碼失敗時**顯示「此照片格式無法處理，請改用相機拍攝或先在相簿轉存」
 - 觸控目標 ≥ 44px、內文字級 ≥ 16px（input 也 16px，避免 iOS 自動縮放）
-- 狀態色：🔴待處理／🟡處理中／🟢已完成／⚫作廢
+- 狀態色：🔴詢價中／🟡處理中（已發包）／🟢已完成／⚫作廢
 
 ### 5.0.1 P0 等待開通頁
 
@@ -733,7 +753,7 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.1 P1 案件列表
 
-- 狀態篩選 tabs：**未結案（=active，預設）／待處理（open）／處理中（in_progress）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應，避免「進行中／處理中」混淆；類別下拉篩選
+- 狀態篩選 tabs：**未結案（=active，預設）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
 - **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
@@ -762,7 +782,7 @@ WHERE kind = 'status' AND status = 'done'
 
 > **已移除獨立「新增回報」頁**（v1.1.5 起）：回報統一走 P3 詳情頁底部的「💬 留言／回報」留言框，含狀態更新。v1.1.8 清理死碼，移除 `pages.report` 與 `#/report` 路由。
 
-- 狀態更新（kind=status）限 **manager/admin**，可選 待處理／處理中／🟢 完成
+- 狀態更新（kind=status）限 **manager/admin**，可選 詢價中／🟡 已發包（必填金額）／🟢 完成
 - 按 🟢 完成即結案，需二次確認彈窗：「標記為已完成並結案？」
 - 純留言（kind=comment）**三角色皆可**，不改狀態
 - 委員不可變狀態，僅能留言（§0.3 規則 2）
@@ -770,7 +790,8 @@ WHERE kind = 'status' AND status = 'done'
 
 ### 5.5 P5 統計（**三角色皆可**，D6）
 
-- 六個數字卡片（v1.1.4）：待處理、處理中、**未結案總數**、本月新增、本月完成、**本月完成率**（= 本月完成/本月新增）
+- 六個數字卡片（v1.1.4）：詢價中、處理中、**未結案總數**、本月新增、本月完成、**本月完成率**（= 本月完成/本月新增）
+- **各類別金額區塊（v1.1.12）**：以發包時間（`amount_at`）為月份基準，各類別 `amount` 加總，顯示「類別／件數／金額」＋合計
 - 「匯出 CSV」按鈕＋固定提示「將於外部瀏覽器開啟下載」（流程見 §4.8）——**僅 manager/admin 可見**（D3）
 
 ### 5.6 P6 成員管理（admin）
