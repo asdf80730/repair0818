@@ -61,4 +61,4 @@
 | P7 | 管理 | options+vendors | ~0.63s |
 | — | 公開派工頁 | share/:token | ~0.61s(+0.13s 頁面) |
 
-> share.html 靜態頁 308→/share 回 200 為 0.13s；資料 API /api/share/:token 為 0.61s。
+> 公開派工頁 `/share.html`：**v1.1.12 起由 Pages Function（`functions/share.html.ts`）動態渲染**（server 端查 D1 組 `<title>`，不再有靜態頁 308 重導）；資料 API `/api/share/:token` 為 0.61s。

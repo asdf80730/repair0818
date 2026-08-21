@@ -141,6 +141,33 @@ test('留言框：manager/admin 有常用說明下拉＋附加（v1.1.7）', asy
   await expect(page.getByText('＋ 附加').first()).toBeVisible()
 })
 
+test('留言框：回報範本附加寫入 textarea＋下拉清空（v1.1.12 兩個規則）', async ({ page }) => {
+  await page.locator('.ticket-card').first().click()
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  await page.getByText('💬 留言／回報').click()
+  await page.waitForTimeout(300)
+
+  // 選回報範本 → 按「＋ 附加」→ textarea 出現文字
+  const cDesc = page.locator('.comment-box .add-row select')
+  await cDesc.selectOption({ index: 1 })
+  const chosen = await cDesc.inputValue()
+  expect(chosen.length).toBeGreaterThan(0)
+  await page.getByText('＋ 附加').first().click()
+  await page.waitForTimeout(300)
+  const text = await page.locator('.comment-box .textarea').inputValue()
+  expect(text).toContain(chosen)
+
+  // 規則二：附加後下拉清空（回到 placeholder）
+  await expect(page.locator('.comment-box .add-row select')).toHaveValue('')
+
+  // 規則三：重複附加同一範本不會重複寫入（hasSegment 防重複）
+  await cDesc.selectOption({ index: 1 })
+  await page.getByText('＋ 附加').first().click()
+  await page.waitForTimeout(300)
+  const text2 = await page.locator('.comment-box .textarea').inputValue()
+  expect(text2).toBe(text)
+})
+
 test('案件詳情：重新產生分享連結更新輸入框', async ({ page }) => {
   await page.locator('.ticket-card').first().click()
   await page.waitForSelector('text=案件詳情', { timeout: 10000 })

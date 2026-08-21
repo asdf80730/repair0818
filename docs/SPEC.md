@@ -80,7 +80,6 @@
 repair-system/
 ├── public/                        # 前端靜態檔（純 JS，無建置、無 npm import）
 │   ├── index.html                 # 主系統（SPA 入口，hash router）
-│   ├── share.html                 # 派工單公開頁（免登入）
 │   ├── app.js / share.js
 │   ├── style.css
 │   ├── vendor/
@@ -89,8 +88,9 @@ repair-system/
 │   ├── _routes.json               # 只讓 /api/* 走 Functions
 │   └── _headers                   # 靜態檔標頭（CSP、安全標頭）
 ├── functions/
-│   └── api/
-│       └── [[path]].ts            # 唯一入口
+│   ├── api/
+│   │   └── [[path]].ts            # 唯一入口
+│   └── share.html.ts              # 動態渲染派工單頁（v1.1.12，見 §5.8）
 ├── src/                           # Hono 應用（TypeScript）
 │   ├── app.ts                     # app 組裝與 middleware 掛載
 │   ├── routes/
@@ -818,7 +818,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **動態頁標題（v1.1.12）**：`/share.html` 由 Pages Function（`functions/share.html.ts`）動態渲染，依 token 查 D1 把 `<title>` 組成為「{類別}－{地點} #{id}」，讓通訊軟體分享卡片顯示案件標題（而非寫死「派工單」）；token 無效時回「派工單」預設標題。`_routes.json` 已加入 `/share.html` 走 function
 - token 無效顯示「連結已失效，請向管理公司索取新連結」
 - 內建 print CSS：管理公司可用瀏覽器「列印→儲存為 PDF」
-- 安全標頭由 `public/_headers` 設定（見 §8.2）
+- 安全標頭：**v1.1.12 起由 `functions/share.html.ts` 內直接回傳**（CSP/nosniff/no-referrer/noindex/no-cache），不再走 `public/_headers`（function 回傳不套用靜態檔 _headers）
 
 ---
 
@@ -922,14 +922,11 @@ LINE_CHANNEL_ID = "2008484338"
 { "version": 1, "include": ["/api/*"], "exclude": [] }
 ```
 
-**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，與下方規則一致）：
+**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則）：
 
 ```
-/share.html
-  Content-Security-Policy: default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: no-referrer
-  X-Robots-Tag: noindex
+/index.html
+  Cache-Control: no-cache
 
 /*
   X-Content-Type-Options: nosniff

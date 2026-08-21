@@ -371,3 +371,52 @@ describe('資源不存在（§4.6）', () => {
     expect(r.status).toBe(404)
   })
 })
+
+describe('v1.1.12 已發包必填金額（§4.3）', () => {
+  it('回報 in_progress 缺 amount → 400', async () => {
+    const { cookie } = await loginAs('U-bd-am1', '金額1', 'manager')
+    const ticketId = await createTicket(cookie)
+    const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '已發包' }),
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('回報 in_progress 帶 amount → 200，詳情回傳 amount/amount_at，時間軸帶 amount', async () => {
+    const { cookie } = await loginAs('U-bd-am2', '金額2', 'manager')
+    const ticketId = await createTicket(cookie)
+    const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'in_progress', note: '已發包', amount: 5000 }),
+    })
+    expect(r.status).toBe(200)
+
+    // 詳情回傳 amount + amount_at
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
+      headers: { Cookie: cookie },
+    })
+    const detailBody = await detail.json()
+    expect(detailBody.data.amount).toBe(5000)
+    expect(detailBody.data.amount_at).toBeTruthy()
+    // 時間軸該筆帶 amount
+    const update = detailBody.data.updates.find((u: any) => u.status === 'in_progress')
+    expect(update).toBeTruthy()
+    expect(update.amount).toBe(5000)
+  })
+
+  it('回報 done 不需 amount → 200', async () => {
+    const { cookie } = await loginAs('U-bd-am3', '金額3', 'manager')
+    const ticketId = await createTicket(cookie)
+    const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ status: 'done', note: '完成' }),
+    })
+    expect(r.status).toBe(200)
+  })
+})
