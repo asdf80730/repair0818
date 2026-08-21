@@ -16,14 +16,18 @@ let liffReady = false
 // 後端 API 已由 vitest 覆蓋；此層讓前端互動（填表單→送出→跳轉）可自動化測
 const IS_MOCK = new URLSearchParams(window.location.search).get('mock') === 'true'
 let mockTickets = [
-  { id: 1, title: '電梯－停車場 #0001', status: 'open', category_label: '電梯', location_label: '停車場', vendor_name: null, created_at: '2026-08-18T10:00:00.000Z', last_activity_at: '2026-08-18T10:00:00.000Z' },
-  { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', vendor_name: '測試廠商', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
-  { id: 3, title: '門禁－車道 #0003', status: 'void', category_label: '門禁', location_label: '車道', vendor_name: null, created_at: '2026-08-18T08:00:00.000Z', last_activity_at: '2026-08-18T12:00:00.000Z' },
-  { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', vendor_name: '測試廠商', created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
-  { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', vendor_name: null, created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
-  { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', vendor_name: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
+  { id: 1, title: '電梯－停車場 #0001', status: 'open', category_label: '電梯', location_label: '停車場', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T10:00:00.000Z', last_activity_at: '2026-08-18T10:00:00.000Z' },
+  { id: 2, title: '門禁－大廳 #0002', status: 'in_progress', category_label: '門禁', location_label: '大廳', vendor_name: '測試廠商', amount: 12000, amount_at: '2026-08-18T11:00:00.000Z', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: '2026-08-18T11:00:00.000Z' },
+  { id: 3, title: '門禁－車道 #0003', status: 'void', category_label: '門禁', location_label: '車道', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-18T08:00:00.000Z', last_activity_at: '2026-08-18T12:00:00.000Z' },
+  { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
+  { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', vendor_name: null, amount: 8000, amount_at: '2026-08-20T08:00:00.000Z', created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
+  { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
 ]
 let mockNextId = 7
+// mock 時間軸（v1.1.12：測金額顯示；id=2 已發包含金額）
+let mockUpdates = [
+  { id: 1, ticket_id: 2, kind: 'status', status: 'in_progress', note: '已發包施作', amount: 12000, display_name: '測試用戶', created_at: '2026-08-18T11:00:00.000Z', photo_urls: [] },
+]
 // mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
 const mockAssoc = [
   { option_id: 3, category_id: 1 }, // 頂樓 → 電梯
@@ -138,7 +142,8 @@ function mockApi(path, options = {}) {
     const t = {
       id: mockNextId++, title: `${cat?.label || '?'}－${loc?.label || '?'} #${String(mockNextId - 1).padStart(4, '0')}`,
       status: 'open', category_label: cat?.label, location_label: loc?.label,
-      vendor_name: null, created_at: new Date().toISOString(), last_activity_at: new Date().toISOString(),
+      vendor_name: null, amount: null, amount_at: null,
+      created_at: new Date().toISOString(), last_activity_at: new Date().toISOString(),
     }
     mockTickets.unshift(t)
     return { ok: true, data: { id: t.id, title: t.title, share_token: 'mock-token-' + t.id } }
@@ -148,15 +153,63 @@ function mockApi(path, options = {}) {
   if (detailMatch && method === 'GET') {
     const t = mockTickets.find(x => x.id === Number(detailMatch[1]))
     if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
-    return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/share.html?token=mock-token-' + t.id, updates: [] } }
+    // v1.1.12：詳情帶 amount/amount_at + 時間軸（測金額顯示）
+    const updates = mockUpdates.filter(u => u.ticket_id === t.id).map(u => ({
+      id: u.id, kind: u.kind, status: u.status, note: u.note, amount: u.amount,
+      display_name: u.display_name, created_at: u.created_at, photo_urls: u.photo_urls || [],
+    }))
+    return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/share.html?token=mock-token-' + t.id, updates } }
+  }
+  // v1.1.12：回報/留言（測已發包必填金額）
+  const updatesMatch = pathname.match(/^\/api\/tickets\/(\d+)\/updates$/)
+  if (updatesMatch && method === 'POST') {
+    const body = JSON.parse(options.body || '{}')
+    const t = mockTickets.find(x => x.id === Number(updatesMatch[1]))
+    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (body.status === 'in_progress' && !body.amount) {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '已發包需填寫金額' } }
+    }
+    const now = new Date().toISOString()
+    if (body.status === 'in_progress') {
+      t.status = 'in_progress'; t.amount = body.amount; t.amount_at = now
+      mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'in_progress', note: body.note || '', amount: body.amount, display_name: '測試用戶', created_at: now, photo_urls: [] })
+    } else if (body.status === 'done') {
+      t.status = 'done'
+      mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'done', note: body.note || '', amount: null, display_name: '測試用戶', created_at: now, photo_urls: [] })
+    } else if (body.status === 'open') {
+      t.status = 'open'
+      mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'open', note: body.note || '', amount: null, display_name: '測試用戶', created_at: now, photo_urls: [] })
+    }
+    t.last_activity_at = now
+    return { ok: true, data: { updated: true, status: body.status } }
+  }
+  // v1.1.12：留言（測留言時間軸）
+  const commentsMatch = pathname.match(/^\/api\/tickets\/(\d+)\/comments$/)
+  if (commentsMatch && method === 'POST') {
+    const body = JSON.parse(options.body || '{}')
+    const t = mockTickets.find(x => x.id === Number(commentsMatch[1]))
+    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'comment', status: null, note: body.note || '', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
+    return { ok: true, data: { id: mockUpdates.length, kind: 'comment' } }
   }
   // 統計
   if (pathname === '/api/stats/summary') {
-    return { ok: true, data: { open_count: 1, in_progress_count: 1, month_new: 2, month_done: 0 } }
+    const open_count = mockTickets.filter(t => t.status === 'open').length
+    const in_progress_count = mockTickets.filter(t => t.status === 'in_progress').length
+    return { ok: true, data: { open_count, in_progress_count, month_new: 2, month_done: 0 } }
   }
-  // v1.1.12：各類別金額統計（mock）
+  // v1.1.12：各類別金額統計（mock，從 mockTickets 動態算，測金額統計）
   if (pathname === '/api/stats/amount-by-category') {
-    return { ok: true, data: { items: [{ category_label: '電梯', total_amount: 12000, count: 2 }, { category_label: '門禁', total_amount: 5000, count: 1 }] } }
+    const byCat = {}
+    for (const t of mockTickets) {
+      if (t.amount != null) {
+        byCat[t.category_label] = byCat[t.category_label] || { total_amount: 0, count: 0 }
+        byCat[t.category_label].total_amount += t.amount
+        byCat[t.category_label].count += 1
+      }
+    }
+    const items = Object.entries(byCat).map(([category_label, v]) => ({ category_label, total_amount: v.total_amount, count: v.count }))
+    return { ok: true, data: { items } }
   }
   // users
   if (pathname === '/api/users' && method === 'GET') {
