@@ -535,13 +535,13 @@ pages.new = function () {
   locSelect.disabled = true
   locSelect.addEventListener('change', (e) => { selectedLoc = e.target.value ? Number(e.target.value) : null })
 
-  // 故障類型範本（依類別本地過濾，未選類別 disabled）
+  // 使用範本（依類別本地過濾，未選類別 disabled）— 輔助，選填，放在說明底下
   const descSelect = el('select', { class: 'select' })
   descSelect.appendChild(el('option', { value: '', text: '請先選擇類別' }))
   descSelect.disabled = true
   const renderDesc = (catId) => {
     descSelect.innerHTML = ''
-    descSelect.appendChild(el('option', { value: '', text: '選擇故障類型範本…' }))
+    descSelect.appendChild(el('option', { value: '', text: '選擇使用範本…' }))
     for (const o of filterByCat('descriptions', catId)) {
       descSelect.appendChild(el('option', { value: o.label, text: o.label }))
     }
@@ -668,8 +668,8 @@ const descAddBtn = el('button', { class: 'btn', text: '＋ 附加', onclick: () 
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
-    el('label', { text: '故障類型範本' }), descRow,
     el('label', { text: '說明' }), descEl,
+    el('label', { text: '使用範本（選填）' }), descRow,
     el('label', { text: '照片' }), photoInput, photoPreview,
     el('button', { class: 'btn btn-primary', text: '送出建單', onclick: submit }),
   ]))
