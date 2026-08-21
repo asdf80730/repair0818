@@ -95,7 +95,7 @@ repair-system/
 │   │   ├── browser-image-compression.js   # vendored UMD build（檔頭註明版本與來源）
 │   │   └── liff-mock.js                    # 測試模式 ?mock=true 用（§1.2）
 │   ├── _routes.json               # 只讓 /api/* 走 Functions；v1.1.12 起含 /share.html 走 Function
-│   └── _headers                   # 靜態檔標頭（CSP、安全標頭）
+│   └── _headers                   # 靜態檔標頭（安全標頭；主站不設 CSP，見 §8.2）
 ├── functions/
 │   ├── api/
 │   │   └── [[path]].ts            # 唯一入口
@@ -945,19 +945,18 @@ LINE_CHANNEL_ID = "2008484338"
 { "version": 1, "include": ["/api/*", "/share.html"], "exclude": [] }
 ```
 
-**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則；**v1.1.13 加主站 CSP**）：
+**`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則）：
 
 ```
 /index.html
   Cache-Control: no-cache
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.line-scdn.net https://api.line.me; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.line.me https://access.line.me; font-src 'self'; object-src 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
 ```
 
-> 主站 CSP 需白名單 LINE 網域（`static.line-scdn.net` 載入 LIFF SDK、`api.line.me`/`access.line.me` 供 SDK 與登入）——實測確認不擋 LIFF 後定案。
+> **⚠️ 主站不加 CSP（v1.1.13 實測後撤回）**：先前曾嘗試加主站 CSP，但**會導致 LINE 以外的瀏覽器無法開啟**（`script-src`/`connect-src` 白名單過嚴，擋掉 LINE 外環境的非 LIFF 載入）。主站維持「僅 nosniff + referrer-policy」、**不設 CSP**。share.html 的 CSP 由 Function 內獨立回傳（`functions/share.html.ts`），不受 `_headers` 影響，維持安全防護。
 
 > `X-Frame-Options`／`frame-ancestors`：LIFF 是 WebView 而非 iframe，理論上可設 `DENY`/`'none'`，但**實測確認不影響 LINE 開啟後再鎖**（避免誤擋）。故首版 `_headers` 先不加，列入施工驗證項。
 
