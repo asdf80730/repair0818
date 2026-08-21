@@ -265,6 +265,9 @@ button { cursor: pointer; }
 .assoc-count { font-size: 12px; color: var(--gray); }
 .modal-sub { margin: 12px 0 6px; font-size: 14px; color: var(--gray); }
 
+/* 空狀態（Empty State）：列表無資料統一提示 */
+.empty-state { text-align: center; color: var(--gray); padding: 32px 16px; font-size: 14px; }
+
 /* E2：toast 提示 */
 .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px; z-index: 100; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .toast.show { opacity: 1; }

@@ -379,6 +379,11 @@ function renderLoading(root, text) {
   ]))
 }
 
+// 空狀態（Empty State）：列表無資料時統一提示，避免白畫面
+function renderEmpty(root, text) {
+  root.appendChild(el('p', { class: 'empty-state', text: text || '沒有符合條件的項目' }))
+}
+
 // P0 等待開通頁（§5.0.1）
 pages.pending = function () {
   const root = document.getElementById('page')
@@ -426,6 +431,9 @@ pages.list = function () {
       if (page === 1) listEl.innerHTML = '' // 清掉 loading
       for (const t of items) {
         listEl.appendChild(renderTicketCard(t))
+      }
+      if (items.length === 0 && page === 1) {
+        renderEmpty(listEl, '沒有符合條件的案件') // 空狀態
       }
       loadMoreBtn.style.display = hasMore ? '' : 'none'
     } catch (e) {
@@ -1143,6 +1151,9 @@ pages.users = function () {
           activeBtn,
         ]))
       }
+      if (filtered.length === 0) {
+        renderEmpty(list, '沒有符合條件的成員') // 空狀態
+      }
     }
     filterSelect.addEventListener('change', render)
     root.querySelector('.loading-wrap')?.remove()
@@ -1186,6 +1197,9 @@ pages.admin = function () {
             catch (e) { alert(e.message) }
           } }),
         ]))
+      }
+      if (b.data.length === 0) {
+        renderEmpty(list, '尚無廠商') // 空狀態
       }
       content.innerHTML = ''
       content.appendChild(list)
@@ -1239,6 +1253,9 @@ pages.admin = function () {
           row.appendChild(assocBtn)
         }
         list.appendChild(row)
+      }
+      if (b.data.length === 0) {
+        renderEmpty(list, '尚無此類選項') // 空狀態
       }
       content.innerHTML = ''
       content.appendChild(list)
