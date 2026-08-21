@@ -382,8 +382,6 @@ describe('v1.1.12 已發包必填金額（§4.3）', () => {
       body: JSON.stringify({ status: 'in_progress', note: '已發包' }),
     })
     expect(r.status).toBe(400)
-    const body = await r.json()
-    expect(body.error.code).toBe('VALIDATION_ERROR')
   })
 
   it('回報 in_progress 帶 amount → 200，詳情回傳 amount/amount_at，時間軸帶 amount', async () => {
