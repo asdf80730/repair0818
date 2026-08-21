@@ -65,10 +65,11 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
   const ticketId = insertResult.meta.last_row_id
 
   // 綁定照片（target_type='ticket'，target_id=ticketId）
+  // #2 CAS：加 AND target_id IS NULL，防止兩分頁同時送同張照片被第二次覆蓋綁定
   if (photoIds.length > 0) {
     const photoStmts = photoIds.map((pid) =>
       c.env.DB.prepare(
-        'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?',
+        'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL',
       ).bind('ticket', ticketId, pid),
     )
     await c.env.DB.batch(photoStmts)
@@ -388,7 +389,7 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
   const inserted = batchRes[1].meta.last_row_id as number | undefined
   if (photoIds.length > 0 && inserted) {
     await c.env.DB.batch(photoIds.map((pid) =>
-      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?')
+      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
         .bind('update', inserted, pid),
     ))
   }
@@ -437,7 +438,7 @@ ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createComme
   // 留言照片一律 target_type='update' + target_id=留言 id
   if (photoIds.length > 0) {
     await c.env.DB.batch(photoIds.map((pid) =>
-      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ?')
+      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
         .bind('update', updateId, pid),
     ))
   }
@@ -463,15 +464,20 @@ ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zVa
   }
 
   const now = nowIso()
-  await c.env.DB.batch([
+  // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
+  const batchRes = await c.env.DB.batch([
     c.env.DB.prepare(
-      'UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ?',
+      "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
     ).bind('void', now, user.id, now, id),
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
        VALUES (?, ?, 'status', 'void', ?, ?)`,
     ).bind(id, user.id, body.note ?? null, now),
   ])
+  // 若 UPDATE 影響 0 筆，代表狀態已在他處變更（被結案/作廢/重開），回 400 而非重複寫入
+  if (batchRes[0].meta.changes === 0) {
+    return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
+  }
 
   return ok(c, { status: 'void' })
 })
@@ -497,15 +503,20 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('
   const targetStatus = body.status ?? 'in_progress'
   const prevStatusLabel = ticket.status === 'done' ? '已完成' : '已作廢'
 
-  await c.env.DB.batch([
+  // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
+  const batchRes = await c.env.DB.batch([
     c.env.DB.prepare(
-      'UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ?',
+      "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
     ).bind(targetStatus, now, id),
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
        VALUES (?, ?, 'status', ?, ?, ?)`,
     ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now),
   ])
+  // 若 UPDATE 影響 0 筆，代表狀態已在他處變更（被重開/作廢），回 400 而非重複寫入
+  if (batchRes[0].meta.changes === 0) {
+    return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
+  }
 
   return ok(c, { status: targetStatus })
 })
