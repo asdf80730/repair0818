@@ -567,9 +567,18 @@ pages.list = function () {
       (Date.now() - new Date(t.last_activity_at).getTime() > 7 * 24 * 3600 * 1000)
     const staleDays = Math.floor((Date.now() - new Date(t.last_activity_at).getTime()) / (24 * 3600 * 1000))
     // v1.1.13：標題後補「建立至今 N 天」顯示 (N 天)；建立/最後活動只顯示日期（省空間、同行）
-    const createdDays = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (24 * 3600 * 1000))
+    // 用「日曆日差」（台灣時區）而非 24 小時差：昨天建的顯示 1 天、今天建的顯示 0 天
     const dateOnly = (iso) => { const d = new Date(iso); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` }
-    const age = createdDays >= 1 ? `(${createdDays} 天)` : ''
+    const dayDiff = (iso) => {
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return 0
+      const now = new Date()
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const startOfCreated = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+      return Math.round((startOfToday - startOfCreated) / (24 * 3600 * 1000))
+    }
+    const createdDays = dayDiff(t.created_at)
+    const age = `(${createdDays} 天)`
     return el('div', { class: 'card ticket-card', onclick: () => { location.hash = '#/ticket/' + t.id } }, [
       el('div', { class: 'ticket-title' }, [statusBadge(t.status), el('span', { text: `${t.title} ${age}`.trim() })]),
       t.description ? el('div', { class: 'ticket-desc', text: t.description }) : null,
