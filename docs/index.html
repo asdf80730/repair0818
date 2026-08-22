@@ -1,1191 +1,386 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>完整專案總覽 Markdown 產生器</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
-body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5}
-
-/* ===== 頂部固定欄 ===== */
-.top-bar{position:fixed;top:0;left:0;right:0;z-index:200;background:#16213e;border-bottom:1px solid #333;padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.top-bar .title{font-size:1rem;font-weight:bold;color:#90caf9;margin-right:8px;white-space:nowrap}
-.top-bar .title small{font-size:.7rem;color:#78909c;font-weight:normal}
-.btn{background:#1565c0;color:#fff;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:.8rem;white-space:nowrap}
-.btn:hover{background:#1976d2}
-.btn:disabled{background:#555;cursor:not-allowed;opacity:.5}
-.btn-sec{background:#37474f}
-.btn-sec:hover{background:#455a64}
-.btn-green{background:#2e7d32}
-.btn-green:hover{background:#388e3c}
-.btn-orange{background:#e65100}
-.btn-orange:hover{background:#f57c00}
-.btn-sm{padding:3px 8px;font-size:.72rem}
-.top-status{margin-left:auto;font-size:.75rem;color:#90a4ae;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* ===== 主體佈局 ===== */
-.main{position:fixed;top:48px;bottom:36px;left:0;right:0;display:flex;flex-direction:column;overflow:hidden}
-
-/* ===== 折疊面板（只收合 panel-body，不會遮住下面可點區） ===== */
-.panel{background:#1e2a3a;border-bottom:1px solid #333;overflow:hidden}
-.panel-header{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;cursor:pointer;user-select:none;background:#263238}
-.panel-header:hover{background:#2c3e50}
-.panel-header .ph-title{font-size:.82rem;color:#90caf9;font-weight:bold}
-.panel-header .ph-arrow{font-size:.7rem;color:#78909c;transition:transform .2s}
-.panel-header.open .ph-arrow{transform:rotate(180deg)}
-.panel-body{padding:12px 16px;max-height:320px;overflow-y:auto}
-.panel-body.is-hidden{display:none}
-
-/* 分頁 */
-.tabs{display:flex;gap:0;margin-bottom:12px}
-.tab{padding:5px 14px;font-size:.8rem;cursor:pointer;border:1px solid #546e7a;background:#263238;color:#90a4ae;border-radius:4px 4px 0 0;margin-right:-1px}
-.tab.active{background:#1565c0;color:#fff;border-color:#1565c0}
-.tab-content{display:none}
-.tab-content.active{display:block}
-
-/* 表單 */
-.field-row{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0}
-.field-row>div{flex:1;min-width:180px}
-.field-row label{font-size:.75rem;color:#90a4ae;display:block;margin-bottom:2px}
-input[type=text],input[type=password],input[type=number]{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:4px;padding:5px 8px;font-size:.8rem;width:100%}
-input[type=number]{width:70px}
-textarea{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:4px;padding:6px 8px;font-size:.78rem;width:100%;min-height:60px;resize:vertical;font-family:monospace}
-label.chk{display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer;margin:3px 0}
-.small{font-size:.72rem;color:#78909c}
-a{color:#64b5f6}
-
-/* 排除規則 */
-.preset-row{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
-.preset-chip{background:#37474f;border:1px solid #546e7a;border-radius:10px;padding:1px 8px;font-size:.7rem;cursor:pointer;color:#b0bec5}
-.preset-chip:hover{background:#455a64;color:#fff}
-.rule-flex{display:flex;gap:8px;align-items:flex-start}
-.rule-flex textarea{flex:1}
-.rule-flex .rule-btns{display:flex;flex-direction:column;gap:4px;min-width:80px}
-.rule-status{font-size:.72rem;color:#a5d6a7;margin-top:4px}
-
-/* ZIP 上傳區 */
-.zip-zone{border:2px dashed #546e7a;border-radius:6px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s;margin:8px 0}
-.zip-zone:hover,.zip-zone.dragover{border-color:#4caf50;background:#1a2a1a}
-
-/* ===== 檔案/設定兩欄佈局 ===== */
-.file-area{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:0 16px}
-
-.two-col{display:flex;gap:12px;overflow:hidden;margin-top:8px}
-.col-left{flex:1;min-width:420px;display:flex;flex-direction:column;overflow:hidden}
-.col-right{width:340px;min-width:320px;max-width:40%;display:flex;flex-direction:column;overflow:hidden;gap:10px}
-
-@media (max-width: 980px){
-  .two-col{flex-direction:column}
-  .col-right{width:auto;max-width:none;min-width:0}
-  .col-left{min-width:0}
-}
-
-/* ===== 左側：表格 ===== */
-.file-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid #333}
-.file-toolbar select{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:3px;padding:3px 6px;font-size:.75rem}
-.file-toolbar input[type=text]{width:180px;padding:3px 8px;font-size:.75rem}
-.file-table-wrap{flex:1;overflow-y:auto;border:1px solid #333;border-radius:4px;margin-top:6px}
-.file-table{width:100%;border-collapse:collapse;font-size:.75rem;font-family:monospace}
-.file-table th{background:#263238;color:#90caf9;position:sticky;top:0;z-index:2;padding:5px 8px;text-align:left;cursor:pointer;user-select:none;white-space:nowrap;border-bottom:1px solid #546e7a;font-size:.72rem}
-.file-table th:hover{background:#37474f}
-.file-table td{padding:3px 8px;border-bottom:1px solid #2a2a3e;vertical-align:middle}
-.file-table tr:hover td{background:#263238}
-.file-table tr.checked-row td{background:#1a2a1a}
-.file-table .col-chk{width:24px;text-align:center}
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>完整專案總覽 Markdown 產生器</title><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script><style>/* ===== 基礎 ===== */*{box-sizing:border-box;margin:0;padding:0}html,body{height:100%;overflow:hidden}body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5}
+/* ===== 固定列：Top / Bottom（避免遮住使用者操作） ===== */.top-bar{position:fixed;top:0;left:0;right:0;z-index:300;background:#16213e;border-bottom:1px solid #333;padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.top-bar .title{font-size:1rem;font-weight:bold;color:#90caf9;margin-right:8px;white-space:nowrap}.top-bar .title small{font-size:.7rem;color:#78909c;font-weight:normal}.btn{background:#1565c0;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:.82rem;white-space:nowrap}.btn:hover{background:#1976d2}.btn:disabled{background:#555;cursor:not-allowed;opacity:.6}.btn-sec{background:#37474f}.btn-sec:hover{background:#455a64}.btn-green{background:#2e7d32}.btn-green:hover{background:#388e3c}.btn-orange{background:#e65100}.btn-orange:hover{background:#f57c00}.btn-sm{padding:4px 9px;font-size:.75rem}.top-status{margin-left:auto;font-size:.82rem;color:#90a4ae;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.progress-wrap{position:fixed;top:48px;left:0;right:0;z-index:250;background:#263238;padding:4px 16px;display:none}.progress-wrap .pbar{height:4px;background:#37474f;border-radius:2px;overflow:hidden}.progress-wrap .pfill{height:100%;background:#4caf50;transition:width .2s}.progress-wrap .ptxt{font-size:.75rem;color:#90a4ae;margin-top:2px}
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:300;background:#16213e;border-top:1px solid #333;padding:7px 16px;display:flex;align-items:center;gap:16px;font-size:.78rem}.bottom-bar .stat{color:#90a4ae}.bottom-bar .stat b{color:#90caf9}.bottom-bar .warn{color:#ffb300}
+/* ===== 主體：Grid（點選不被遮住的關鍵） ===== */.main{position:fixed;top:48px;bottom:36px;left:0;right:0;z-index:150;display:grid;grid-template-columns:minmax(520px,1fr) 360px;gap:12px;padding:12px 16px;overflow:hidden}.main-inner{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px}.leftcol{min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px}.rightcol{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px}
+/* ===== 通用面板 ===== */.box{background:#1e2a3a;border:1px solid #333;border-radius:8px;padding:12px}.box h3{font-size:.9rem;color:#a5d6a7;margin-bottom:8px}.small{font-size:.75rem;color:#78909c}a{color:#64b5f6}.section-divider{height:1px;background:#333;margin:10px 0}
+details{border-radius:6px;overflow:hidden;border:1px solid #2f3c52;background:#1e2a3a}.summary-like{cursor:pointer}.panel-summary{cursor:pointer;color:#90caf9;font-size:.86rem;padding:10px 12px;background:#263238;user-select:none;display:flex;align-items:center;justify-content:space-between}.panel-body{padding:12px 12px;background:#1e2a3a}
+/* 讓 <details> 可收合但不造成外層覆蓋點選問題 */
+details{min-width:0}details[open]{border-color:#546e7a}details[open] .panel-body{display:block}details:not([open]) .panel-body{display:none}
+/* ===== 來源面板（可收合） ===== */.tabs{display:flex;gap:6px;margin:0 0 10px 0;flex-wrap:wrap}.tab{padding:6px 10px;font-size:.82rem;cursor:pointer;border:1px solid #546e7a;background:#263238;color:#90a4ae;border-radius:6px}.tab.active{background:#1565c0;color:#fff;border-color:#1565c0}
+.field-row{display:flex;flex-wrap:wrap;gap:10px}.field{flex:1;min-width:190px}.field label{font-size:.78rem;color:#90a4ae;display:block;margin-bottom:4px}
+input[type=text],input[type=password],input[type=number],select{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:4px;padding:6px 8px;font-size:.86rem;width:100%}
+input[type=number]{width:88px}
+textarea{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:6px;padding:8px;font-size:.82rem;width:100%;min-height:70px;resize:vertical;font-family:monospace}
+label.chk{display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer;margin:6px 0;color:#e0e0e0}
+.preset-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.preset-chip{background:#37474f;border:1px solid #546e7a;border-radius:999px;padding:2px 10px;font-size:.78rem;cursor:pointer;color:#b0bec5}.preset-chip:hover{background:#455a64;color:#fff}
+.rule-flex{display:flex;gap:10px;align-items:flex-start}.rule-btns{display:flex;flex-direction:column;gap:8px;min-width:96px}.rule-status{font-size:.8rem;color:#a5d6a7;margin-top:6px}
+/* ===== 表格區 ===== */.file-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #333}.file-toolbar select,.file-toolbar input[type=text]{width:auto}
+.file-table-wrap{min-height:240px;flex:1;min-height:0;overflow:auto;border:1px solid #333;border-radius:8px}
+.file-table{width:100%;border-collapse:collapse;font-size:.78rem;font-family:monospace}
+.file-table th{background:#263238;color:#90caf9;position:sticky;top:0;z-index:2;padding:7px 8px;text-align:left;cursor:pointer;user-select:none;white-space:nowrap;border-bottom:1px solid #546e7a;font-size:.74rem}
+.file-table th:hover{background:#37474f}.file-table td{padding:6px 8px;border-bottom:1px solid #2a2a3e;vertical-align:middle}
+.file-table tr:hover td{background:#263238}.file-table tr.checked-row td{background:#1a2a1a}
+.file-table .col-chk{width:34px;text-align:center}
 .file-table .col-path{word-break:break-all}
 .file-table .col-size{text-align:right;white-space:nowrap;color:#80cbc4}
 .file-table .col-ext{text-align:center;color:#ce93d8}
 .file-table .col-depth{text-align:center;color:#78909c}
-.binary-tag{background:#b71c1c;color:#fff;font-size:.6rem;padding:1px 3px;border-radius:2px}
-.fail-tag{background:#e65100;color:#fff;font-size:.6rem;padding:1px 3px;border-radius:2px}
-.sens-mark{color:#ffb300;font-size:.7rem}
-.sens-warn{background:#4a3000;border:1px solid #ffb300;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#ffe082;display:none}
-
-/* ===== 右側：輸出設定 ===== */
-.box{background:#1e2a3a;border:1px solid #333;border-radius:6px;padding:12px}
-.box h3{font-size:.82rem;color:#a5d6a7;margin-bottom:8px}
-.box .row{display:flex;gap:8px;flex-direction:column}
-.box label.chk{margin:6px 0}
-.box .field{display:flex;align-items:center;gap:8px;margin-top:6px}
-.box .field input[type=number]{width:80px}
-
-.section-divider{height:1px;background:#333;margin:10px 0}
-
-/* ===== 底部固定欄 ===== */
-.bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#16213e;border-top:1px solid #333;padding:6px 16px;display:flex;align-items:center;gap:16px;font-size:.75rem}
-.bottom-bar .stat{color:#90a4ae}
-.bottom-bar .stat b{color:#90caf9}
-.bottom-bar .warn{color:#ffb300}
-
-/* 進度條 */
-.progress-wrap{position:fixed;top:48px;left:0;right:0;z-index:150;background:#263238;padding:4px 16px;display:none}
-.progress-wrap .pbar{height:4px;background:#37474f;border-radius:2px;overflow:hidden}
-.progress-wrap .pfill{height:100%;background:#4caf50;transition:width .2s}
-.progress-wrap .ptxt{font-size:.7rem;color:#90a4ae;margin-top:2px}
-
-/* 輸出預覽 */
-.output-section{padding:8px 0}
-.analysis{background:#263238;border-radius:4px;padding:8px;margin:6px 0;font-size:.75rem}
-.analysis pre{white-space:pre-wrap;word-break:break-all;font-size:.72rem;color:#b0bec5;margin-top:4px;max-height:120px;overflow-y:auto}
-
-.rate-warn{background:#1a237e;border:1px solid #5c6bc0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#c5cae9;display:none}
-</style>
-</head>
-<body>
-
-<!-- ===== 頂部固定欄 ===== -->
+.binary-tag{background:#b71c1c;color:#fff;font-size:.68rem;padding:2px 6px;border-radius:4px}
+.fail-tag{background:#e65100;color:#fff;font-size:.68rem;padding:2px 6px;border-radius:4px}
+.sens-mark{color:#ffb300}
+.sens-warn{background:#4a3000;border:1px solid #ffb300;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:.85rem;color:#ffe082;display:none}
+.analysis pre{white-space:pre-wrap;word-break:break-all;font-size:.76rem;color:#b0bec5;max-height:140px;overflow:auto;margin-top:6px}
+.analysis h4{font-size:.88rem;color:#a5d6a7;margin-top:6px;margin-bottom:6px}
+/* ===== 排版自適應 ===== */@media (max-width:1100px){.main{grid-template-columns:1fr}.rightcol{overflow:visible}}
+/* ===== 小工具 ===== */.zip-zone{border:2px dashed #546e7a;border-radius:8px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s;margin:8px 0;background:#1e2a3a}.zip-zone:hover,.zip-zone.dragover{border-color:#4caf50;background:#1a2a1a}
+*{scrollbar-width:thin;scrollbar-color:#546e7a transparent}</style></head><body>
 <div class="top-bar">
-<span class="title">專案總覽產生器 <small>v12</small></span>
-<button class="btn" id="btn-load" onclick="togglePanel()">📂 載入來源</button>
-<button class="btn btn-sec" id="pb" disabled onclick="generate()">⚙️ 產生輸出</button>
-<button class="btn btn-sec" id="d0" disabled onclick="dlMain()">⬇ MD</button>
-<button class="btn btn-sec" id="d1" disabled onclick="dlIndex()">⬇ 索引</button>
-<button class="btn btn-sec" id="d2" disabled onclick="dlJSON()">⬇ JSON</button>
-<button class="btn btn-sec" id="da" disabled onclick="dlAll()">⬇ 全部</button>
-<span class="top-status" id="st">就緒</span>
+  <span class="title">專案總覽產生器 <small>單頁整合</small></span>
+  <button class="btn" id="btn-load" type="button" onclick="toggleSourcePanel()">📂 載入來源</button>
+  <button class="btn btn-sec" id="pb" disabled type="button" onclick="generate()">⚙️ 產生輸出</button>
+  <button class="btn btn-sec btn-sm" id="d0" disabled type="button" onclick="dlMain()">⬇ MD</button>
+  <button class="btn btn-sec btn-sm" id="d1" disabled type="button" onclick="dlIndex()">⬇ 索引</button>
+  <button class="btn btn-sec btn-sm" id="d2" disabled type="button" onclick="dlJSON()">⬇ JSON</button>
+  <button class="btn btn-sec btn-sm" id="da" disabled type="button" onclick="dlAll()">⬇ 全部</button>
+  <span class="top-status" id="st">就緒</span>
 </div>
 
-<!-- ===== 進度條 ===== -->
 <div class="progress-wrap" id="pw">
-<div class="pbar"><div class="pfill" id="pf"></div></div>
-<div class="ptxt" id="pt"></div>
+  <div class="pbar"><div class="pfill" id="pf"></div></div>
+  <div class="ptxt" id="pt"></div>
 </div>
 
-<!-- ===== 主體 ===== -->
-<div class="main">
+<div class="main" id="main">
+  <div class="main-inner leftcol">
+    <!-- 來源面板（收合） -->
+    <details id="sourceDetails" open>
+      <summary class="panel-summary" id="sourceSummary" onclick="toggleSourcePanel()">
+        <span>📂 來源</span><span>▼</span>
+      </summary>
+      <div class="panel-body" id="sourceBody">
+        <div class="tabs" id="srcTabs">
+          <div class="tab active" data-tab="t-local">本機資料夾</div>
+          <div class="tab" data-tab="t-github">GitHub</div>
+          <div class="tab" data-tab="t-zip">ZIP 上傳</div>
+        </div>
 
-<!-- 折疊面板：來源 -->
-<div class="panel" id="panel-source">
-<div class="panel-header open" id="ph-source" onclick="togglePanel()">
-<span class="ph-title">📂 來源</span>
-<span class="ph-arrow">▼</span>
-</div>
-<div class="panel-body" id="pb-source">
+        <div id="t-local" class="tabcontent" style="display:block">
+          <button class="btn btn-sec" type="button" onclick="$('fi').click()" style="width:auto">選取專案資料夾</button>
+          <span class="small" id="local-info" style="display:block;margin-top:8px"></span>
+        </div>
 
-<!-- 來源分頁 -->
-<div class="tabs">
-<div class="tab active" data-tab="t-local">本機資料夾</div>
-<div class="tab" data-tab="t-github">GitHub</div>
-<div class="tab" data-tab="t-zip">ZIP 上傳</div>
-</div>
+        <div id="t-github" class="tabcontent" style="display:none">
+          <div class="field-row">
+            <div class="field"><label>Repo（owner/repo 或網址）</label><input type="text" id="gu" placeholder="owner/repo"></div>
+            <div class="field" style="min-width:150px"><label>分支（空白＝自動）</label><input type="text" id="gb" placeholder="main"></div>
+            <div class="field" style="min-width:210px"><label>子目錄（載入時用）</label><input type="text" id="gs" placeholder="src/"></div>
+          </div>
+          <div class="field-row" style="margin-top:10px;align-items:flex-end">
+            <div class="field"><label>Token（公開可留空）</label><input type="password" id="gt" placeholder="ghp_..."></div>
+            <div class="field" style="min-width:240px;flex:1">
+              <label class="chk"><input type="checkbox" id="gk"> 記住</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <button class="btn btn-sec btn-sm" type="button" onclick="clearToken()">清除</button>
+                <button class="btn btn-green btn-sm" type="button" onclick="processGitHub()">下載並載入</button>
+                <button class="btn btn-sec btn-sm" type="button" onclick="downloadGithubZipToLocal()">📥 下載 ZIP 到本機</button>
+              </div>
+            </div>
+          </div>
+          <div class="small" id="rw" style="display:none;margin-top:10px"></div>
+          <div class="small" style="margin-top:8px">💡 若「下載並載入」不順，可先用「下載 ZIP 到本機」，再用「ZIP 上傳」。</div>
+        </div>
 
-<!-- 本機 -->
-<div class="tab-content active" id="t-local">
-<button class="btn" onclick="$('fi').click()">選取專案資料夾</button>
-<span class="small" id="local-info"></span>
-</div>
+        <div id="t-zip" class="tabcontent" style="display:none">
+          <div class="zip-zone" id="zip-zone">📦 拖入 ZIP 檔或點擊選擇</div>
+          <input type="file" id="zip-input" accept=".zip" hidden>
+          <div class="small">GitHub 下載的 ZIP 會自動去除頂層目錄。</div>
+          <div class="small" style="margin-top:6px">手動下載：<code>github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip</code></div>
+        </div>
+      </div>
+    </details>
 
-<!-- GitHub -->
-<div class="tab-content" id="t-github">
-<div class="field-row">
-<div><label>Repo（owner/repo 或網址）</label><input type="text" id="gu" placeholder="owner/repo"></div>
-<div><label>分支（空白＝自動；下載按鈕會預設 main）</label><input type="text" id="gb" placeholder="main"></div>
-<div><label>子目錄（用於載入解壓後的子資料夾）</label><input type="text" id="gs" placeholder="src/"></div>
-</div>
+    <!-- 左欄：排除規則 + 表格（同一欄，不會飄到下方） -->
+    <details id="excludeDetails" open>
+      <summary class="panel-summary" onclick="null;toggleExclude()">
+        <span>🚫 排除規則（自動套用）</span><span id="excludeArrow">▼</span>
+      </summary>
+      <div class="panel-body">
+        <div class="preset-row">
+          <span class="preset-chip" data-rule="node_modules/">node_modules/</span>
+          <span class="preset-chip" data-rule=".git/">.git/</span>
+          <span class="preset-chip" data-rule="dist/">dist/</span>
+          <span class="preset-chip" data-rule="build/">build/</span>
+          <span class="preset-chip" data-rule="*.png">*.png</span>
+          <span class="preset-chip" data-rule="*.jpg">*.jpg</span>
+          <span class="preset-chip" data-rule="*.gif">*.gif</span>
+          <span class="preset-chip" data-rule="*.ico">*.ico</span>
+          <span class="preset-chip" data-rule="*.svg">*.svg</span>
+          <span class="preset-chip" data-rule="*.lock">*.lock</span>
+          <span class="preset-chip" data-rule="*.woff*">*.woff*</span>
+          <span class="preset-chip" data-rule=".env">.env</span>
+        </div>
 
-<div class="field-row">
-<div><label>Token（公開可留空）</label><input type="password" id="gt" placeholder="ghp_..."></div>
-<div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
-<label class="chk"><input type="checkbox" id="gk"> 記住</label>
-<button class="btn btn-sec btn-sm" onclick="clearToken()">清除</button>
-<button class="btn btn-green" onclick="processGitHub()">下載並載入</button>
-<button class="btn btn-sec btn-sm" onclick="downloadGithubZipToLocal()" title="下載 ZIP 到本機後，請切到「ZIP 上傳」。">📥 下載 ZIP 到本機</button>
-</div>
-</div>
+        <div class="rule-flex">
+          <textarea id="rules" placeholder="node_modules/&#10;dist/&#10;*.png"></textarea>
+          <div class="rule-btns">
+            <button class="btn btn-orange btn-sm" type="button" onclick="applyRules(false)">套用</button>
+            <button class="btn btn-sec btn-sm" type="button" onclick="clearRules()">清空</button>
+            <button class="btn btn-sec btn-sm" type="button" onclick="resetChecks()">全選</button>
+          </div>
+        </div>
+        <div class="rule-status" id="rule-status"></div>
+      </div>
+    </details>
 
-<div class="rate-warn" id="rw"></div>
-<div class="small" style="margin-top:6px">
-💡 若「下載並載入」不順，可先用「下載 ZIP 到本機」，再用「ZIP 上傳」。
-</div>
-</div>
+    <div class="box" style="padding:12px">
+      <h3 style="margin-bottom:10px">篩選 / 勾選（影響產生輸出）</h3>
+      <div class="file-toolbar">
+        <select id="sort-key" onchange="renderFileTable()">
+          <option value="path">路徑</option>
+          <option value="size">大小</option>
+          <option value="ext">類型</option>
+          <option value="depth">深度</option>
+        </select>
+        <select id="sort-dir" onchange="renderFileTable()">
+          <option value="asc">↑</option>
+          <option value="desc">↓</option>
+        </select>
+        <button class="btn btn-sec btn-sm" type="button" onclick="selAll()">全選</button>
+        <button class="btn btn-sec btn-sm" type="button" onclick="selNone()">全取消</button>
+        <input type="text" id="flt" placeholder="篩選路徑..." oninput="renderFileTable()" style="min-width:180px">
+        <label class="chk" style="margin-left:auto"><input type="checkbox" id="chk-all" onchange="chkAll(this.checked)"> 全選/取消</label>
+      </div>
+      <div class="sens-warn" id="sw"></div>
+      <div class="file-table-wrap">
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th class="col-chk"></th>
+              <th onclick="sortBy('path')">路徑</th>
+              <th onclick="sortBy('size')">大小</th>
+              <th onclick="sortBy('ext')">類型</th>
+              <th onclick="sortBy('depth')">深度</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody id="ft-body">
+            <tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入來源 — 點上方「載入來源」開始</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-<!-- ZIP -->
-<div class="tab-content" id="t-zip">
-<div class="zip-zone" id="zip-zone">
-<div>📦 拖入 ZIP 檔或點擊選擇</div>
-<div class="small" style="margin-top:4px">GitHub 下載的 ZIP 會自動去除頂層目錄</div>
-</div>
-<input type="file" id="zip-input" accept=".zip" hidden>
-<div class="small">💡 手動下載：<code>github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip</code></div>
-</div>
+  </div>
 
-</div>
-</div>
-</div>
+  <!-- 右欄：輸出設定（常駐） -->
+  <div class="rightcol">
+    <div class="box">
+      <h3>⚙️ 輸出設定</h3>
+      <label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
+      <label class="chk"><input type="checkbox" id="o5" checked> 長檔注入路徑戳記</label>
+      <div class="section-divider"></div>
+      <div class="small" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>間隔行數：</span>
+        <input type="number" id="o8" value="12" min="4" max="80">
+      </div>
+      <div class="section-divider"></div>
+      <div class="small">設定會在你按「產生輸出」時生效。</div>
+    </div>
 
-<!-- 排除規則（不跟著來源TAB收合） -->
-<details style="margin-bottom:0;border-bottom:1px solid #333;background:#1e2a3a" open>
-<summary style="cursor:pointer;color:#90caf9;font-size:.82rem;padding:10px 16px;background:#1e2a3a;border-bottom:none">
-🚫 排除規則（自動套用）
-</summary>
-<div style="padding:12px 16px;background:#1e2a3a">
-<div class="preset-row">
-<span class="preset-chip" data-rule="node_modules/">node_modules/</span>
-<span class="preset-chip" data-rule=".git/">.git/</span>
-<span class="preset-chip" data-rule="dist/">dist/</span>
-<span class="preset-chip" data-rule="build/">build/</span>
-<span class="preset-chip" data-rule="*.png">*.png</span>
-<span class="preset-chip" data-rule="*.jpg">*.jpg</span>
-<span class="preset-chip" data-rule="*.gif">*.gif</span>
-<span class="preset-chip" data-rule="*.ico">*.ico</span>
-<span class="preset-chip" data-rule="*.svg">*.svg</span>
-<span class="preset-chip" data-rule="*.lock">*.lock</span>
-<span class="preset-chip" data-rule="*.woff*">*.woff*</span>
-<span class="preset-chip" data-rule=".env">.env</span>
-</div>
-
-<div class="rule-flex">
-<textarea id="rules" placeholder="node_modules/&#10;dist/&#10;*.png"></textarea>
-<div class="rule-btns">
-<button class="btn btn-orange btn-sm" onclick="applyRules(false)">套用</button>
-<button class="btn btn-sec btn-sm" onclick="clearRules()">清空</button>
-<button class="btn btn-sec btn-sm" onclick="resetChecks()">全選</button>
-</div>
-</div>
-<div class="rule-status" id="rule-status"></div>
-</div>
-</details>
-
-<!-- 檔案/輸出設定區 -->
-<div class="file-area">
-
-<div class="two-col">
-<!-- ===== 左欄：篩選 + 表格 ===== -->
-<div class="col-left">
-<div class="file-toolbar">
-<select id="sort-key" onchange="renderFileTable()">
-<option value="path">路徑</option>
-<option value="size">大小</option>
-<option value="ext">類型</option>
-<option value="depth">深度</option>
-</select>
-
-<select id="sort-dir" onchange="renderFileTable()">
-<option value="asc">↑</option>
-<option value="desc">↓</option>
-</select>
-
-<button class="btn btn-sec btn-sm" onclick="selAll()">全選</button>
-<button class="btn btn-sec btn-sm" onclick="selNone()">全取消</button>
-
-<input type="text" id="flt" placeholder="篩選路徑..." oninput="renderFileTable()">
-
-<label class="chk" style="margin-left:auto">
-<input type="checkbox" id="chk-all" onchange="chkAll(this.checked)"> 全選/取消
-</label>
-</div>
-
-<div class="sens-warn" id="sw"></div>
-
-<div class="file-table-wrap">
-<table class="file-table">
-<thead>
-<tr>
-<th class="col-chk"></th>
-<th class="col-path" data-sort="path" onclick="sortBy('path')">路徑</th>
-<th class="col-size" data-sort="size" onclick="sortBy('size')">大小</th>
-<th class="col-ext" data-sort="ext" onclick="sortBy('ext')">類型</th>
-<th class="col-depth" data-sort="depth" onclick="sortBy('depth')">深度</th>
-<th>狀態</th>
-</tr>
-</thead>
-<tbody id="ft-body">
-<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入來源 — 點上方「載入來源」開始</td></tr>
-</tbody>
-</table>
-</div>
-</div>
-
-<!-- ===== 右欄：輸出設定（常駐，不用開關） ===== -->
-<div class="col-right">
-<div class="box">
-<h3>⚙️ 輸出設定</h3>
-<div class="row">
-<label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
-<label class="chk"><input type="checkbox" id="o5" checked> 長檔注入路徑戳記</label>
-<div class="field">
-<div class="small" style="color:#90a4ae">間隔行數：</div>
-<input type="number" id="o8" value="12" min="4" max="80">
-</div>
-</div>
-<div class="section-divider"></div>
-<div class="small" style="color:#78909c">
-設定會在你按「產生輸出」時生效。
-</div>
+    <div class="box analysis" id="analysisWrap" style="display:none">
+      <h3>📊 分析結果</h3>
+      <h4>包含</h4><pre id="a1">—</pre>
+      <h4>排除</h4><pre id="a2">—</pre>
+      <h4>敏感</h4><pre id="a3">—</pre>
+    </div>
+  </div>
 </div>
 
-</div>
-</div>
-
-<!-- 分析區（折疊） -->
-<details class="output-section" id="analysis-section" style="display:none">
-<summary style="cursor:pointer;color:#a5d6a7;font-size:.82rem;padding:8px 0">📊 分析結果</summary>
-<div class="analysis"><h3>包含</h3><pre id="a1">—</pre></div>
-<div class="analysis"><h3>排除</h3><pre id="a2">—</pre></div>
-<div class="analysis"><h3>敏感</h3><pre id="a3">—</pre></div>
-</details>
-
-</div>
-
-</div>
-
-<!-- ===== 底部固定欄 ===== -->
 <div class="bottom-bar">
-<span class="stat">總計 <b id="s0">0</b></span>
-<span class="stat">包含 <b id="s1">0</b></span>
-<span class="stat">排除 <b id="s2">0</b></span>
-<span class="stat warn">⚠️ <b id="s3">0</b></span>
-<span class="stat">字元 <b id="s4">0</b></span>
-<span class="stat">輸出 <b id="s5">0</b></span>
-<span class="stat">API <b id="s6">0</b></span>
+  <span class="stat">總計 <b id="s0">0</b></span>
+  <span class="stat">包含 <b id="s1">0</b></span>
+  <span class="stat">排除 <b id="s2">0</b></span>
+  <span class="stat warn">⚠️ <b id="s3">0</b></span>
+  <span class="stat">字元 <b id="s4">0</b></span>
+  <span class="stat">輸出 <b id="s5">0</b></span>
+  <span class="stat">API <b id="s6">0</b></span>
 </div>
 
 <input type="file" id="fi" webkitdirectory directory multiple hidden>
 
-<script>
-(function(){
-"use strict";
-var tok=0,srcFiles=null,srcMeta=null,outputs=null;
-var checked=new Set();
-var sensFlags={};
+<script>/* ====== Minify（保留必要註解） ====== */
+(function(){'use strict';var tok=0,srcFiles=null,srcMeta=null,outputs=null;var checked=new Set();var sensFlags={};var apiCallCount=0;
+/* LocalStorage keys */var STORAGE_KEY="pov.exclude.rules",TOKEN_KEY="pov.gh.token",GH_REPO_KEY="pov.gh.repo",GH_BRANCH_KEY="pov.gh.branch",GH_SUBDIR_KEY="pov.gh.subdir";
+/* Binary ext list */var BIN_EXTS=[".png",".jpg",".jpeg",".gif",".bmp",".ico",".webp",".svg",".woff",".woff2",".ttf",".eot",".otf",".mp3",".mp4",".wav",".avi",".mov",".zip",".tar",".gz",".rar",".7z",".pdf",".exe",".dll",".so",".dylib",".pdf",".bin",".dat",".db",".sqlite",".class",".jar",".pyc",".o",".a",".obj",".wasm"];
+var $=function(id){return document.getElementById(id)};
+var st=function(t){$('st').textContent=t};
+var fmtN=function(n){return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":""+n};
+var ext=function(p){var i=p.lastIndexOf(".");return i<0?"":p.slice(i).toLowerCase()};
+var base=function(p){var i=p.lastIndexOf("/");return i<0?p:p.slice(i+1)};
+var depth=function(p){return p.split("/").length};
+var fmtSize=function(b){if(b==null||b<0)return"—";if(b===0)return"0 B";if(b<1024)return b+" B";if(b<1048576)return(b/1024).toFixed(1)+" KB";return(b/1048576).toFixed(1)+" MB"};
+var isBinaryExt=function(p){return BIN_EXTS.indexOf(ext(p))>=0};
+var showProgress=function(pct,txt){$('pw').style.display="block";$('pf').style.width=pct+"%";$('pt').textContent=txt};
+var hideProgress=function(){$('pw').style.display="none"};
 
-var apiCallCount=0;
+/* ===== Source panel UX（避免遮住底下元素） ===== */
+window.toggleSourcePanel=function(){var d=$('sourceDetails'),s=$('sourceSummary');var open=d.hasAttribute('open');if(open){d.removeAttribute('open');$('sourceArrowFix')&&($('sourceArrowFix').textContent='');s.querySelectorAll('span')[1]&& (s.querySelectorAll('span')[1].textContent='▼');}else{d.setAttribute('open','');s.querySelectorAll('span')[1]&&(s.querySelectorAll('span')[1].textContent='▼');}};
+/* Exclude arrow sync (small UX nicety) */window.toggleExclude=function(){var d=$('excludeDetails'),a=$('excludeArrow');var open=d.hasAttribute('open');if(open){d.removeAttribute('open');a&&(a.textContent='►');}else{d.setAttribute('open','');a&&(a.textContent='▼');}};
+/* Tabs (source) */function activateTab(tabId){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});document.querySelectorAll('.tabcontent').forEach(function(c){c.style.display='none'});var tab=document.querySelector('.tab[data-tab="'+tabId+'"]');if(tab)tab.classList.add('active');var content=document.getElementById(tabId);if(content)content.style.display='block'}
+document.querySelectorAll('.tab').forEach(function(tab){tab.addEventListener('click',function(){activateTab(tab.dataset.tab)})});
 
-var STORAGE_KEY="pov.exclude.rules";
-var TOKEN_KEY="pov.gh.token";
-var GH_REPO_KEY="pov.gh.repo";
-var GH_BRANCH_KEY="pov.gh.branch";
-var GH_SUBDIR_KEY="pov.gh.subdir";
+/* ===== Rules ===== */
+function loadRules(){try{var s=localStorage.getItem(STORAGE_KEY);if(s)$('rules').value=s}catch(e){}}
+function saveRules(){try{localStorage.setItem(STORAGE_KEY,$('rules').value)}catch(e){}}
+function getRulePatterns(){return $('rules').value.split('\n').map(function(l){return l.trim()}).filter(function(l){return l.length>0&&!l.startsWith('#')})}
+function matchPattern(path,pattern){if(pattern.endsWith('/'))return path.indexOf(pattern)>=0;if(pattern.indexOf('*')>=0){var re=new RegExp("^"+pattern.replace(/\./g,"\\.").replace(/\*/g,".*")+"$","i");return re.test(path)||re.test(base(path))}return path.toLowerCase().indexOf(pattern.toLowerCase())>=0}
+window.applyRules=function(silent){if(!srcFiles||!srcFiles.length)return;var patterns=getRulePatterns();if(!patterns.length){if(!silent)$('rule-status').textContent="沒有規則。";return}var count=0;for(var i=0;i<srcFiles.length;i++){for(var j=0;j<patterns.length;j++){if(matchPattern(srcFiles[i].path,patterns[j])){checked.delete(srcFiles[i].path);count++;break}}}saveRules();$('rule-status').textContent=(silent?'自動':'已')+'排除 '+count+' 個。';window.renderFileTable()};
+window.clearRules=function(){ $('rules').value="";saveRules();$('rule-status').textContent="已清空。"};
+window.resetChecks=function(){if(!srcFiles)return;srcFiles.forEach(function(f){checked.add(f.path)});window.renderFileTable()};
+document.querySelectorAll('.preset-chip').forEach(function(chip){chip.addEventListener('click',function(){var rule=this.getAttribute('data-rule');var lines=$('rules').value.trim()?$('rules').value.trim().split('\n'):[];if(lines.indexOf(rule)<0){lines.push(rule);$('rules').value=lines.join('\n');saveRules();$('rule-status').textContent="已加入："+rule}window.applyRules(false)})});
 
-var BIN_EXTS=[".png",".jpg",".jpeg",".gif",".bmp",".ico",".webp",".svg",".woff",".woff2",".ttf",".eot",".otf",".mp3",".mp4",".wav",".avi",".mov",".zip",".tar",".gz",".rar",".7z",".pdf",".exe",".dll",".so",".dylib",".pdf",".bin",".dat",".db",".sqlite",".class",".jar",".pyc",".o",".a",".obj",".wasm"];
+/* ===== GitHub inputs / token ===== */
+function loadGHInputs(){try{var r=localStorage.getItem(GH_REPO_KEY),b=localStorage.getItem(GH_BRANCH_KEY),s=localStorage.getItem(GH_SUBDIR_KEY);if(r!==null)$('gu').value=r;if(b!==null)$('gb').value=b;if(s!==null)$('gs').value=s}catch(e){}}
+function saveGHInputs(){try{localStorage.setItem(GH_REPO_KEY,$('gu').value||'');localStorage.setItem(GH_BRANCH_KEY,$('gb').value||'');localStorage.setItem(GH_SUBDIR_KEY,$('gs').value||'')}catch(e){}}
+function parseGHUrl(v){v=v.trim().replace(/\/+$/,'');var m=v.match(/^(?:https?:\/\/)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/);if(m)return{owner:m[1],repo:m[2],branch:m[3]||'',subdir:m[4]||''};m=v.match(/^([^\/\s]+)\/([^\/\s]+)$/);if(m)return{owner:m[1],repo:m[2],branch:'',subdir:''};return null}
+function ghHeaders(useAuth){var h={"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};if(useAuth){var t=$('gt').value.trim();if(t)h["Authorization"]="Bearer "+t}return h}
+window.saveToken=function(){try{var t=$('gt').value.trim();if($('gk').checked&&t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}}
+function loadToken(){try{var t=localStorage.getItem(TOKEN_KEY);if(t){$('gt').value=t;$('gk').checked=true}}catch(e){}}
+window.clearToken=function(){try{localStorage.removeItem(TOKEN_KEY)}catch(e){};$('gt').value='';$('gk').checked=false}
+$('rules').addEventListener('input',function(){saveRules()});
+$('gu').addEventListener('input',function(){saveGHInputs()});
+$('gb').addEventListener('input',function(){saveGHInputs()});
+$('gs').addEventListener('input',function(){saveGHInputs()});
+$('gt').addEventListener('input',function(){saveToken()});
+$('gk').addEventListener('change',function(){saveToken()});
 
-function $(id){return document.getElementById(id)}
-function st(t){$("st").textContent=t}
-function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":""+n}
-function ext(p){var i=p.lastIndexOf(".");return i<0?"":p.slice(i).toLowerCase()}
-function base(p){var i=p.lastIndexOf("/");return i<0?p:p.slice(i+1)}
-function depth(p){return p.split("/").length}
-function fmtSize(b){if(b==null||b<0)return "—";if(b===0)return "0 B";if(b<1024)return b+" B";if(b<1048576)return(b/1024).toFixed(1)+" KB";return(b/1048576).toFixed(1)+" MB"}
-function isBinaryExt(p){return BIN_EXTS.indexOf(ext(p))>=0}
-function showProgress(pct,txt){$("pw").style.display="block";$("pf").style.width=pct+"%";$("pt").textContent=txt}
-function hideProgress(){$("pw").style.display="none"}
-
-function activateTab(tabId){
-document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});
-document.querySelectorAll(".tab-content").forEach(function(c){c.classList.remove("active")});
-var tab=document.querySelector('.tab[data-tab="'+tabId+'"]');
-var content=document.getElementById(tabId);
-if(tab)tab.classList.add("active");
-if(content)content.classList.add("active");
-}
-
-// 修正：只收合 panel-body，不讓它用 max-height/動畫狀態遮住下面可點區
-window.togglePanel=function(){
-var panelBody=$("pb-source");
-var header=$("ph-source");
-if(panelBody.classList.contains("is-hidden")){
-panelBody.classList.remove("is-hidden");
-header.classList.add("open");
-}else{
-panelBody.classList.add("is-hidden");
-header.classList.remove("open");
-}
-};
-
-document.querySelectorAll(".tab").forEach(function(tab){
-tab.addEventListener("click",function(){
-activateTab(tab.dataset.tab);
-});
-});
-
-/* 排除規則 */
-function loadRules(){try{var s=localStorage.getItem(STORAGE_KEY);if(s)$("rules").value=s}catch(e){}}
-function saveRules(){try{localStorage.setItem(STORAGE_KEY,$("rules").value)}catch(e){}}
-function getRulePatterns(){
-return $("rules").value.split("\n")
-.map(function(l){return l.trim()})
-.filter(function(l){return l.length>0&&!l.startsWith("#")});
-}
-function matchPattern(path,pattern){
-if(pattern.endsWith("/"))return path.indexOf(pattern)>=0;
-if(pattern.indexOf("*")>=0){
-var re=new RegExp("^"+pattern.replace(/\./g,"\\.").replace(/\*/g,".*")+"$","i");
-return re.test(path)||re.test(base(path));
-}
-return path.toLowerCase().indexOf(pattern.toLowerCase())>=0;
-}
-window.applyRules=function(silent){
-if(!srcFiles||srcFiles.length===0)return;
-var patterns=getRulePatterns();
-if(patterns.length===0){
-if(!silent)$("rule-status").textContent="沒有規則。";
-return;
-}
-var count=0;
-for(var i=0;i<srcFiles.length;i++){
-for(var j=0;j<patterns.length;j++){
-if(matchPattern(srcFiles[i].path,patterns[j])){
-checked.delete(srcFiles[i].path);count++;break;
-}
-}
-}
-saveRules();
-renderFileTable();
-$("rule-status").textContent=(silent?"自動":"已")+"排除 "+count+" 個。";
-};
-window.clearRules=function(){
-$("rules").value="";
-saveRules();
-$("rule-status").textContent="已清空。";
-};
-window.resetChecks=function(){
-if(!srcFiles)return;
-srcFiles.forEach(function(f){checked.add(f.path)});
-renderFileTable();
-};
-
-/* GitHub token / inputs */
-function loadGHInputs(){
-try{
-var r=localStorage.getItem(GH_REPO_KEY);
-var b=localStorage.getItem(GH_BRANCH_KEY);
-var s=localStorage.getItem(GH_SUBDIR_KEY);
-if(r!==null)$("gu").value=r;
-if(b!==null)$("gb").value=b;
-if(s!==null)$("gs").value=s;
-}catch(e){}
-}
-function saveGHInputs(){
-try{
-localStorage.setItem(GH_REPO_KEY,$("gu").value||"");
-localStorage.setItem(GH_BRANCH_KEY,$("gb").value||"");
-localStorage.setItem(GH_SUBDIR_KEY,$("gs").value||"");
-}catch(e){}
-}
-
-function parseGHUrl(v){
-v=v.trim().replace(/\/+$/,"");
-var m=v.match(/^(?:https?:\/\/)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/);
-if(m)return{owner:m[1],repo:m[2],branch:m[3]||"",subdir:m[4]||""};
-m=v.match(/^([^/\s]+)\/([^/\s]+)$/);
-if(m)return{owner:m[1],repo:m[2],branch:"",subdir:""};
-return null;
-}
-function ghHeaders(useAuth){
-var h={"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
-if(useAuth){
-var t=$("gt").value.trim();
-if(t)h["Authorization"]="Bearer "+t;
-}
-return h;
-}
-window.saveToken=function(){
-try{
-var t=$("gt").value.trim();
-if($("gk").checked&&t)localStorage.setItem(TOKEN_KEY,t);
-else localStorage.removeItem(TOKEN_KEY);
-}catch(e){}
-};
-function loadToken(){
-try{
-var t=localStorage.getItem(TOKEN_KEY);
-if(t){$("gt").value=t;$("gk").checked=true;}
-}catch(e){}
-}
-window.clearToken=function(){
-try{localStorage.removeItem(TOKEN_KEY)}catch(e){}
-$("gt").value="";
-$("gk").checked=false;
-};
-
-/* 敏感偵測/處理 */
-function detectSensName(path){
-var b=base(path).toLowerCase();var r=[];
-if(/\.env(\.|$)/.test(b)||b===".env")r.push(".env");
-if(/(secret|credential|private_key|id_rsa|id_ed25519)/.test(b))r.push("金鑰檔名");
-if(/(token|password|api_key)/.test(b))r.push("敏感字");
-return r;
-}
-function detectSensContent(text){
-var r=[];
-if(/-----BEGIN[A-Z ]*PRIVATE KEY-----/.test(text))r.push("私鑰");
-if(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*)["'][^"']{8,}["']/i.test(text))r.push("密鑰賦值");
-return r;
-}
+/* ===== Sensitive ===== */
+function detectSensName(path){var b=base(path).toLowerCase(),r=[];if(/\.env(\.|$)/.test(b)||b==='.env')r.push('.env');if(/(secret|credential|private_key|id_rsa|id_ed25519)/.test(b))r.push('金鑰檔名');if(/(token|password|api_key)/.test(b))r.push('敏感字');return r}
+function detectSensContent(text){var r=[];if(/-----BEGIN[A-Z ]*PRIVATE KEY-----/.test(text))r.push('私鑰');if(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*)["'][^"']{8,}["']/i.test(text))r.push('密鑰賦值');return r}
 function isBinaryText(t){return t.indexOf("\u0000")>=0}
-function maskSensitive(text){
-var out=text;
-out=out.replace(/(-----BEGIN[A-Z ]*PRIVATE KEY-----)[\s\S]*?(-----END[A-Z ]*PRIVATE KEY-----)/g,"$1\n[REDACTED]\n$2");
-out=out.replace(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*)["']([^"']{8,})["']/gi,'$1"[REDACTED]"');
-return out;
-}
-function compressBlank(text){
-return text.replace(/\r\n/g,"\n").replace(/[ \t]+$/gm,"").replace(/\n{3,}/g,"\n\n");
-}
-function stampComment(path,extn){
-if([".py",".yaml",".yml",".toml",".sh",".bash",".rb",".r",".jl",".ex",".exs",".pl",".pm",".nim",".cmake",".tf",".hcl",".dockerfile"].indexOf(extn)>=0)return "# [File: "+path+"]";
-if(extn===".sql")return "-- [File: "+path+"]";
-if([".md",".mdx",".html",".htm",".xml",".svg",".vue",".svelte"].indexOf(extn)>=0)return "<!-- [File: "+path+"] -->";
-return "// [File: "+path+"]";
-}
-function injectStamps(text,path,extn,interval){
-var lines=text.split("\n");
-var stamp=stampComment(path,extn);
-var out=[stamp];
-var since=0;
-for(var i=0;i<lines.length;i++){
-out.push(lines[i]);
-if(lines[i].trim()!=="")since++;
-if(since>=interval&&lines[i].trim()!==""&&lines[i].indexOf("[File:")<0){out.push(stamp);since=0}
-}
-return out.join("\n");
-}
-async function sha256(text){
-if(!crypto.subtle)return "N/A";
-var buf=new TextEncoder().encode(text);
-var hash=await crypto.subtle.digest("SHA-256",buf);
-return Array.from(new Uint8Array(hash)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");
-}
-function fenceFor(text){
-var max=0,re=/^(`{3,})/gm,m;
-while((m=re.exec(text))!==null){if(m[1].length>max)max=m[1].length}
-return "`".repeat(Math.max(max+1,3));
-}
-function langForFence(e){
-var map={".js":"javascript",".jsx":"jsx",".ts":"typescript",".tsx":"tsx",".vue":"vue",".svelte":"svelte",".py":"python",".rb":"ruby",".go":"go",".rs":"rust",".java":"java",".kt":"kotlin",".swift":"swift",".c":"c",".cpp":"cpp",".h":"c",".cs":"csharp",".php":"php",".sql":"sql",".html":"html",".css":"css",".scss":"scss",".json":"json",".yaml":"yaml",".yml":"yaml",".toml":"toml",".md":"markdown",".txt":"text",".sh":"bash",".xml":"xml",".svg":"xml"};
-return map[e]||e.replace(".","");
-}
-function buildTree(paths){
-var tree={};
-paths.forEach(function(p){
-var parts=p.split("/");
-var node=tree;
-for(var i=0;i<parts.length;i++){
-if(!node[parts[i]])node[parts[i]]={};
-node=node[parts[i]];
-}
-});
-function render(node,prefix){
-var keys=Object.keys(node).sort(function(a,b){
-var aD=Object.keys(node[a]).length>0,bD=Object.keys(node[b]).length>0;
-if(aD&&!bD)return -1;
-if(!aD&&bD)return 1;
-return a.localeCompare(b);
-});
-var lines=[];
-for(var i=0;i<keys.length;i++){
-var k=keys[i];
-lines.push(prefix+((i===keys.length-1)?"└── ":"├── ")+k);
-if(Object.keys(node[k]).length>0){
-lines=lines.concat(render(node[k],prefix+((i===keys.length-1)?"    ":"│   ")));
-}
-}
-return lines;
-}
-return render(tree,"").join("\n");
-}
-function detectTechStack(files){
-var root=null;
-for(var i=0;i<files.length;i++){if(files[i].path==="package.json"){root=files[i];break}}
-if(root&&root.content){
-try{
-var pkg=JSON.parse(root.content);
-var deps=Object.keys(pkg.dependencies||{}).concat(Object.keys(pkg.devDependencies||{}));
-var stack=[];
-if(deps.indexOf("vue")>=0)stack.push("Vue");
-if(deps.indexOf("react")>=0)stack.push("React");
-if(deps.indexOf("svelte")>=0)stack.push("Svelte");
-if(deps.indexOf("hono")>=0)stack.push("Hono");
-if(deps.indexOf("express")>=0)stack.push("Express");
-if(deps.indexOf("wrangler")>=0)stack.push("CF Workers");
-if(deps.indexOf("typescript")>=0)stack.push("TS");
-return{name:pkg.name||"unknown",desc:pkg.description||"",stack:stack.length?stack.join(", "):"JS/Node"};
-}catch(e){}
-}
-return{name:"unknown",desc:"",stack:"未知"};
-}
+function maskSensitive(text){var out=text;out=out.replace(/(-----BEGIN[A-Z ]*PRIVATE KEY-----)[\s\S]*?(-----END[A-Z ]*PRIVATE KEY-----)/g,"$1\n[REDACTED]\n$2");out=out.replace(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*)["']([^"']{8,})["']/gi,'$1"[REDACTED]"');return out}
+function compressBlank(text){return text.replace(/\r\n/g,"\n").replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,"\n\n")}
+function stampComment(path,extn){if([".py",".yaml",".yml",".toml",".sh",".bash",".rb",".r",".jl",".ex",".exs",".pl",".pm",".nim",".cmake",".tf",".hcl",".dockerfile"].indexOf(extn)>=0)return"# [File: "+path+"]";if(extn===".sql")return"-- [File: "+path+"]";if([".md",".mdx",".html",".htm",".xml",".svg",".vue",".svelte"].indexOf(extn)>=0)return"<!-- [File: "+path+"] -->";return"// [File: "+path+"]"}
+function injectStamps(text,path,extn,interval){var lines=text.split("\n");var stamp=stampComment(path,extn);var out=[stamp];var since=0;for(var i=0;i<lines.length;i++){out.push(lines[i]);if(lines[i].trim()!=='')since++;if(since>=interval&&lines[i].trim()!==''&&lines[i].indexOf('[File:')<0){out.push(stamp);since=0}}return out.join("\n")}
+async function sha256(text){if(!crypto.subtle)return"N/A";var buf=new TextEncoder().encode(text);var hash=await crypto.subtle.digest("SHA-256",buf);return Array.from(new Uint8Array(hash)).map(function(b){return b.toString(16).padStart(2,"0")}).join("")}
+function fenceFor(text){var max=0,re=/^(`{3,})/gm,m;while((m=re.exec(text))!==null){if(m[1].length>max)max=m[1].length}return"`".repeat(Math.max(max+1,3))}
+function langForFence(e){var map={".js":"javascript",".jsx":"jsx",".ts":"typescript",".tsx":"tsx",".vue":"vue",".svelte":"svelte",".py":"python",".rb":"ruby",".go":"go",".rs":"rust",".java":"java",".kt":"kotlin",".swift":"swift",".c":"c",".cpp":"cpp",".h":"c",".cs":"csharp",".php":"php",".sql":"sql",".html":"html",".css":"css",".scss":"scss",".json":"json",".yaml":"yaml",".yml":"yaml",".toml":"toml",".md":"markdown",".txt":"text",".sh":"bash",".xml":"xml",".svg":"xml"};return map[e]||e.replace(".","")}
+function buildTree(paths){var tree={};paths.forEach(function(p){var parts=p.split("/");var node=tree;for(var i=0;i<parts.length;i++){if(!node[parts[i]])node[parts[i]]={};node=node[parts[i]]}});function render(node,prefix){var keys=Object.keys(node).sort(function(a,b){var aD=Object.keys(node[a]).length>0,bD=Object.keys(node[b]).length>0;if(aD&&!bD)return-1;if(!aD&&bD)return 1;return a.localeCompare(b)});var lines=[];for(var i=0;i<keys.length;i++){var k=keys[i];lines.push(prefix+(i===keys.length-1?'└── ':'├── ')+k);if(Object.keys(node[k]).length>0)lines=lines.concat(render(node[k],prefix+(i===keys.length-1?'    ':'│   ')))}return lines}return render(tree,"").join("\n")}
+function detectTechStack(files){var root=null;for(var i=0;i<files.length;i++){if(files[i].path==="package.json"){root=files[i];break}}if(root&&root.content){try{var pkg=JSON.parse(root.content);var deps=Object.keys(pkg.dependencies||{}).concat(Object.keys(pkg.devDependencies||{}));var stack=[];if(deps.indexOf("vue")>=0)stack.push("Vue");if(deps.indexOf("react")>=0)stack.push("React");if(deps.indexOf("svelte")>=0)stack.push("Svelte");if(deps.indexOf("hono")>=0)stack.push("Hono");if(deps.indexOf("express")>=0)stack.push("Express");if(deps.indexOf("wrangler")>=0)stack.push("CF Workers");if(deps.indexOf("typescript")>=0)stack.push("TS");return{name:pkg.name||"unknown",desc:pkg.description||"",stack:stack.length?stack.join(", "):"JS/Node"}}catch(e){}}return{name:"unknown",desc:"",stack:"未知"}}
 
-/* ZIP 解壓 */
-async function processZipBlob(zipBlob,subdir){
-var myTok=tok;
-st("解壓中...");
-showProgress(30,"載入 ZIP...");
-var zip=await JSZip.loadAsync(zipBlob);
-if(tok!==myTok)return;
-
-srcFiles=[];checked.clear();sensFlags={};
-outputs=null;
-
-$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
-$("pb").disabled=true;
-
-var entries=Object.values(zip.files);
-var prefix="";
-if(entries.length>0){
-var fp=entries[0].name;
-var si=fp.indexOf("/");
-if(si>0)prefix=fp.slice(0,si+1);
-}
-
-var count=0;
-for(var i=0;i<entries.length;i++){
-if(tok!==myTok)return;
-var entry=entries[i];
-if(entry.dir)continue;
-
-var fullPath=entry.name;
-var relPath=prefix&&fullPath.startsWith(prefix)?fullPath.slice(prefix.length):fullPath;
-
-if(subdir){
-if(!relPath.startsWith(subdir+"/"))continue;
-relPath=relPath.slice(subdir.length+1);
-}
-
+/* ===== ZIP 解壓（本機/ZIP/或 GitHub ZIP 都走這個） ===== */
+async function processZipBlob(zipBlob,subdir){var myTok=tok;st("解壓中...");showProgress(20,"載入 ZIP...");var zip=await JSZip.loadAsync(zipBlob);if(tok!==myTok)return;
+srcFiles=[];checked.clear();sensFlags={};outputs=null;$('pb').disabled=true;$('d0').disabled=true;$('d1').disabled=true;$('d2').disabled=true;$('da').disabled=true;
+var entries=Object.values(zip.files);var prefix="";if(entries.length>0){var fp=entries[0].name;var si=fp.indexOf("/");if(si>0)prefix=fp.slice(0,si+1)}
+var count=0;for(var i=0;i<entries.length;i++){if(tok!==myTok)return;var entry=entries[i];if(entry.dir)continue;var fullPath=entry.name;var relPath=prefix&&fullPath.startsWith(prefix)?fullPath.slice(prefix.length):fullPath;
+if(subdir){if(!relPath.startsWith(subdir+"/"))continue;relPath=relPath.slice(subdir.length+1)}
 if(!relPath||relPath==="/")continue;
-
-var failed=false;
-var content=null;
-var rawLen=0;
-
-try{
-var raw=await entry.async("uint8array");
-rawLen=raw.byteLength;
-
-var isBin=isBinaryExt(relPath);
-if(!isBin){
-var decoded=new TextDecoder("utf-8",{fatal:false}).decode(raw);
-if(isBinaryText(decoded)){isBin=true;content=null}
-else content=decoded;
-}
-if(isBin)content="[二進位檔]";
-}catch(e){
-failed=true;
-rawLen=0;
-content=null;
-}
-
-srcFiles.push({path:relPath,size:rawLen,content:content,failed:failed});
-checked.add(relPath);
-
-var nw=detectSensName(relPath);
-if(nw.length>0)sensFlags[relPath]=nw;
-
-count++;
-if(count%10===0)showProgress(30+Math.round(count/entries.length*70),"解壓 "+count+"/"+entries.length+"...");
-}
-
-hideProgress();
-$("pb").disabled=false;
-applyRules(true);
-renderFileTable();
-
-st("✅ "+srcFiles.length+" 個檔案已載入。");
-}
+var failed=false,content=null,rawLen=0;
+try{var raw=await entry.async("uint8array");rawLen=raw.byteLength;var isBin=isBinaryExt(relPath);if(!isBin){var decoded=new TextDecoder("utf-8",{fatal:false}).decode(raw);if(isBinaryText(decoded)){isBin=true;content=null}else content=decoded}if(isBin)content="[二進位檔]"}catch(e){failed=true;rawLen=0;content=null}
+srcFiles.push({path:relPath,size:rawLen,content:content,failed:failed});checked.add(relPath);
+var nw=detectSensName(relPath);if(nw.length) sensFlags[relPath]=nw;
+count++;if(count%10===0)showProgress(25+Math.round(count/entries.length*70),"解壓中... "+count+"/"+entries.length)}hideProgress();
+$('pb').disabled=false;window.applyRules(true);window.renderFileTable();st("✅ 已載入檔案。");$('local-info')&&($('local-info').textContent='');}
 
 /* 本機 */
-$("fi").addEventListener("change",function(e){
-if(e.target.files.length===0)return;
-var myTok=++tok;
-
-srcFiles=[];checked.clear();sensFlags={};
-outputs=null;
-
-$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
-$("pb").disabled=true;
-
-var arr=Array.from(e.target.files);
-for(var i=0;i<arr.length;i++){
-var f=arr[i];
-var p=(f.webkitRelativePath||f.name).replace(/\\/g,"/");
-srcFiles.push({path:p,size:f.size,content:null,text:function(ff){return function(){return ff.text()}}(f),failed:false});
-checked.add(p);
-
-var nw=detectSensName(p);
-if(nw.length>0)sensFlags[p]=nw;
-}
-
-srcMeta={type:"local"};
-$("local-info").textContent="已選 "+srcFiles.length+" 個";
-
-$("pb").disabled=false;
-applyRules(true);
-renderFileTable();
-
-st("已載入 "+srcFiles.length+" 個。");
-});
-
-/* GitHub：免API下載到本機 */
-window.downloadGithubZipToLocal=function(){
-$("rw").style.display="none";
-var parsed=parseGHUrl($("gu").value);
-if(!parsed){
-st("無法解析 Repo。請輸入 owner/repo 或完整 GitHub 網址。");
-return;
-}
-var owner=parsed.owner,repo=parsed.repo;
-
-var branch=($("gb").value||"").trim();
-if(!branch)branch=parsed.branch||"main";
-
-var subdir=($("gs").value||"").trim();
-if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
-
-var zipUrl="https://github.com/"+owner+"/"+repo+"/archive/refs/heads/"+encodeURIComponent(branch)+".zip";
-
-var a=document.createElement("a");
-a.href=zipUrl;
-a.target="_blank";
-a.rel="noopener";
-a.download="repo-"+owner+"-"+repo+"-"+branch+".zip";
-document.body.appendChild(a);
-a.click();
-document.body.removeChild(a);
-
-st("ZIP 下載已開始。請切到「ZIP 上傳」選擇該檔。");
-activateTab("t-zip");
-};
-
-/* GitHub：下載並載入（走 API；可能會失敗） */
-window.processGitHub=async function(){
-var myTok=++tok;
-saveToken();
-$("rw").style.display="none";
-
-var parsed=parseGHUrl($("gu").value);
-if(!parsed){st("無法解析。");return}
-var owner=parsed.owner,repo=parsed.repo;
-
-var branch=$("gb").value.trim()||parsed.branch;
-var subdir=$("gs").value.trim()||parsed.subdir;
-if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
-
-var token=$("gt").value.trim();
-var useAuth=!!token;
-
-try{
-$("pb").disabled=true;
-st("下載 ZIP（API 方式）...");
-showProgress(10,"下載中...");
-
-if(!branch){
-st("偵測分支...");
-var repoRes=await fetch("https://api.github.com/repos/"+owner+"/"+repo,{headers:ghHeaders(useAuth)});
-apiCallCount++;$("s6").textContent=apiCallCount;
-
-if(tok!==myTok)return;
-
-if(!repoRes.ok){
-if(repoRes.status===403){
-$("rw").style.display="block";
-$("rw").innerHTML="⏳ 速率限制。改用「下載 ZIP 到本機」。";
-st("403");
-return;
-}
-st("失敗："+repoRes.status);
-return;
-}
-var repoData=await repoRes.json();
-if(tok!==myTok)return;
-
-branch=repoData.default_branch||"main";
-$("gb").value=branch;
-}
-
-srcMeta={type:"github",owner:owner,repo:repo,branch:branch};
-
-var zipUrl="https://api.github.com/repos/"+owner+"/"+repo+"/zipball/"+encodeURIComponent(branch);
-var zipRes=await fetch(zipUrl,{headers:ghHeaders(true)});
-
-apiCallCount++;$("s6").textContent=apiCallCount;
-if(tok!==myTok)return;
-
-if(zipRes.status===403){
-$("rw").style.display="block";
-$("rw").innerHTML="⏳ 配額用完。改用「下載 ZIP 到本機」。";
-hideProgress();
-st("403");
-return;
-}
-
-if(!zipRes.ok){st("失敗："+zipRes.status);return}
-
-var zipBlob=await zipRes.blob();
-if(tok!==myTok)return;
-
-showProgress(20,"解壓中...");
-await processZipBlob(zipBlob,subdir);
-}catch(e){
-if(tok!==myTok)return;
-hideProgress();
-st("錯誤："+e.message);
-}
-};
+$('fi').addEventListener('change',function(e){if(!e.target.files||!e.target.files.length)return;var myTok=++tok;srcFiles=[];checked.clear();sensFlags={};outputs=null;
+$('pb').disabled=true;$('d0').disabled=true;$('d1').disabled=true;$('d2').disabled=true;$('da').disabled=true;
+var arr=Array.from(e.target.files);for(var i=0;i<arr.length;i++){var f=arr[i];var p=(f.webkitRelativePath||f.name).replace(/\\/g,"/");srcFiles.push({path:p,size:f.size,content:null,text:(function(ff){return function(){return ff.text()}})(f),failed:false});checked.add(p);var nw=detectSensName(p);if(nw.length)sensFlags[p]=nw}
+srcMeta={type:"local"};$('local-info').textContent="已選 "+srcFiles.length+" 個";
+$('pb').disabled=false;window.applyRules(true);window.renderFileTable();st("已載入 "+srcFiles.length+" 個。")});
 
 /* ZIP 上傳 */
-$("zip-zone").addEventListener("click",function(){$("zip-input").click()});
-$("zip-zone").addEventListener("dragover",function(e){e.preventDefault();this.classList.add("dragover")});
-$("zip-zone").addEventListener("dragleave",function(){this.classList.remove("dragover")});
-$("zip-zone").addEventListener("drop",function(e){
-e.preventDefault();this.classList.remove("dragover");
-if(e.dataTransfer.files.length>0&&e.dataTransfer.files[0].name.endsWith(".zip")){
-processZipFile(e.dataTransfer.files[0]);
-}else st("請拖入 .zip");
-});
-$("zip-input").addEventListener("change",function(e){
-if(e.target.files.length>0)processZipFile(e.target.files[0]);
-});
+function processZipFile(file){var myTok=++tok;srcMeta={type:"zip",name:file.name};var subdir=$('gs').value.trim();if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);processZipBlob(file,subdir)}
+$('zip-zone').addEventListener('click',function(){$('zip-input').click()});
+$('zip-zone').addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover')});
+$('zip-zone').addEventListener('dragleave',function(){this.classList.remove('dragover')});
+$('zip-zone').addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');if(e.dataTransfer.files&&e.dataTransfer.files.length&&e.dataTransfer.files[0].name.endsWith('.zip'))processZipFile(e.dataTransfer.files[0])});
+$('zip-input').addEventListener('change',function(e){if(e.target.files&&e.target.files.length)processZipFile(e.target.files[0])});
 
-function processZipFile(file){
-var myTok=++tok;
-srcMeta={type:"zip",name:file.name};
-var subdir=$("gs").value.trim();
-if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
-processZipBlob(file,subdir);
-}
+/* GitHub：下載 ZIP 到本機（免 API） */
+window.downloadGithubZipToLocal=function(){ $('rw').style.display='none';var parsed=parseGHUrl($('gu').value);if(!parsed){st("無法解析 Repo。");return}
+var owner=parsed.owner,repo=parsed.repo;var branch=($('gb').value||'').trim();if(!branch)branch=parsed.branch||'main';
+var zipUrl="https://github.com/"+owner+"/"+repo+"/archive/refs/heads/"+encodeURIComponent(branch)+".zip";
+var a=document.createElement('a');a.href=zipUrl;a.target='_blank';a.rel='noopener';a.download='repo-'+owner+'-'+repo+'-'+branch+'.zip';
+document.body.appendChild(a);a.click();document.body.removeChild(a);st("ZIP 下載已開始。請改用「ZIP 上傳」。");activateTab("t-zip")};
 
-/* 產生輸出 */
-window.generate=async function(){
-var myTok=++tok;
-st("產生中...");
+/* GitHub：API 下載並載入 */
+window.processGitHub=async function(){var myTok=++tok;window.saveToken();$('rw').style.display='none';
+var parsed=parseGHUrl($('gu').value);if(!parsed){st("無法解析。");return}
+var owner=parsed.owner,repo=parsed.repo;var branch=$('gb').value.trim()||parsed.branch;var subdir=$('gs').value.trim()||parsed.subdir;if(subdir&&subdir.endsWith('/'))subdir=subdir.slice(0,-1);
+var token=$('gt').value.trim();var useAuth=!!token;
+try{$('pb').disabled=true;st("下載 ZIP（API 方式）...");showProgress(10,"下載中...");if(!branch){
+st("偵測分支...");var repoRes=await fetch("https://api.github.com/repos/"+owner+"/"+repo,{headers:ghHeaders(useAuth)});apiCallCount++;$('s6').textContent=apiCallCount;if(tok!==myTok)return;
+if(!repoRes.ok){if(repoRes.status===403){$('rw').style.display='block';$('rw').innerHTML="⏳ 速率限制。改用「下載 ZIP 到本機」。";st("403");return}st("失敗："+repoRes.status);return}
+var repoData=await repoRes.json();if(tok!==myTok)return;branch=repoData.default_branch||'main';$('gb').value=branch}
+srcMeta={type:"github",owner:owner,repo:repo,branch:branch};
+var zipUrl="https://api.github.com/repos/"+owner+"/"+repo+"/zipball/"+encodeURIComponent(branch);var zipRes=await fetch(zipUrl,{headers:ghHeaders(true)});apiCallCount++;$('s6').textContent=apiCallCount;if(tok!==myTok)return;
+if(zipRes.status===403){$('rw').style.display='block';$('rw').innerHTML="⏳ 配額用完。改用「下載 ZIP 到本機」。";hideProgress();st("403");return}
+if(!zipRes.ok){hideProgress();st("失敗："+zipRes.status);return}
+var zipBlob=await zipRes.blob();if(tok!==myTok)return;showProgress(20,"解壓中...");await processZipBlob(zipBlob,subdir)}catch(e){if(tok!==myTok)return;hideProgress();st("錯誤："+e.message)}};
 
-outputs=null;
-$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
-$("pb").disabled=true;
+/* ===== File table ===== */
+function getSortedFiltered(){if(!srcFiles)return[];var filter=$('flt').value.trim().toLowerCase();var key=$('sort-key').value;var dir=$('sort-dir').value==="asc"?1:-1;
+var list=srcFiles.filter(function(f){return !filter||f.path.toLowerCase().indexOf(filter)>=0});
+list.sort(function(a,b){switch(key){case'path':return a.path.localeCompare(b.path)*dir;case'size':return((a.size||0)-(b.size||0))*dir;case'ext':return ext(a.path).localeCompare(ext(b.path))*dir||a.path.localeCompare(b.path);case'depth':return(depth(a.path)-depth(b.path))*dir;default:return 0}});return list}
+window.renderFileTable=function(){var tbody=$('ft-body');if(!srcFiles||!srcFiles.length){tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入</td></tr>';return}
+var list=getSortedFiltered();var html="";
+for(var i=0;i<list.length;i++){var f=list[i];var checkedNow=checked.has(f.path);var chk=checkedNow?' checked':'';var rc=checkedNow?" class='checked-row'":"";var warn="";
+if(isBinaryExt(f.path))warn+='<span class="binary-tag">BIN</span> ';if(f.failed)warn+='<span class="fail-tag">FAIL</span> ';if(sensFlags[f.path])warn+='<span class="sens-mark">⚠️</span>';
+html+="<tr"+rc+">"+"<td class=\"col-chk\"><input type=\"checkbox\" data-p=\""+f.path+"\""+chk+"></td>"+"<td class=\"col-path\">"+f.path+"</td>"+"<td class=\"col-size\">"+fmtSize(f.size)+"</td>"+"<td class=\"col-ext\">"+(ext(f.path)||'—')+"</td>"+"<td class=\"col-depth\">"+depth(f.path)+"</td>"+"<td>"+warn+"</td>"+"</tr>"}
+tbody.innerHTML=html;
+$('chk-all').checked=list.length>0&&list.every(function(f){return checked.has(f.path)});
+var sk=Object.keys(sensFlags);if(sk.length){$('sw').style.display='block';$('sw').innerHTML="<strong>⚠️ "+sk.length+" 個敏感</strong>："+sk.slice(0,5).join("、")+(sk.length>5?"...":"")}else $('sw').style.display='none'};
+$('ft-body').addEventListener('change',function(e){if(e.target&&e.target.type==="checkbox"&&e.target.dataset&&e.target.dataset.p){if(e.target.checked)checked.add(e.target.dataset.p);else checked.delete(e.target.dataset.p);window.renderFileTable()}});
+window.sortBy=function(key){if($('sort-key').value===key)$('sort-dir').value=$('sort-dir').value==="asc"?"desc":"asc";else{$('sort-key').value=key;$('sort-dir').value="asc"}window.renderFileTable()};
+window.chkAll=function(ic){getSortedFiltered().forEach(function(f){if(ic)checked.add(f.path);else checked.delete(f.path)});window.renderFileTable()};
+window.selAll=function(){window.chkAll(true)};window.selNone=function(){window.chkAll(false)};
 
-var included=[],excludedList=[];
-var excludedIndexByPath=new Map();
-
-for(var i=0;i<srcFiles.length;i++){
-var f=srcFiles[i];
-if(checked.has(f.path))included.push(f);
-else{
-excludedIndexByPath.set(f.path, excludedList.length);
-excludedList.push(f.path);
-}
-}
-
-showProgress(0,"準備中...");
-
-var processed=[];
-var totalWork=included.length||1;
-
-for(var i=0;i<included.length;i++){
+/* ===== Generate ===== */
+function buildIndex(p,e,now){var l=["# 索引","","- 時間："+now,"- 包含："+p.length+"｜排除："+e.length,"","## 包含"];p.forEach(function(f){l.push("- "+f.path)});l.push("","## 排除");e.forEach(function(x){l.push("- "+x)});return l.join("\n")}
+function buildJSON(p,e,now,tc,excludedUniqueCount){return JSON.stringify({generatedAt:now,counts:{total:srcFiles.length,included:p.length,excluded:excludedUniqueCount,totalChars:tc},included:p.map(function(f){return{path:f.path,sha256:f.sha256}}),excluded:e},null,2)}
+window.generate=async function(){var myTok=++tok;st("產生中...");outputs=null;$('pb').disabled=true;$('d0').disabled=true;$('d1').disabled=true;$('d2').disabled=true;$('da').disabled=true;
+var included=[],excludedList=[],excludedIndexByPath=new Map();
+for(var i=0;i<srcFiles.length;i++){var f=srcFiles[i];if(checked.has(f.path))included.push(f);else{excludedIndexByPath.set(f.path,excludedList.length);excludedList.push(f.path)}}
+showProgress(0,"準備中...");var processed=[];var totalWork=included.length||1;
+for(var i=0;i<included.length;i++){if(tok!==myTok)return;var f=included[i],text=null;
+try{if(f.content)text=f.content;else if(f.text)text=await f.text()}catch(e){f.failed=true;text=null}
+if(!text||String(text).startsWith("[二進位")){if(!excludedIndexByPath.has(f.path)){excludedIndexByPath.set(f.path,excludedList.length);excludedList.push(f.path+"（二進位）")}else{var idx=excludedIndexByPath.get(f.path);if(excludedList[idx]===f.path)excludedList[idx]=f.path+"（二進位）"}continue}
+if(isBinaryText(text)){if(!excludedIndexByPath.has(f.path)){excludedIndexByPath.set(f.path,excludedList.length);excludedList.push(f.path+"（二進位）")}else{var idx2=excludedIndexByPath.get(f.path);if(excludedList[idx2]===f.path)excludedList[idx2]=f.path+"（二進位）"}continue}
+if(f.failed){if(!excludedIndexByPath.has(f.path)){excludedIndexByPath.set(f.path,excludedList.length);excludedList.push(f.path+"（失敗）")}else{var idx3=excludedIndexByPath.get(f.path);if(excludedList[idx3]===f.path)excludedList[idx3]=f.path+"（失敗）"}continue}
+var cs=detectSensContent(text);if(cs.length){if(!sensFlags[f.path])sensFlags[f.path]=[];sensFlags[f.path]=sensFlags[f.path].concat(cs)}
+var hash=await sha256(text);f.sha256=hash;
+var out=text;if($('o4').checked)out=maskSensitive(out);out=compressBlank(out);
+var si=Math.max(4,Math.min(80,parseInt($('o8').value)||12));
+if($('o5').checked)out=injectStamps(out,f.path,ext(f.path),si);else out=stampComment(f.path,ext(f.path))+"\n"+out;
+f.output=out;f.outputLength=out.length;f.originalLength=text.length;processed.push(f);
+var pct=Math.round(((i+1)/totalWork)*85);showProgress(pct,"產生 "+(i+1)+"/"+totalWork+"...")}
 if(tok!==myTok)return;
-
-var f=included[i];
-var text=null;
-
-try{
-if(f.content)text=f.content;
-else if(f.text)text=await f.text();
-}catch(e){
-f.failed=true;
-text=null;
-}
-
-var addExcluded=function(label){
-if(!excludedIndexByPath.has(f.path)){
-excludedIndexByPath.set(f.path, excludedList.length);
-excludedList.push(f.path+label);
-}else{
-var idx=excludedIndexByPath.get(f.path);
-if(excludedList[idx]===f.path)excludedList[idx]=f.path+label;
-}
-};
-
-if(!text||String(text).startsWith("[二進位")){
-addExcluded="（二進位）";
-continue;
-}
-if(isBinaryText(text)){
-addExcluded="（二進位）";
-continue;
-}
-if(f.failed){
-addExcluded="（失敗）";
-continue;
-}
-
-var cs=detectSensContent(text);
-if(cs.length>0){
-if(!sensFlags[f.path])sensFlags[f.path]=[];
-sensFlags[f.path]=sensFlags[f.path].concat(cs);
-}
-
-var hash=await sha256(text);
-f.sha256=hash;
-
-var out=text;
-if($("o4").checked)out=maskSensitive(out);
-out=compressBlank(out);
-
-var si=Math.max(4,Math.min(80,parseInt($("o8").value)||12));
-if($("o5").checked)out=injectStamps(out,f.path,ext(f.path),si);
-else out=stampComment(f.path,ext(f.path))+"\n"+out;
-
-f.output=out;
-f.outputLength=out.length;
-f.originalLength=text.length;
-
-processed.push(f);
-
-var pct=Math.round(((i+1)/totalWork)*85);
-showProgress(pct,"產生 "+(i+1)+"/"+totalWork+"...");
-}
-
-if(tok!==myTok)return;
-
-processed.sort(function(a,b){return a.path.localeCompare(b.path)});
-hideProgress();
-
-var totalChars=processed.reduce(function(s,f){return s+f.outputLength},0);
-var tech=detectTechStack(processed);
-var tree=buildTree(processed.map(function(f){return f.path}));
-var now=new Date().toISOString();
-
+processed.sort(function(a,b){return a.path.localeCompare(b.path)});hideProgress();
+var totalChars=processed.reduce(function(s,f){return s+f.outputLength},0);var tech=detectTechStack(processed);var tree=buildTree(processed.map(function(f){return f.path}));var now=new Date().toISOString();
 var sourceStr=srcMeta.type==="local"?"本機":srcMeta.type==="zip"?srcMeta.name:(srcMeta.owner+"/"+srcMeta.repo+"@"+srcMeta.branch);
-
-var md=[];
-md.push("# 完整專案總覽");md.push("");
-md.push("> **RAG 閱讀指引**：找最近的 `[File: 路徑]` 或 `FILE START:` 定位。");
-md.push("");md.push("## 專案："+tech.name);md.push("");
-md.push("- 技術棧："+tech.stack);
-if(tech.desc)md.push("- 說明："+tech.desc);
-md.push("- 時間："+now);md.push("- 來源："+sourceStr);
-md.push("- 包含："+processed.length+"｜排除："+excludedIndexByPath.size+"｜字元："+fmtN(totalChars));
-md.push("");md.push("### 目錄樹");md.push("");md.push("```");md.push(tree);md.push("```");md.push("");
-
-processed.forEach(function(f){
-var fence=fenceFor(f.output);
-md.push("<!-- FILE START: "+f.path+" -->");
-md.push("<document>");
-md.push("<source>"+f.path+"</source>");
-md.push("<sha256>"+f.sha256+"</sha256>");
-md.push("<document_content>");
-md.push("## File: "+f.path);md.push("");
-md.push("- 原始："+f.originalLength+"｜輸出："+f.outputLength+"｜SHA-256：`"+f.sha256+"`");
-if(sensFlags[f.path]&&sensFlags[f.path].length>0)md.push("- ⚠️ "+sensFlags[f.path].join("、"));
-md.push("");
-md.push(fence+langForFence(ext(f.path)));
-md.push(f.output);
-md.push(fence);
-md.push("</document_content>");
-md.push("</document>");
-md.push("<!-- FILE END: "+f.path+" -->");md.push("");
-});
-
-var mainMd=md.join("\n");
-
-var indexMd=buildIndex(processed,excludedList,now,totalChars);
-var jsonObj=buildJSON(processed,excludedList,now,totalChars,excludedIndexByPath.size);
-
-outputs={
-main:mainMd,
-index:indexMd,
-json:jsonObj
-};
-
+var md=["# 完整專案總覽","","> **RAG 閱讀指引**：找最近的 `[File: 路徑]` 或 `FILE START:` 定位。","", "## 專案："+tech.name,"","- 技術棧："+tech.stack];if(tech.desc)md.push("- 說明："+tech.desc);md.push("- 時間："+now,"- 來源："+sourceStr,"- 包含："+processed.length+"｜排除："+excludedIndexByPath.size+"｜字元："+fmtN(totalChars),"","### 目錄樹","","```",tree,"```","");
+processed.forEach(function(f){var fence=fenceFor(f.output);md.push("<!-- FILE START: "+f.path+" -->","<document>","<source>"+f.path+"</source>","<sha256>"+f.sha256+"</sha256>","<document_content>","## File: "+f.path,"","- 原始："+f.originalLength+"｜輸出："+f.outputLength+"｜SHA-256：`"+f.sha256+"`");if(sensFlags[f.path]&&sensFlags[f.path].length)md.push("- ⚠️ "+sensFlags[f.path].join("、"));md.push("",fence+langForFence(ext(f.path)),f.output,fence,"</document_content>","</document>","<!-- FILE END: "+f.path+" -->","");});
+var mainMd=md.join("\n");var indexMd=buildIndex(processed,excludedList,now);var jsonObj=buildJSON(processed,excludedList,now,totalChars,excludedIndexByPath.size);outputs={main:mainMd,index:indexMd,json:jsonObj};
 var outSize=new Blob([mainMd]).size;
+$('s0').textContent=srcFiles.length;$('s1').textContent=processed.length;$('s2').textContent=excludedIndexByPath.size;$('s3').textContent=Object.keys(sensFlags).length;$('s4').textContent=fmtN(totalChars);$('s5').textContent=fmtSize(outSize);
+$('d0').disabled=false;$('d1').disabled=false;$('d2').disabled=false;$('da').disabled=false;$('pb').disabled=false;
+$('analysisWrap').style.display='block';$('a1').textContent=processed.map(function(f){return f.path}).join("\n")||"無";$('a2').textContent=excludedList.join("\n")||"無";var sk=Object.keys(sensFlags);$('a3').textContent=sk.length?sk.join("\n"):"無";
+st("✅ 完成。"+processed.length+" 檔，"+fmtN(totalChars)+" 字元。")};
 
-$("s0").textContent=srcFiles.length;
-$("s1").textContent=processed.length;
-$("s2").textContent=excludedIndexByPath.size;
-$("s3").textContent=Object.keys(sensFlags).length;
-$("s4").textContent=fmtN(totalChars);
-$("s5").textContent=fmtSize(outSize);
-
-$("d0").disabled=false;$("d1").disabled=false;$("d2").disabled=false;$("da").disabled=false;
-
-$("analysis-section").style.display="block";
-$("a1").textContent=processed.map(function(f){return f.path}).join("\n")||"無";
-$("a2").textContent=excludedList.join("\n")||"無";
-var sk=Object.keys(sensFlags);
-$("a3").textContent=sk.length>0?sk.join("\n"):"無";
-
-$("pb").disabled=false;
-st("✅ 完成。"+processed.length+" 檔，"+fmtN(totalChars)+" 字元。");
-};
-
-function buildIndex(p,e,now,tc){
-var l=["# 索引","","- 時間："+now,"- 包含："+p.length+"｜排除："+e.length,"","## 包含"];
-p.forEach(function(f){l.push("- "+f.path)});
-l.push("","## 排除");
-e.forEach(function(x){l.push("- "+x)});
-return l.join("\n");
-}
-function buildJSON(p,e,now,tc,excludedUniqueCount){
-return JSON.stringify({
-generatedAt:now,
-counts:{
-total:srcFiles.length,
-included:p.length,
-excluded:excludedUniqueCount,
-totalChars:tc
-},
-included:p.map(function(f){return{path:f.path,sha256:f.sha256}}),
-excluded:e
-},null,2);
-}
-
-/* 下載 */
-function download(name,content,type){
-var blob=new Blob([content],{type:type||"text/plain;charset=utf-8"});
-var url=URL.createObjectURL(blob);
-var a=document.createElement("a");
-a.href=url;a.download=name;
-document.body.appendChild(a);
-a.click();
-document.body.removeChild(a);
-setTimeout(function(){URL.revokeObjectURL(url)},5000);
-}
+/* ===== Download ===== */
+function download(name,content,type){var blob=new Blob([content],{type:type||"text/plain;charset=utf-8"});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},5000)}
 window.dlMain=function(){if(outputs)download("project-overview.md",outputs.main)};
 window.dlIndex=function(){if(outputs)download("00-review-index.md",outputs.index)};
 window.dlJSON=function(){if(outputs)download("review-report.json",outputs.json,"application/json")};
-window.dlAll=function(){
-if(!outputs)return;
-download("project-overview.md",outputs.main);
-setTimeout(function(){download("00-review-index.md",outputs.index);setTimeout(function(){download("review-report.json",outputs.json,"application/json")},400)},400);
-};
+window.dlAll=function(){if(!outputs)return;download("project-overview.md",outputs.main);setTimeout(function(){download("00-review-index.md",outputs.index);setTimeout(function(){download("review-report.json",outputs.json,"application/json")},400)},400)};
 
-/* 表格 */
-function getSortedFiltered(){
-if(!srcFiles)return[];
-var filter=$("flt").value.trim().toLowerCase();
-var key=$("sort-key").value;
-var dir=$("sort-dir").value==="asc"?1:-1;
-
-var list=srcFiles.filter(function(f){
-return !filter||f.path.toLowerCase().indexOf(filter)>=0;
-});
-
-list.sort(function(a,b){
-switch(key){
-case "path":return a.path.localeCompare(b.path)*dir;
-case "size":return((a.size||0)-(b.size||0))*dir;
-case "ext":return ext(a.path).localeCompare(ext(b.path))*dir||a.path.localeCompare(b.path);
-case "depth":return(depth(a.path)-depth(b.path))*dir;
-default:return 0;
-}
-});
-return list;
-}
-
-window.renderFileTable=function(){
-var tbody=$("ft-body");
-if(!srcFiles||srcFiles.length===0){
-tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入</td></tr>';
-return;
-}
-
-var list=getSortedFiltered();
-var html="";
-
-for(var i=0;i<list.length;i++){
-var f=list[i];
-var chk=checked.has(f.path)?" checked":"";
-var rc=checked.has(f.path)?" class='checked-row'":"";
-var warn="";
-if(isBinaryExt(f.path))warn+='<span class="binary-tag">BIN</span> ';
-if(f.failed)warn+='<span class="fail-tag">FAIL</span> ';
-if(sensFlags[f.path])warn+='<span class="sens-mark">⚠️</span>';
-html+="<tr"+rc+'><td class="col-chk"><input type="checkbox" data-p="'+f.path+'"'+chk+'></td><td class="col-path">'+f.path+'</td><td class="col-size">'+fmtSize(f.size)+'</td><td class="col-ext">'+(ext(f.path)||"—")+'</td><td class="col-depth">'+depth(f.path)+'</td><td>'+warn+'</td></tr>';
-}
-
-tbody.innerHTML=html;
-
-$("chk-all").checked=list.length>0&&list.every(function(f){return checked.has(f.path)});
-
-var sk=Object.keys(sensFlags);
-if(sk.length>0){
-$("sw").style.display="block";
-$("sw").innerHTML="<strong>⚠️ "+sk.length+" 個敏感</strong>："+sk.slice(0,5).join("、")+(sk.length>5?"...":"");
-}else{
-$("sw").style.display="none";
-}
-};
-
-$("ft-body").addEventListener("change",function(e){
-if(e.target.type==="checkbox"&&e.target.dataset.p){
-if(e.target.checked)checked.add(e.target.dataset.p);
-else checked.delete(e.target.dataset.p);
-renderFileTable();
-}
-});
-
-window.sortBy=function(key){
-if($("sort-key").value===key)$("sort-dir").value=$("sort-dir").value==="asc"?"desc":"asc";
-else{$("sort-key").value=key;$("sort-dir").value="asc"}
-renderFileTable();
-};
-window.chkAll=function(ic){
-getSortedFiltered().forEach(function(f){
-if(ic)checked.add(f.path);
-else checked.delete(f.path);
-});
-renderFileTable();
-};
-window.selAll=function(){chkAll(true)};
-window.selNone=function(){chkAll(false)};
-
-/* 預設規則快捷：加入後立即套用 */
-document.querySelectorAll(".preset-chip").forEach(function(chip){
-chip.addEventListener("click",function(){
-var rule=this.getAttribute("data-rule");
-var lines=$("rules").value.trim()?$("rules").value.trim().split("\n"):[];
-if(lines.indexOf(rule)<0){
-lines.push(rule);
-$("rules").value=lines.join("\n");
-saveRules();
-$("rule-status").textContent="已加入："+rule;
-}
-applyRules(false);
-});
-});
-
-/* 初始化：讀取/自動保存 */
-loadToken();
-loadRules();
-loadGHInputs();
-
-$("rules").addEventListener("input",function(){saveRules();});
-$("gu").addEventListener("input",function(){saveGHInputs();});
-$("gb").addEventListener("input",function(){saveGHInputs();});
-$("gs").addEventListener("input",function(){saveGHInputs();});
-
-$("gt").addEventListener("input",function(){saveToken();});
-$("gk").addEventListener("change",function(){saveToken();});
-
-/* 初始化切換：避免第一次載入 tab 不一致 */
+/* ===== Init ===== */
+loadToken();loadRules();loadGHInputs();
 activateTab("t-local");
+Array.from(document.querySelectorAll(".preset-chip")).forEach(function(ch){ch.addEventListener('click',function(){})}); // no-op: keeps minify stable
+})();</script>
 
-})();
-</script>
-
-<script>
-window.parent.postMessage({ action: "ready" }, "*");
-window.console = new Proxy(console, {
-  get(target, prop) {
-    if (['log', 'warn', 'error'].includes(prop)) {
-      return new Proxy(target[prop], {
-        apply(fn, thisArg, args) {
-          fn.apply(thisArg, args);
-          window.parent.postMessage({ action: 'console',
-            type: prop,
-            args: args.map((arg) => {
-              try { return JSON.stringify(arg).replace(/^["']|["']$/g, ''); }
-              catch (e) { return arg; }
-            })
-          }, '*');
-        }
-      });
-    }
-    return target[prop];
-  }
-});
-</script>
-
-</body>
-</html>
+<script>window.parent.postMessage({action:"ready"},"*");window.console=new Proxy(console,{get:function(t,p){if(['log','warn','error'].includes(p))return new Proxy(t[p],{apply:function(fn,thisArg,args){fn.apply(thisArg,args);window.parent.postMessage({action:'console',type:p,args:args.map(function(arg){try{return JSON.stringify(arg).replace(/^["']|["']$/g,'')}catch(e){return arg}})},'*')}});return t[p]}}});</script>
+</body></html>
