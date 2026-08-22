@@ -49,7 +49,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   <meta name="description" content="社區修繕派工單">
   <link rel="stylesheet" href="/style.css?v=1.1.13">
 </head>
-<body>
+<body style="padding-bottom:16px">
   <div id="share-app">
     <p class="loading">載入中…</p>
   </div>
