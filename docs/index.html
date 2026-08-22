@@ -29,15 +29,15 @@ body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-s
 /* ===== 主體佈局 ===== */
 .main{position:fixed;top:48px;bottom:36px;left:0;right:0;display:flex;flex-direction:column;overflow:hidden}
 
-/* ===== 折疊面板 ===== */
-.panel{background:#1e2a3a;border-bottom:1px solid #333;overflow:hidden;transition:max-height .3s ease}
-.panel.collapsed{max-height:0!important;border-bottom:none}
+/* ===== 折疊面板（只收合 panel-body，不會遮住下面可點區） ===== */
+.panel{background:#1e2a3a;border-bottom:1px solid #333;overflow:hidden}
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;cursor:pointer;user-select:none;background:#263238}
 .panel-header:hover{background:#2c3e50}
 .panel-header .ph-title{font-size:.82rem;color:#90caf9;font-weight:bold}
-.panel-header .ph-arrow{font-size:.7rem;color:#78909c;transition:transform .3s}
+.panel-header .ph-arrow{font-size:.7rem;color:#78909c;transition:transform .2s}
 .panel-header.open .ph-arrow{transform:rotate(180deg)}
-.panel-body{padding:12px 16px;max-height:400px;overflow-y:auto}
+.panel-body{padding:12px 16px;max-height:320px;overflow-y:auto}
+.panel-body.is-hidden{display:none}
 
 /* 分頁 */
 .tabs{display:flex;gap:0;margin-bottom:12px}
@@ -70,8 +70,20 @@ a{color:#64b5f6}
 .zip-zone{border:2px dashed #546e7a;border-radius:6px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s;margin:8px 0}
 .zip-zone:hover,.zip-zone.dragover{border-color:#4caf50;background:#1a2a1a}
 
-/* ===== 檔案清單區 ===== */
+/* ===== 檔案/設定兩欄佈局 ===== */
 .file-area{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:0 16px}
+
+.two-col{display:flex;gap:12px;overflow:hidden;margin-top:8px}
+.col-left{flex:1;min-width:420px;display:flex;flex-direction:column;overflow:hidden}
+.col-right{width:340px;min-width:320px;max-width:40%;display:flex;flex-direction:column;overflow:hidden;gap:10px}
+
+@media (max-width: 980px){
+  .two-col{flex-direction:column}
+  .col-right{width:auto;max-width:none;min-width:0}
+  .col-left{min-width:0}
+}
+
+/* ===== 左側：表格 ===== */
 .file-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid #333}
 .file-toolbar select{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:3px;padding:3px 6px;font-size:.75rem}
 .file-toolbar input[type=text]{width:180px;padding:3px 8px;font-size:.75rem}
@@ -90,6 +102,17 @@ a{color:#64b5f6}
 .binary-tag{background:#b71c1c;color:#fff;font-size:.6rem;padding:1px 3px;border-radius:2px}
 .fail-tag{background:#e65100;color:#fff;font-size:.6rem;padding:1px 3px;border-radius:2px}
 .sens-mark{color:#ffb300;font-size:.7rem}
+.sens-warn{background:#4a3000;border:1px solid #ffb300;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#ffe082;display:none}
+
+/* ===== 右側：輸出設定 ===== */
+.box{background:#1e2a3a;border:1px solid #333;border-radius:6px;padding:12px}
+.box h3{font-size:.82rem;color:#a5d6a7;margin-bottom:8px}
+.box .row{display:flex;gap:8px;flex-direction:column}
+.box label.chk{margin:6px 0}
+.box .field{display:flex;align-items:center;gap:8px;margin-top:6px}
+.box .field input[type=number]{width:80px}
+
+.section-divider{height:1px;background:#333;margin:10px 0}
 
 /* ===== 底部固定欄 ===== */
 .bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#16213e;border-top:1px solid #333;padding:6px 16px;display:flex;align-items:center;gap:16px;font-size:.75rem}
@@ -103,15 +126,12 @@ a{color:#64b5f6}
 .progress-wrap .pfill{height:100%;background:#4caf50;transition:width .2s}
 .progress-wrap .ptxt{font-size:.7rem;color:#90a4ae;margin-top:2px}
 
-/* 警告 */
-.rate-warn{background:#1a237e;border:1px solid #5c6bc0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#c5cae9;display:none}
-.sens-warn{background:#4a3000;border:1px solid #ffb300;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#ffe082;display:none}
-
 /* 輸出預覽 */
 .output-section{padding:8px 0}
-.output-section h3{font-size:.82rem;color:#a5d6a7;margin-bottom:6px}
-.analysis{background:#263238;border-radius:4px;padding:8px;margin:4px 0;font-size:.75rem}
+.analysis{background:#263238;border-radius:4px;padding:8px;margin:6px 0;font-size:.75rem}
 .analysis pre{white-space:pre-wrap;word-break:break-all;font-size:.72rem;color:#b0bec5;margin-top:4px;max-height:120px;overflow-y:auto}
+
+.rate-warn{background:#1a237e;border:1px solid #5c6bc0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#c5cae9;display:none}
 </style>
 </head>
 <body>
@@ -137,8 +157,8 @@ a{color:#64b5f6}
 <!-- ===== 主體 ===== -->
 <div class="main">
 
-<!-- 折疊面板：來源（不再包含排除/輸出設定） -->
-<div class="panel" id="panel-source" style="max-height:320px">
+<!-- 折疊面板：來源 -->
+<div class="panel" id="panel-source">
 <div class="panel-header open" id="ph-source" onclick="togglePanel()">
 <span class="ph-title">📂 來源</span>
 <span class="ph-arrow">▼</span>
@@ -171,17 +191,14 @@ a{color:#64b5f6}
 <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
 <label class="chk"><input type="checkbox" id="gk"> 記住</label>
 <button class="btn btn-sec btn-sm" onclick="clearToken()">清除</button>
-
 <button class="btn btn-green" onclick="processGitHub()">下載並載入</button>
-
-<!-- 新增：下載到本機（免API） -->
-<button class="btn btn-sec btn-sm" onclick="downloadGithubZipToLocal()" title="下載 ZIP 到本機後，請到 ZIP 上傳選擇該檔。">📥 下載 ZIP 到本機</button>
+<button class="btn btn-sec btn-sm" onclick="downloadGithubZipToLocal()" title="下載 ZIP 到本機後，請切到「ZIP 上傳」。">📥 下載 ZIP 到本機</button>
 </div>
 </div>
 
 <div class="rate-warn" id="rw"></div>
 <div class="small" style="margin-top:6px">
-💡 如果「下載並載入」不順，你可以先用「下載 ZIP 到本機」，再切到「ZIP 上傳」上傳該檔。
+💡 若「下載並載入」不順，可先用「下載 ZIP 到本機」，再用「ZIP 上傳」。
 </div>
 </div>
 
@@ -219,6 +236,7 @@ a{color:#64b5f6}
 <span class="preset-chip" data-rule="*.woff*">*.woff*</span>
 <span class="preset-chip" data-rule=".env">.env</span>
 </div>
+
 <div class="rule-flex">
 <textarea id="rules" placeholder="node_modules/&#10;dist/&#10;*.png"></textarea>
 <div class="rule-btns">
@@ -231,20 +249,12 @@ a{color:#64b5f6}
 </div>
 </details>
 
-<!-- 輸出設定 -->
-<details style="margin-bottom:0;background:#1e2a3a">
-<summary style="cursor:pointer;color:#90caf9;font-size:.82rem;padding:10px 16px;background:#1e2a3a">
-⚙️ 輸出設定
-</summary>
-<div style="padding:12px 16px 16px;background:#1e2a3a">
-<label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
-<label class="chk"><input type="checkbox" id="o5" checked> 長檔注入路徑戳記</label>
-<label class="chk" style="margin-top:4px">間隔行數：<input type="number" id="o8" value="12" min="4" max="80"></label>
-</div>
-</details>
-
-<!-- 檔案清單區 -->
+<!-- 檔案/輸出設定區 -->
 <div class="file-area">
+
+<div class="two-col">
+<!-- ===== 左欄：篩選 + 表格 ===== -->
+<div class="col-left">
 <div class="file-toolbar">
 <select id="sort-key" onchange="renderFileTable()">
 <option value="path">路徑</option>
@@ -252,16 +262,24 @@ a{color:#64b5f6}
 <option value="ext">類型</option>
 <option value="depth">深度</option>
 </select>
+
 <select id="sort-dir" onchange="renderFileTable()">
 <option value="asc">↑</option>
 <option value="desc">↓</option>
 </select>
+
 <button class="btn btn-sec btn-sm" onclick="selAll()">全選</button>
 <button class="btn btn-sec btn-sm" onclick="selNone()">全取消</button>
+
 <input type="text" id="flt" placeholder="篩選路徑..." oninput="renderFileTable()">
-<label class="chk" style="margin-left:auto"><input type="checkbox" id="chk-all" onchange="chkAll(this.checked)"> 全選/取消</label>
+
+<label class="chk" style="margin-left:auto">
+<input type="checkbox" id="chk-all" onchange="chkAll(this.checked)"> 全選/取消
+</label>
 </div>
+
 <div class="sens-warn" id="sw"></div>
+
 <div class="file-table-wrap">
 <table class="file-table">
 <thead>
@@ -279,10 +297,32 @@ a{color:#64b5f6}
 </tbody>
 </table>
 </div>
+</div>
+
+<!-- ===== 右欄：輸出設定（常駐，不用開關） ===== -->
+<div class="col-right">
+<div class="box">
+<h3>⚙️ 輸出設定</h3>
+<div class="row">
+<label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
+<label class="chk"><input type="checkbox" id="o5" checked> 長檔注入路徑戳記</label>
+<div class="field">
+<div class="small" style="color:#90a4ae">間隔行數：</div>
+<input type="number" id="o8" value="12" min="4" max="80">
+</div>
+</div>
+<div class="section-divider"></div>
+<div class="small" style="color:#78909c">
+設定會在你按「產生輸出」時生效。
+</div>
+</div>
+
+</div>
+</div>
 
 <!-- 分析區（折疊） -->
 <details class="output-section" id="analysis-section" style="display:none">
-<summary style="cursor:pointer;color:#a5d6a7;font-size:.82rem">📊 分析結果</summary>
+<summary style="cursor:pointer;color:#a5d6a7;font-size:.82rem;padding:8px 0">📊 分析結果</summary>
 <div class="analysis"><h3>包含</h3><pre id="a1">—</pre></div>
 <div class="analysis"><h3>排除</h3><pre id="a2">—</pre></div>
 <div class="analysis"><h3>敏感</h3><pre id="a3">—</pre></div>
@@ -311,6 +351,7 @@ a{color:#64b5f6}
 var tok=0,srcFiles=null,srcMeta=null,outputs=null;
 var checked=new Set();
 var sensFlags={};
+
 var apiCallCount=0;
 
 var STORAGE_KEY="pov.exclude.rules";
@@ -332,21 +373,6 @@ function isBinaryExt(p){return BIN_EXTS.indexOf(ext(p))>=0}
 function showProgress(pct,txt){$("pw").style.display="block";$("pf").style.width=pct+"%";$("pt").textContent=txt}
 function hideProgress(){$("pw").style.display="none"}
 
-/* 面板折疊（僅控制來源區，不影響排除/輸出設定） */
-window.togglePanel=function(){
-var panel=$("panel-source");
-var header=$("ph-source");
-if(panel.classList.contains("collapsed")){
-panel.classList.remove("collapsed");
-panel.style.maxHeight="320px";
-header.classList.add("open");
-}else{
-panel.classList.add("collapsed");
-header.classList.remove("open");
-}
-};
-
-/* 分頁切換（來源TAB） */
 function activateTab(tabId){
 document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});
 document.querySelectorAll(".tab-content").forEach(function(c){c.classList.remove("active")});
@@ -355,6 +381,20 @@ var content=document.getElementById(tabId);
 if(tab)tab.classList.add("active");
 if(content)content.classList.add("active");
 }
+
+// 修正：只收合 panel-body，不讓它用 max-height/動畫狀態遮住下面可點區
+window.togglePanel=function(){
+var panelBody=$("pb-source");
+var header=$("ph-source");
+if(panelBody.classList.contains("is-hidden")){
+panelBody.classList.remove("is-hidden");
+header.classList.add("open");
+}else{
+panelBody.classList.add("is-hidden");
+header.classList.remove("open");
+}
+};
+
 document.querySelectorAll(".tab").forEach(function(tab){
 tab.addEventListener("click",function(){
 activateTab(tab.dataset.tab);
@@ -364,7 +404,11 @@ activateTab(tab.dataset.tab);
 /* 排除規則 */
 function loadRules(){try{var s=localStorage.getItem(STORAGE_KEY);if(s)$("rules").value=s}catch(e){}}
 function saveRules(){try{localStorage.setItem(STORAGE_KEY,$("rules").value)}catch(e){}}
-function getRulePatterns(){return $("rules").value.split("\n").map(function(l){return l.trim()}).filter(function(l){return l.length>0&&!l.startsWith("#")})}
+function getRulePatterns(){
+return $("rules").value.split("\n")
+.map(function(l){return l.trim()})
+.filter(function(l){return l.length>0&&!l.startsWith("#")});
+}
 function matchPattern(path,pattern){
 if(pattern.endsWith("/"))return path.indexOf(pattern)>=0;
 if(pattern.indexOf("*")>=0){
@@ -376,7 +420,10 @@ return path.toLowerCase().indexOf(pattern.toLowerCase())>=0;
 window.applyRules=function(silent){
 if(!srcFiles||srcFiles.length===0)return;
 var patterns=getRulePatterns();
-if(patterns.length===0){if(!silent)$("rule-status").textContent="沒有規則。";return}
+if(patterns.length===0){
+if(!silent)$("rule-status").textContent="沒有規則。";
+return;
+}
 var count=0;
 for(var i=0;i<srcFiles.length;i++){
 for(var j=0;j<patterns.length;j++){
@@ -389,10 +436,18 @@ saveRules();
 renderFileTable();
 $("rule-status").textContent=(silent?"自動":"已")+"排除 "+count+" 個。";
 };
-window.clearRules=function(){$("rules").value="";saveRules();$("rule-status").textContent="已清空。"};
-window.resetChecks=function(){if(!srcFiles)return;srcFiles.forEach(function(f){checked.add(f.path)});renderFileTable()};
+window.clearRules=function(){
+$("rules").value="";
+saveRules();
+$("rule-status").textContent="已清空。";
+};
+window.resetChecks=function(){
+if(!srcFiles)return;
+srcFiles.forEach(function(f){checked.add(f.path)});
+renderFileTable();
+};
 
-/* 只記住最後一次：Repo/分支/子目錄 */
+/* GitHub token / inputs */
 function loadGHInputs(){
 try{
 var r=localStorage.getItem(GH_REPO_KEY);
@@ -411,7 +466,6 @@ localStorage.setItem(GH_SUBDIR_KEY,$("gs").value||"");
 }catch(e){}
 }
 
-/* GitHub token */
 function parseGHUrl(v){
 v=v.trim().replace(/\/+$/,"");
 var m=v.match(/^(?:https?:\/\/)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/);
@@ -428,11 +482,26 @@ if(t)h["Authorization"]="Bearer "+t;
 }
 return h;
 }
-window.saveToken=function(){try{var t=$("gt").value.trim();if($("gk").checked&&t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}};
-function loadToken(){try{var t=localStorage.getItem(TOKEN_KEY);if(t){$("gt").value=t;$("gk").checked=true}}catch(e){}}
-window.clearToken=function(){try{localStorage.removeItem(TOKEN_KEY)}catch(e){}$("gt").value="";$("gk").checked=false};
+window.saveToken=function(){
+try{
+var t=$("gt").value.trim();
+if($("gk").checked&&t)localStorage.setItem(TOKEN_KEY,t);
+else localStorage.removeItem(TOKEN_KEY);
+}catch(e){}
+};
+function loadToken(){
+try{
+var t=localStorage.getItem(TOKEN_KEY);
+if(t){$("gt").value=t;$("gk").checked=true;}
+}catch(e){}
+}
+window.clearToken=function(){
+try{localStorage.removeItem(TOKEN_KEY)}catch(e){}
+$("gt").value="";
+$("gk").checked=false;
+};
 
-/* 敏感偵測 */
+/* 敏感偵測/處理 */
 function detectSensName(path){
 var b=base(path).toLowerCase();var r=[];
 if(/\.env(\.|$)/.test(b)||b===".env")r.push(".env");
@@ -453,7 +522,9 @@ out=out.replace(/(-----BEGIN[A-Z ]*PRIVATE KEY-----)[\s\S]*?(-----END[A-Z ]*PRIV
 out=out.replace(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*)["']([^"']{8,})["']/gi,'$1"[REDACTED]"');
 return out;
 }
-function compressBlank(text){return text.replace(/\r\n/g,"\n").replace(/[ \t]+$/gm,"").replace(/\n{3,}/g,"\n\n")}
+function compressBlank(text){
+return text.replace(/\r\n/g,"\n").replace(/[ \t]+$/gm,"").replace(/\n{3,}/g,"\n\n");
+}
 function stampComment(path,extn){
 if([".py",".yaml",".yml",".toml",".sh",".bash",".rb",".r",".jl",".ex",".exs",".pl",".pm",".nim",".cmake",".tf",".hcl",".dockerfile"].indexOf(extn)>=0)return "# [File: "+path+"]";
 if(extn===".sql")return "-- [File: "+path+"]";
@@ -461,7 +532,10 @@ if([".md",".mdx",".html",".htm",".xml",".svg",".vue",".svelte"].indexOf(extn)>=0
 return "// [File: "+path+"]";
 }
 function injectStamps(text,path,extn,interval){
-var lines=text.split("\n");var stamp=stampComment(path,extn);var out=[stamp];var since=0;
+var lines=text.split("\n");
+var stamp=stampComment(path,extn);
+var out=[stamp];
+var since=0;
 for(var i=0;i<lines.length;i++){
 out.push(lines[i]);
 if(lines[i].trim()!=="")since++;
@@ -471,28 +545,43 @@ return out.join("\n");
 }
 async function sha256(text){
 if(!crypto.subtle)return "N/A";
-var buf=new TextEncoder().encode(text);var hash=await crypto.subtle.digest("SHA-256",buf);
+var buf=new TextEncoder().encode(text);
+var hash=await crypto.subtle.digest("SHA-256",buf);
 return Array.from(new Uint8Array(hash)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");
 }
-function fenceFor(text){var max=0,re=/^(`{3,})/gm,m;while((m=re.exec(text))!==null){if(m[1].length>max)max=m[1].length}return "`".repeat(Math.max(max+1,3))}
+function fenceFor(text){
+var max=0,re=/^(`{3,})/gm,m;
+while((m=re.exec(text))!==null){if(m[1].length>max)max=m[1].length}
+return "`".repeat(Math.max(max+1,3));
+}
 function langForFence(e){
 var map={".js":"javascript",".jsx":"jsx",".ts":"typescript",".tsx":"tsx",".vue":"vue",".svelte":"svelte",".py":"python",".rb":"ruby",".go":"go",".rs":"rust",".java":"java",".kt":"kotlin",".swift":"swift",".c":"c",".cpp":"cpp",".h":"c",".cs":"csharp",".php":"php",".sql":"sql",".html":"html",".css":"css",".scss":"scss",".json":"json",".yaml":"yaml",".yml":"yaml",".toml":"toml",".md":"markdown",".txt":"text",".sh":"bash",".xml":"xml",".svg":"xml"};
 return map[e]||e.replace(".","");
 }
 function buildTree(paths){
 var tree={};
-paths.forEach(function(p){var parts=p.split("/");var node=tree;for(var i=0;i<parts.length;i++){if(!node[parts[i]])node[parts[i]]={};node=node[parts[i]]}});
+paths.forEach(function(p){
+var parts=p.split("/");
+var node=tree;
+for(var i=0;i<parts.length;i++){
+if(!node[parts[i]])node[parts[i]]={};
+node=node[parts[i]];
+}
+});
 function render(node,prefix){
 var keys=Object.keys(node).sort(function(a,b){
 var aD=Object.keys(node[a]).length>0,bD=Object.keys(node[b]).length>0;
-if(aD&&!bD)return -1;if(!aD&&bD)return 1;
+if(aD&&!bD)return -1;
+if(!aD&&bD)return 1;
 return a.localeCompare(b);
 });
 var lines=[];
 for(var i=0;i<keys.length;i++){
 var k=keys[i];
 lines.push(prefix+((i===keys.length-1)?"└── ":"├── ")+k);
-if(Object.keys(node[k]).length>0)lines=lines.concat(render(node[k],prefix+((i===keys.length-1)?"    ":"│   ")));
+if(Object.keys(node[k]).length>0){
+lines=lines.concat(render(node[k],prefix+((i===keys.length-1)?"    ":"│   ")));
+}
 }
 return lines;
 }
@@ -529,6 +618,7 @@ if(tok!==myTok)return;
 
 srcFiles=[];checked.clear();sensFlags={};
 outputs=null;
+
 $("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
 $("pb").disabled=true;
 
@@ -553,6 +643,7 @@ if(subdir){
 if(!relPath.startsWith(subdir+"/"))continue;
 relPath=relPath.slice(subdir.length+1);
 }
+
 if(!relPath||relPath==="/")continue;
 
 var failed=false;
@@ -588,7 +679,6 @@ if(count%10===0)showProgress(30+Math.round(count/entries.length*70),"解壓 "+co
 
 hideProgress();
 $("pb").disabled=false;
-
 applyRules(true);
 renderFileTable();
 
@@ -654,13 +744,14 @@ document.body.appendChild(a);
 a.click();
 document.body.removeChild(a);
 
-st("ZIP 下載已開始。請切到「ZIP 上傳」選擇檔案。");
+st("ZIP 下載已開始。請切到「ZIP 上傳」選擇該檔。");
 activateTab("t-zip");
 };
 
-/* GitHub：下載並載入（走 API；可能會遇到你遇到的配額/失敗） */
+/* GitHub：下載並載入（走 API；可能會失敗） */
 window.processGitHub=async function(){
-var myTok=++tok;saveToken();
+var myTok=++tok;
+saveToken();
 $("rw").style.display="none";
 
 var parsed=parseGHUrl($("gu").value);
@@ -689,7 +780,7 @@ if(tok!==myTok)return;
 if(!repoRes.ok){
 if(repoRes.status===403){
 $("rw").style.display="block";
-$("rw").innerHTML="⏳ 速率限制。你可以改用「下載 ZIP 到本機」。";
+$("rw").innerHTML="⏳ 速率限制。改用「下載 ZIP 到本機」。";
 st("403");
 return;
 }
@@ -698,6 +789,7 @@ return;
 }
 var repoData=await repoRes.json();
 if(tok!==myTok)return;
+
 branch=repoData.default_branch||"main";
 $("gb").value=branch;
 }
@@ -712,11 +804,12 @@ if(tok!==myTok)return;
 
 if(zipRes.status===403){
 $("rw").style.display="block";
-$("rw").innerHTML="⏳ 配額用完。你可以先用「下載 ZIP 到本機」，再用 ZIP 上傳。";
+$("rw").innerHTML="⏳ 配額用完。改用「下載 ZIP 到本機」。";
 hideProgress();
 st("403");
 return;
 }
+
 if(!zipRes.ok){st("失敗："+zipRes.status);return}
 
 var zipBlob=await zipRes.blob();
@@ -741,7 +834,9 @@ if(e.dataTransfer.files.length>0&&e.dataTransfer.files[0].name.endsWith(".zip"))
 processZipFile(e.dataTransfer.files[0]);
 }else st("請拖入 .zip");
 });
-$("zip-input").addEventListener("change",function(e){if(e.target.files.length>0)processZipFile(e.target.files[0])});
+$("zip-input").addEventListener("change",function(e){
+if(e.target.files.length>0)processZipFile(e.target.files[0]);
+});
 
 function processZipFile(file){
 var myTok=++tok;
@@ -884,10 +979,13 @@ md.push("<!-- FILE END: "+f.path+" -->");md.push("");
 
 var mainMd=md.join("\n");
 
+var indexMd=buildIndex(processed,excludedList,now,totalChars);
+var jsonObj=buildJSON(processed,excludedList,now,totalChars,excludedIndexByPath.size);
+
 outputs={
 main:mainMd,
-index:buildIndex(processed,excludedList,now,totalChars),
-json:buildJSON(processed,excludedList,now,totalChars,excludedIndexByPath.size)
+index:indexMd,
+json:jsonObj
 };
 
 var outSize=new Blob([mainMd]).size;
@@ -908,7 +1006,6 @@ var sk=Object.keys(sensFlags);
 $("a3").textContent=sk.length>0?sk.join("\n"):"無";
 
 $("pb").disabled=false;
-
 st("✅ 完成。"+processed.length+" 檔，"+fmtN(totalChars)+" 字元。");
 };
 
@@ -919,7 +1016,6 @@ l.push("","## 排除");
 e.forEach(function(x){l.push("- "+x)});
 return l.join("\n");
 }
-
 function buildJSON(p,e,now,tc,excludedUniqueCount){
 return JSON.stringify({
 generatedAt:now,
@@ -948,7 +1044,11 @@ setTimeout(function(){URL.revokeObjectURL(url)},5000);
 window.dlMain=function(){if(outputs)download("project-overview.md",outputs.main)};
 window.dlIndex=function(){if(outputs)download("00-review-index.md",outputs.index)};
 window.dlJSON=function(){if(outputs)download("review-report.json",outputs.json,"application/json")};
-window.dlAll=function(){if(!outputs)return;download("project-overview.md",outputs.main);setTimeout(function(){download("00-review-index.md",outputs.index);setTimeout(function(){download("review-report.json",outputs.json,"application/json")},400)},400)};
+window.dlAll=function(){
+if(!outputs)return;
+download("project-overview.md",outputs.main);
+setTimeout(function(){download("00-review-index.md",outputs.index);setTimeout(function(){download("review-report.json",outputs.json,"application/json")},400)},400);
+};
 
 /* 表格 */
 function getSortedFiltered(){
@@ -957,7 +1057,9 @@ var filter=$("flt").value.trim().toLowerCase();
 var key=$("sort-key").value;
 var dir=$("sort-dir").value==="asc"?1:-1;
 
-var list=srcFiles.filter(function(f){return !filter||f.path.toLowerCase().indexOf(filter)>=0});
+var list=srcFiles.filter(function(f){
+return !filter||f.path.toLowerCase().indexOf(filter)>=0;
+});
 
 list.sort(function(a,b){
 switch(key){
@@ -968,7 +1070,6 @@ case "depth":return(depth(a.path)-depth(b.path))*dir;
 default:return 0;
 }
 });
-
 return list;
 }
 
@@ -978,6 +1079,7 @@ if(!srcFiles||srcFiles.length===0){
 tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入</td></tr>';
 return;
 }
+
 var list=getSortedFiltered();
 var html="";
 
@@ -989,7 +1091,6 @@ var warn="";
 if(isBinaryExt(f.path))warn+='<span class="binary-tag">BIN</span> ';
 if(f.failed)warn+='<span class="fail-tag">FAIL</span> ';
 if(sensFlags[f.path])warn+='<span class="sens-mark">⚠️</span>';
-
 html+="<tr"+rc+'><td class="col-chk"><input type="checkbox" data-p="'+f.path+'"'+chk+'></td><td class="col-path">'+f.path+'</td><td class="col-size">'+fmtSize(f.size)+'</td><td class="col-ext">'+(ext(f.path)||"—")+'</td><td class="col-depth">'+depth(f.path)+'</td><td>'+warn+'</td></tr>';
 }
 
@@ -1001,12 +1102,15 @@ var sk=Object.keys(sensFlags);
 if(sk.length>0){
 $("sw").style.display="block";
 $("sw").innerHTML="<strong>⚠️ "+sk.length+" 個敏感</strong>："+sk.slice(0,5).join("、")+(sk.length>5?"...":"");
-}else $("sw").style.display="none";
+}else{
+$("sw").style.display="none";
+}
 };
 
 $("ft-body").addEventListener("change",function(e){
 if(e.target.type==="checkbox"&&e.target.dataset.p){
-if(e.target.checked)checked.add(e.target.dataset.p);else checked.delete(e.target.dataset.p);
+if(e.target.checked)checked.add(e.target.dataset.p);
+else checked.delete(e.target.dataset.p);
 renderFileTable();
 }
 });
@@ -1016,7 +1120,13 @@ if($("sort-key").value===key)$("sort-dir").value=$("sort-dir").value==="asc"?"de
 else{$("sort-key").value=key;$("sort-dir").value="asc"}
 renderFileTable();
 };
-window.chkAll=function(ic){getSortedFiltered().forEach(function(f){if(ic)checked.add(f.path);else checked.delete(f.path)});renderFileTable()};
+window.chkAll=function(ic){
+getSortedFiltered().forEach(function(f){
+if(ic)checked.add(f.path);
+else checked.delete(f.path);
+});
+renderFileTable();
+};
 window.selAll=function(){chkAll(true)};
 window.selNone=function(){chkAll(false)};
 
@@ -1035,8 +1145,10 @@ applyRules(false);
 });
 });
 
-/* 初始化：讀取/自動保存最後一次輸入 */
-loadToken();loadRules();loadGHInputs();
+/* 初始化：讀取/自動保存 */
+loadToken();
+loadRules();
+loadGHInputs();
 
 $("rules").addEventListener("input",function(){saveRules();});
 $("gu").addEventListener("input",function(){saveGHInputs();});
@@ -1045,6 +1157,9 @@ $("gs").addEventListener("input",function(){saveGHInputs();});
 
 $("gt").addEventListener("input",function(){saveToken();});
 $("gk").addEventListener("change",function(){saveToken();});
+
+/* 初始化切換：避免第一次載入 tab 不一致 */
+activateTab("t-local");
 
 })();
 </script>
@@ -1060,11 +1175,8 @@ window.console = new Proxy(console, {
           window.parent.postMessage({ action: 'console',
             type: prop,
             args: args.map((arg) => {
-              try {
-                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
-              } catch (e) {
-                return arg;
-              }
+              try { return JSON.stringify(arg).replace(/^["']|["']$/g, ''); }
+              catch (e) { return arg; }
             })
           }, '*');
         }
