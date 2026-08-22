@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.13（已擴充至 116 單元測試 + 15 E2E）
+> 版本：v1.1.14（已擴充至 121 單元測試 + 19 E2E）
 
 ## 執行方式
 
@@ -23,23 +23,23 @@ npm test   # 等於 vitest run
 
 > 斷言 1–4 均已實作並通過（見 `tests/app.test.ts` 對應案例）；不再有 `it.skip` 或 501。
 
-## 測試檔結構（v1.1.13，116 單元測試）
+## 測試檔結構（v1.1.14，121 單元測試）
 
 ```
 tests/
-├── app.test.ts            # app 組裝 + middleware 掛載順序 + §10 回歸斷言（18）
+├── app.test.ts            # app 組裝 + middleware 掛載順序 + §10 回歸斷言 + CSV header（A2）（18）
 ├── tickets.test.ts        # M3 案件核心（建單/列表/詳情）（3）
-├── ticket-actions.test.ts # M4 案件動作（回報/留言/作廢/reopen）（3）
+├── ticket-actions.test.ts # M4 案件動作（回報/留言/作廢/reopen）＋F3 狀態流＋E3 雙寫（8）
 ├── share.test.ts          # M6 share 公開頁 + token 重發（4）
 ├── coverage.test.ts       # 覆蓋補齊（photos/users防呆/options/vendors/logout/void/篩選/share photos/編輯照片）（32）
-├── boundary.test.ts       # 邊界與例外（權限邊界/欄位驗證/D7/reopen/comments/分頁/auth/session/404/已發包必填金額）（31）
+├── boundary.test.ts       # 邊界與例外（權限/欄位/D7/reopen/comments/分頁/auth/session/404/已發包金額）＋A10（32）
 ├── assoc.test.ts          # v1.1.7 類別關聯（join 表/三模式/category_ids 三態/assoc 端點/catalog）（20）
 ├── share-html.test.ts     # v1.1.13 分享頁動態標題 + og 標籤（5）
-├── apply-migrations.ts    # setup：套用 D1 migrations（cloudflare:test）
+├── apply-migrations.ts    # setup：套用 D1 migrations + PRAGMA FK（C7）
 └── env.d.ts               # 測試環境型別（DB/PHOTOS/TEST_MIGRATIONS）
 ```
 
-E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**15 個測試**涵蓋列表/卡片（維修內容＋日期＋天數）/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填。
+E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**19 個測試**涵蓋列表/卡片（維修內容＋日期＋天數）/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填/**A8 照片選擇器**/**A9 作廢（二次確認）與 reopen modal**。
 
 ## 核心端點案例（輸入 → 期望輸出）
 

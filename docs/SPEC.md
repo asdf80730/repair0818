@@ -14,6 +14,7 @@
 
 | 版本 | 內容 |
 |---|---|
+| v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all、逾期 Tab；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
 | v1.0 | 初版：技術棧、schema、API、畫面、部署、里程碑 |
 | v1.1 | 外部評審修訂（20 項）：Cookie session 取代 Bearer、時間格式統一 ISO8601、label 快照、刪除 ticket_no、void/編輯留痕、業主決策 D1–D4 等 |
 | v1.1.1 | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等 |
@@ -43,7 +44,7 @@
 
 ### 0.3 產品規則（不可自行更動）
 
-1. 狀態流：`open → in_progress → done`；另有 `void`（作廢）；done/void 僅 admin 可 reopen
+1. 狀態流：`open → in_progress → done`；另有 `void`（作廢）；done/void 僅 admin 可 reopen。**v1.1.14（F3）後端鎖死**：`in_progress→open` 退回禁、`open→open` 禁；`open→done` 可直結案、`in_progress→in_progress` 允許（多次發包覆寫金額）
 2. 回報（kind=status）限 manager/admin；留言（kind=comment）三角色皆可、不改狀態
 3. 編輯、void、reopen 都必須寫入時間軸；reopen 訊息須帶入實際前狀態（已完成／已作廢）
 4. 時間軸（ticket_updates）只能新增，不可修改刪除（開會存檔用）
@@ -359,6 +360,8 @@ WHERE line_user_id='<他的 LINE user ID>';
    - 角色不符 → `403 FORBIDDEN`
 3. 停用／降權因此**立即生效**
 
+**v1.1.14（A6）session 滑動續期**：`requireAuth` 在 `resolveUser` 成功後，若 JWT 剩餘效期 < 900 秒（15 分鐘），用 `decodeJwt` 讀 `exp` 比對，換發新 JWT 並 `Set-Cookie`（屬性與登入一致：`Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`）。因 `resolveUser` 已查過 D1 active，停用者不會被續期繞過。
+
 **`lib/auth.ts` 介面（v1.1.3 定案）**——拆為純函式＋middleware 兩層，讓需自驗的端點（如 CSV 下載）可重用驗證邏輯：
 
 ```ts
@@ -553,6 +556,7 @@ export function requireAuth(opts?: {
 - 更新 `last_activity_at`；照片綁定 `target_type='update'` + 該筆 update id
 - 多步驟寫入用 `env.DB.batch()`
 - 已結案（done）或作廢（void）的單 → 回 `VALIDATION_ERROR`
+- **v1.1.14 狀態流限制（F3）**：後端驗證合法轉移——`open → [in_progress, done]`、`in_progress → [in_progress, done]`（in_progress→in_progress 允許＝多次發包覆寫金額）。**鎖死退回（`in_progress→open` 禁）、`open→open` 禁**；違反回 `VALIDATION_ERROR`。前端 comment-box 下拉依 `t.status` 過濾選項（與後端一致）
 
 **POST `/api/tickets/:id/comments`**（三角色，D1）
 
@@ -662,6 +666,10 @@ export function requireAuth(opts?: {
 | `open_count` / `in_progress_count` | 目前狀態即時數 |
 | `month_new` | 當月 `created_at` 的案件數 |
 | `month_done` | **台灣當月內，時間軸出現過 done 回報的不重複案件數**（見下方 SQL） |
+| `month_initial_open` | **期初未結案**（v1.1.14 A3 方案②）：本月月初時點尚未結案（open+in_progress；done/void 不計） |
+
+- **v1.1.14（A3 方案②）完成率分母**：完成率＝`month_done / (month_initial_open + month_new)`，由前端計算；分母為 0 顯示「—」
+- `month_initial_open` 因 `tickets.status` 是現狀快照、reopen 會改狀態，以月初時點推導（見下方 SQL 註）
 
 - 月份邊界＝**台灣時區**當月 1 日 00:00 起，由 `taipeiMonthRangeUtc()` 換算 UTC 後帶入 SQL
 - `month_done` 依據 append-only 的 `ticket_updates` 計算：reopen 不回溯改變歷史月份數字；同案件同月「結案→reopen→再結案」只計 1 件；作廢自然不算完成
@@ -719,11 +727,14 @@ GROUP BY category_label ORDER BY total_amount DESC
 **內容規格**：
 
 - 編碼：**UTF-8 with BOM**（`\uFEFF` 開頭，Excel 開中文不亂碼）
-- 欄位（**11 欄**，v1.1.3 精簡：title 已含單號，砍「標題」欄）：
-  `單號, 類別, 地點, 說明, 狀態, 廠商, 建立人, 建立時間, 最後活動, 結案時間, 回報次數`
+- 欄位（**13 欄**，v1.1.14 加發包金額/時間）：
+  `單號, 類別, 地點, 說明, 狀態, 廠商, 建立人, 建立時間, 最後活動, 結案時間, 回報次數, 發包金額, 發包時間`
   - 單號格式 `#0042`；時間格式 `YYYY-MM-DD HH:mm`（台灣時區）；回報次數＝該單 `kind='status'` 的筆數
+  - 第 12/13 欄「發包金額／發包時間」＝ `tickets.amount/amount_at`（多次發包覆寫為最後一次；未發包為空字串）
 - Query（皆選填）：`status`、`from`、`to`（台灣日期 YYYY-MM-DD，對 created_at 篩選）；無參數＝全部案件
-- **CSV injection 防護**：以 `=`、`+`、`-`、`@`、`\t`、`\r` 開頭的儲存格前綴 `'`
+- **日期真驗證（v1.1.14 F2）**：`from`/`to` 除 regex 外，須為真實日期（擋 `2026-02-31`、`2026-99-99`），否則 `400`；`from <= to` 否則 `400`
+- **`to` 邊界（v1.1.14 F1）**：視 `to` 為「隔天 00:00 前」，`created_at < to+1天`，不漏 `to` 當天 23:59:59.999
+- **CSV injection 防護**：以 `=`、`+`、`-`、`@`、`\t`、`\r` 開頭的儲存格前綴 `'`（v1.1.14 G2：**忽略前導空白**後再判，防 `"  =..."` 繞過）
 - **Quoting 規則**：欄位含 `,`、`"`、`\n`、`\r` → 整欄以雙引號包住；欄位內 `"` → `""`
 - Header：`Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="repair-tickets-20260818.csv"`（檔名用 ASCII＋匯出日期）、`Cache-Control: no-store`、`X-Robots-Tag: noindex`
 - v1 只匯出案件主表；時間軸明細匯出列 v2
@@ -777,7 +788,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ### 5.1 P1 案件列表
 
-- 狀態篩選 tabs：**未結案（=active，預設）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應；類別下拉篩選
+- 狀態篩選 tabs：**未結案（=active，預設）／逾期未更新（overdue）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應（overdue 為 v1.1.14 A5：open/in_progress 且 `last_activity_at` 距今 >7 天，排除 done/void）；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
 - **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
@@ -799,7 +810,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 案件資訊卡（緊湊：detail-head/detail-line）、照片牆、**時間軸為主角**。時間軸依 `kind` 三種樣式：狀態回報（徽章＋說明＋照片）／💬 留言（姓名＋內容＋照片，無徽章）／系統紀錄（灰色小字）
 - **發包金額顯示（v1.1.12）**：案件已發包（`amount` 非空）時，資訊卡顯示「發包金額：$X」；時間軸的「已發包(in_progress)」回報更新若帶 `amount`，也在該筆時間軸顯示「發包金額：$X」
 - **底部留言框改隱藏式**（v1.1.6）：頁面底部只有「💬 留言／回報」按鈕，點開才展開留言框＋可選狀態更新（manager/admin 可標記處理中/完成，委員僅留言）
-- **⋮ 選單**：編輯（D7：committee 僅自己建的單；manager/admin 全部，open/in_progress）、作廢（manager/admin，二次確認含選填原因）、重新開啟（僅 admin 且 done/void → modal 選狀態＋備註）、重新產生分享連結（manager/admin，直接更新輸入框）
+- **⋮ 選單**：編輯（**v1.1.14 E1 方案B**：詳情回應含 `can_edit`，由後端算好；committee 僅自己建的單、manager/admin 全部，open/in_progress）、作廢（manager/admin，二次確認含選填原因）、重新開啟（僅 admin 且 done/void → modal 選狀態＋備註）、重新產生分享連結（manager/admin，直接更新輸入框）
 - 🟢 完成（P4 回報選 done）需二次確認彈窗
 - **縮圖點開放大**（lightbox，v1.1.4）：詳情頁主照片牆、時間軸回報/留言照片、**公開派工頁（share.html）照片牆**三處共用同一 `thumb()`＋`openLightbox()` 邏輯。**v1.1.13 修復 share 頁縮圖點不開**——share.js 的 `el()` 缺 `onclick` 事件處理（`setAttribute` 傳函式無效），補 `addEventListener` 與 app.js 一致；share.html 引用 share.js 加版本參數防快取
 - **指派廠商在編輯頁內**（v1.1.5：保全/秘書層級，不再塞列表/詳情頁）
@@ -817,7 +828,8 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ### 5.5 P5 統計（**三角色皆可**，D6）
 
-- 六個數字卡片（v1.1.4）：詢價中、處理中、**未結案總數**、本月新增、本月完成、**本月完成率**（= 本月完成/本月新增）
+- 六個數字卡片（v1.1.4）：詢價中、處理中、**未結案總數**、本月新增、本月完成、**本月完成率**（v1.1.14 A3 方案②改為 `= 本月完成 / (期初未結案 + 本月新增)`，分母 0 顯示「—」）
+- **月份切換（v1.1.14 A4）**：近 12 個月下拉，切換時以 `Promise.all` 同步刷新 summary 與各類別金額（避免上下月不一致）
 - **各類別金額區塊（v1.1.12）**：以發包時間（`amount_at`）為月份基準，各類別 `amount` 加總，顯示「類別／件數／金額」＋合計
 - 「匯出 CSV」按鈕＋固定提示「將於外部瀏覽器開啟下載」（流程見 §4.8）——**僅 manager/admin 可見**（D3）
 
