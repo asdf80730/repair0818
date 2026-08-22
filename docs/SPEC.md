@@ -520,7 +520,7 @@ export function requireAuth(opts?: {
 **GET `/api/tickets`**（三角色）
 
 - Query：`status`、`category_id`、`page`（預設 1）、`limit`（預設 20，上限 50）
-- **`status` 允許值寫死**：`active`（＝open+in_progress，**預設**）｜`open`｜`in_progress`｜`done`｜`void`｜`all`；未帶參數時預設 `active`
+- **`status` 允許值寫死**：`active`（＝open+in_progress，**預設**）｜`overdue`（open/in_progress 且 `last_activity_at` 距今 >7 天，排除 done/void，v1.1.14 A5）｜`open`｜`in_progress`｜`done`｜`void`｜`all`；未帶參數時預設 `active`
 - 排序：`last_activity_at DESC`
 - 回應：`{ items, page, limit, has_more }`（實作：查 `limit+1` 筆判斷）
 - item 欄位：`id, title, status, category_label, location_label, vendor_name, created_at, last_activity_at`
@@ -1014,6 +1014,11 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 **單元測試**：`@cloudflare/vitest-pool-workers` 在本地 workerd runtime 跑真實 D1/R2（miniflare），不碰正式資料。
 
 **CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。
+
+**E2E 效能（v1.1.14 優化）**：
+- **等待方式**：E2E 一律用 Playwright 的 `expect(...)`／`expect.poll()` **自動重試**（DOM 出現即過），**禁止固定 `waitForTimeout()`**（v1.1.14 已移除全部 14 處固定等待，實際測試從 ~20s 降到 ~9s）。
+- **瀏覽器快取**：workflow 對 `~/.cache/ms-playwright` 加 `actions/cache`（keyed on `package-lock.json`），命中後省 `npx playwright install` 的 ~22s 下載。
+- **E2E 已知限制（勿再犯）**：mock 模式 `api()` 開頭 `if (IS_MOCK) return mockApi()` → **不走瀏覽器 fetch**，故 `page.on('request')` 攔不到。驗證「送出 API 是否觸發」只能用 UI 互動斷言（dialog/modal/toast 出現），不能攔截請求。
 
 **人工驗收流程（v1.1.14 新增）**：CI 全綠後，另對正式網域 `?mock=true` 逐項實測（不碰正式資料，同 E2E 安全前提）。每次改版後至少跑一遍以下 checklist。
 
