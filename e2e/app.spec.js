@@ -70,6 +70,24 @@ test('案件詳情：分享連結格式正確、可進編輯頁（含指派廠�
   await expect(page.locator('.form label', { hasText: '指派廠商' })).toBeVisible()
 })
 
+test('縮圖 lightbox：詳情頁主照片牆點開放大（v1.1.13）', async ({ page }) => {
+  await page.goto(`${BASE}/?mock=true#/ticket/1`)
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  await page.waitForTimeout(800)
+  // 主照片牆有縮圖
+  const wall = page.locator('.photo-wall')
+  await expect(wall).toBeVisible()
+  const thumbCount = await wall.locator('.thumb').count()
+  expect(thumbCount).toBeGreaterThan(0)
+  // 點縮圖 → lightbox 出現
+  await wall.locator('.thumb').first().click()
+  await expect(page.locator('.lightbox')).toBeVisible()
+  await expect(page.locator('.lightbox .lightbox-img')).toBeVisible()
+  // 點 lightbox 關閉
+  await page.locator('.lightbox').click({ position: { x: 5, y: 5 } })
+  await expect(page.locator('.lightbox')).toHaveCount(0)
+})
+
 test('編輯頁：四欄都從原案件資料帶入（類別/地點/說明/廠商）', async ({ page }) => {
   // 進 #2（有 vendor 測試廠商、description 測試說明）
   await page.goto(`${BASE}/?mock=true#/edit/2`)

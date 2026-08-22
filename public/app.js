@@ -158,7 +158,7 @@ function mockApi(path, options = {}) {
       id: u.id, kind: u.kind, status: u.status, note: u.note, amount: u.amount,
       display_name: u.display_name, created_at: u.created_at, photo_urls: u.photo_urls || [],
     }))
-    return { ok: true, data: { ...t, description: '測試說明', photos: [], share_url: '/share.html?token=mock-token-' + t.id, updates } }
+    return { ok: true, data: { ...t, description: '測試說明', photos: [{ id: 1, url: '/api/photos/1' }], share_url: '/share.html?token=mock-token-' + t.id, updates } }
   }
   // v1.1.12：回報/留言（測已發包必填金額）
   const updatesMatch = pathname.match(/^\/api\/tickets\/(\d+)\/updates$/)
