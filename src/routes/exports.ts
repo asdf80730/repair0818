@@ -119,6 +119,7 @@ async function buildCsv(c: AppContext) {
   let sql = `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
                     v.name AS vendor_name, u.display_name AS creator,
                     t.created_at, t.last_activity_at, t.closed_at,
+                    t.amount, t.amount_at,
                     (SELECT COUNT(*) FROM ticket_updates u
                      WHERE u.ticket_id = t.id AND u.kind = 'status') AS update_count
              FROM tickets t
@@ -145,11 +146,13 @@ async function buildCsv(c: AppContext) {
   const rows = await c.env.DB.prepare(sql).bind(...binds).all<{
     id: number; category_label: string; location_label: string; description: string | null
     status: string; vendor_name: string | null; creator: string | null
-    created_at: string; last_activity_at: string; closed_at: string | null; update_count: number
+    created_at: string; last_activity_at: string; closed_at: string | null
+    amount: number | null; amount_at: string | null; update_count: number
   }>()
   const rowList = rows.results
 
-  const header = ['單號', '類別', '地點', '說明', '狀態', '廠商', '建立人', '建立時間', '最後活動', '結案時間', '回報次數']
+  // A2（v1.1.14）：第 12、13 欄加「發包金額、發包時間」（以最終 amount/amount_at，多次發包覆寫語意）
+  const header = ['單號', '類別', '地點', '說明', '狀態', '廠商', '建立人', '建立時間', '最後活動', '結案時間', '回報次數', '發包金額', '發包時間']
   const lines = [header.map(csvCell).join(',')]
   for (const r of rowList) {
     lines.push([
@@ -164,6 +167,8 @@ async function buildCsv(c: AppContext) {
       toTaipeiDisplay(r.last_activity_at),
       r.closed_at ? toTaipeiDisplay(r.closed_at) : '',
       String(r.update_count ?? 0),
+      r.amount != null ? String(r.amount) : '',
+      r.amount_at ? toTaipeiDisplay(r.amount_at) : '',
     ].map(csvCell).join(','))
   }
 

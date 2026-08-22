@@ -3,7 +3,7 @@
 // JWT 以 jose（Web Crypto 原生）簽驗，HMAC-SHA256，效期 60 分鐘
 // payload 只放 { sub: user_id }，不放 role（每請求從 D1 讀 role/active，禁止只信 JWT）
 
-import { SignJWT, jwtVerify } from 'jose'
+import { SignJWT, jwtVerify, decodeJwt } from 'jose'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { createMiddleware } from 'hono/factory'
 import { fail } from './respond'
@@ -11,6 +11,8 @@ import type { AppContext, Env, Role, User } from './env'
 
 const SESSION_COOKIE = 'session'
 const SESSION_TTL_SEC = 3600 // 60 分鐘
+// A6（v1.1.14）：剩餘 <900 秒（15 分鐘）即滑動續期換發新 JWT
+const RENEW_THRESHOLD_SEC = 900
 
 /** 從 Cookie 取 JWT secret 的 Web Crypto key（HMAC-SHA256） */
 async function secretKey(secret: string): Promise<CryptoKey> {
@@ -104,6 +106,20 @@ export function requireAuth(opts: {
       return fail(c, 403, 'FORBIDDEN', '權限不足')
     }
     c.set('user', user)
+    // A6（v1.1.14）：滑動續期——JWT 剩餘 <900 秒時換發新 JWT（仍查過 D1 active，停用者已被擋）
+    const token = getCookie(c, SESSION_COOKIE)
+    if (token) {
+      try {
+        const decoded = decodeJwt(token)
+        const exp = typeof decoded.exp === 'number' ? decoded.exp : 0
+        if (exp && exp - Math.floor(Date.now() / 1000) < RENEW_THRESHOLD_SEC) {
+          const jwt = await signSessionJWT({ id: user.id }, c.env.JWT_SECRET)
+          setSessionCookie(c, jwt)
+        }
+      } catch {
+        // decode 失敗不影響主流程（resolveUser 已驗過，理論上不會發生）
+      }
+    }
     await next()
   })
 }

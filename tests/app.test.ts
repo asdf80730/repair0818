@@ -193,6 +193,11 @@ describe('§10 回歸斷言', () => {
 
     const r = await worker.fetch(`http://example.com/api/exports/tickets.csv?uid=${uid}&exp=${exp}&sig=${sig}`)
     expect(r.status).toBe(200)
+    // A2（v1.1.14）：CSV 加發包金額/發包時間欄
+    const csv = await r.text()
+    const header = csv.split('\r\n')[0]
+    expect(header).toContain('發包金額')
+    expect(header).toContain('發包時間')
   })
 
   it('無 Cookie 且 sig 錯誤打 /api/exports/tickets.csv → 401', async () => {

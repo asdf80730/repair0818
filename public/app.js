@@ -1045,6 +1045,8 @@ pages.edit = async function (id) {
     const body = await api('/api/tickets/' + id)
     t = body.data
   } catch (e) {
+    // E4（v1.1.14）：錯誤時清 loading，避免「載入案件」與錯誤訊息並存
+    root.querySelector('.loading-wrap')?.remove()
     root.appendChild(el('p', { class: 'error', text: e.message }))
     return
   }
@@ -1099,7 +1101,11 @@ pages.edit = async function (id) {
   const canAssignVendor = me && (me.role === 'manager' || me.role === 'admin')
   const vendorSelect = el('select', { class: 'select' })
   if (canAssignVendor) {
+    // E5（v1.1.14）：placeholder 加「清空指派」選項（值 _clear），讓前端能送 vendor_id:null
     vendorSelect.appendChild(el('option', { value: '', text: t.vendor_name ? `目前：${t.vendor_name}` : '不變更廠商' }))
+    if (t.vendor_name) {
+      vendorSelect.appendChild(el('option', { value: '_clear', text: '— 清空指派 —' }))
+    }
     api('/api/vendors').then((b) => {
       for (const v of b.data) {
         if (!v.active) continue
@@ -1113,7 +1119,10 @@ pages.edit = async function (id) {
     if (catSelect.value) body.category_id = Number(catSelect.value)
     if (locSelect.value) body.location_id = Number(locSelect.value)
     if (descEl.value !== (t.description || '')) body.description = descEl.value
-    if (canAssignVendor && vendorSelect.value) body.vendor_id = Number(vendorSelect.value)
+    if (canAssignVendor) {
+      if (vendorSelect.value === '_clear') body.vendor_id = null
+      else if (vendorSelect.value) body.vendor_id = Number(vendorSelect.value)
+    }
     // 照片有增刪才送（photo_ids 全量覆寫綁定）
     const initIds = (t.photos || []).map((p) => p.id).sort().join(',')
     const curIds = [...editPhotoIds].sort().join(',')
@@ -1130,6 +1139,8 @@ pages.edit = async function (id) {
     el('label', { text: '類別' }), catSelect,
     el('label', { text: '地點' }), locSelect,
     el('label', { text: '說明' }), descEl,
+    // E2（v1.1.14）：編輯頁照片 UI 補掛（v1.1.13 迴歸漏放）
+    el('label', { text: '照片' }), photoInput, photoPreview,
     canAssignVendor ? el('label', { text: '指派廠商' }) : null,
     canAssignVendor ? vendorSelect : null,
     el('button', { class: 'btn btn-primary', text: '儲存', onclick: submit }),
