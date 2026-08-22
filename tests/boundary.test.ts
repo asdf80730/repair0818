@@ -186,6 +186,17 @@ describe('D7 編輯權限（§4.3）', () => {
     })
     expect(r.status).toBe(400)
   })
+
+  // A10（v1.1.14）：committee 不可匯出 CSV（限 manager/admin）
+  it('committee POST /api/exports/sign → 403', async () => {
+    const { cookie } = await loginAs('U-bd-a10', '委員CSV', 'committee')
+    const r = await worker.fetch(`http://example.com/api/exports/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({}),
+    })
+    expect(r.status).toBe(403)
+  })
 })
 
 describe('reopen / comments 邊界（§4.3）', () => {

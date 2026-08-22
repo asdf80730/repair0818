@@ -38,7 +38,8 @@ app.onError((err, c) => {
 app.route('/share', shareRoutes)              // 公開唯讀：無 auth、無 csrf
 // E6：csv 端點掛 zValidator 驗證 query（status/from/to 格式），非法格式回 400 而非繞過
 app.get('/exports/tickets.csv', zValidator('query', exportQuerySchema), csvDownload)
-app.get('/hello', (c) => c.json({ ok: true, data: 'hello' })) // M1 部署打通驗證
+// A7（v1.1.14）：回傳部署 commit SHA，供 CI 比對新版上線（CF_PAGES_COMMIT_SHA 由 Pages 注入）
+app.get('/hello', (c) => c.json({ ok: true, data: 'hello', commit: c.env.CF_PAGES_COMMIT_SHA || 'dev' })) // M1 部署打通驗證
 app.use('/*', csrfGuard())                      // 所有 mutation 驗 CSRF（GET/HEAD 直接放行）
 app.route('/auth', authRoutes)   // session 不需登入；me / logout 內部各自掛 requireAuth({ allowPending: true })
 app.use('/*', requireAuth())     // ⚠ 以下全部需已開通；此行之上的路由必須自驗權限

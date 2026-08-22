@@ -14,6 +14,8 @@ export type Env = {
     PHOTOS: R2Bucket
     LINE_CHANNEL_ID: string
     JWT_SECRET: string
+    // A7（v1.1.14）：Cloudflare Pages 建置自動注入部署 commit SHA（可能缺，選填）
+    CF_PAGES_COMMIT_SHA?: string
   }
   Variables: {
     user: User

@@ -249,9 +249,9 @@ test('v1.1.12：已發包顯示金額 + 發包必填金額', async ({ page }) =>
   await statusSel.selectOption('in_progress')
   await page.waitForTimeout(200)
   await expect(page.locator('.comment-box input[type=number]')).toBeVisible()
-  // 填留言但不填金額 → 送出 → 應被擋
+  // 填留言但不填金額 → 送出 → 應被擋（E9：改用 toast 元素監聽，原 dialog 從不觸發假綠）
   await page.locator('.comment-box textarea').fill('測試發包')
-  page.once('dialog', (d) => { expect(d.message()).toContain('已發包需填寫金額'); d.dismiss() })
   await page.locator('.comment-box button:has-text("送出")').click()
+  await expect(page.locator('.toast')).toHaveText('已發包需填寫金額', { timeout: 3000 })
   await page.waitForTimeout(300)
 })

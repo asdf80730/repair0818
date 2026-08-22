@@ -41,15 +41,18 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # 等 Cloudflare 部署完成（輪詢正式網域，最多 5 分鐘）
-      - name: Wait for Cloudflare deployment
+      # 等 Cloudflare 部署完成，且部署版本 == 本次 commit（A7：避免測到舊版）
+      - name: Wait for deployment and verify commit
         run: |
+          EXPECTED="${GITHUB_SHA}"
           for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://repair-system-4re.pages.dev/api/hello || true)
-            if [ "$code" = "200" ]; then echo "部署已就緒"; break; fi
-            echo "等待部署 ($i/60)..."
-            sleep 5
+            COMMIT=$(curl -s https://repair-system-4re.pages.dev/api/hello | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('commit',''))" 2>/dev/null || true)
+            if [ "$COMMIT" = "$EXPECTED" ]; then echo "新版已上線 (${COMMIT})"; exit 0; fi
+            echo "等待部署到 ${EXPECTED}（目前 ${COMMIT:-unknown}, $i/90）..."
+            sleep 10
           done
+          echo "部署版本比對失敗：預期 ${EXPECTED}，實際 ${COMMIT}"
+          exit 1
 
       - name: Run E2E tests
         run: npx playwright test
