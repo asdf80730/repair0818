@@ -65,13 +65,24 @@ authRoutes.post('/session', zValidator('json', sessionSchema), async (c) => {
   if (existing) {
     userId = existing.id
   } else {
+    // F5（v1.1.14）：INSERT ... ON CONFLICT 防雙登入競態（兩請求同時查無→同時 INSERT，UNIQUE 炸 500）
     const now = nowIso()
     const insert = await c.env.DB.prepare(
-      'INSERT INTO users (line_user_id, display_name, role, active, created_at) VALUES (?, ?, ?, 1, ?)',
+      `INSERT INTO users (line_user_id, display_name, role, active, created_at)
+       VALUES (?, ?, 'pending', 1, ?)
+       ON CONFLICT(line_user_id) DO NOTHING`,
     )
-      .bind(payload.sub, displayName, 'pending', now)
+      .bind(payload.sub, displayName, now)
       .run()
-    userId = insert.meta.last_row_id
+    if (insert.meta.last_row_id) {
+      userId = insert.meta.last_row_id
+    } else {
+      // 競態：另一請求已建立 → 重查
+      const row = await c.env.DB.prepare(
+        'SELECT id FROM users WHERE line_user_id = ?',
+      ).bind(payload.sub).first<{ id: number }>()
+      userId = row!.id
+    }
   }
 
   // 4. 簽發 JWT → Set-Cookie

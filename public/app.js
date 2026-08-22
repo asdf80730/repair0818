@@ -131,6 +131,11 @@ function mockApi(path, options = {}) {
     const status = url.searchParams.get('status') || 'active'
     let items = mockTickets
     if (status === 'active') items = mockTickets.filter(t => t.status === 'open' || t.status === 'in_progress')
+    else if (status === 'overdue') {
+      // A5：逾期 = open/in_progress 且 last_activity_at 距今 >7 天
+      const cutoff = Date.now() - 7 * 24 * 3600 * 1000
+      items = mockTickets.filter(t => (t.status === 'open' || t.status === 'in_progress') && new Date(t.last_activity_at).getTime() < cutoff)
+    }
     else if (status !== 'all') items = mockTickets.filter(t => t.status === status)
     return { ok: true, data: { items, page: 1, limit: 20, has_more: false } }
   }
@@ -158,7 +163,7 @@ function mockApi(path, options = {}) {
       id: u.id, kind: u.kind, status: u.status, note: u.note, amount: u.amount,
       display_name: u.display_name, created_at: u.created_at, photo_urls: u.photo_urls || [],
     }))
-    return { ok: true, data: { ...t, description: '測試說明', photos: [{ id: 1, url: '/api/photos/1' }], share_url: '/share.html?token=mock-token-' + t.id, updates } }
+    return { ok: true, data: { ...t, description: '測試說明', photos: [{ id: 1, url: '/api/photos/1' }], share_url: '/share.html?token=mock-token-' + t.id, can_edit: true, updates } }
   }
   // v1.1.12：回報/留言（測已發包必填金額）
   const updatesMatch = pathname.match(/^\/api\/tickets\/(\d+)\/updates$/)
@@ -192,11 +197,14 @@ function mockApi(path, options = {}) {
     mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'comment', status: null, note: body.note || '', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
     return { ok: true, data: { id: mockUpdates.length, kind: 'comment' } }
   }
-  // 統計
+  // 統計（A4：mock 依月份回不同 month_new/month_done，讓 E2E 驗證切月份生效）
   if (pathname === '/api/stats/summary') {
     const open_count = mockTickets.filter(t => t.status === 'open').length
     const in_progress_count = mockTickets.filter(t => t.status === 'in_progress').length
-    return { ok: true, data: { open_count, in_progress_count, month_new: 2, month_done: 0 } }
+    const month = url.searchParams.get('month') || taipeiMonth()
+    // mock 用月份末兩碼當 month_new，讓不同月份回不同值
+    const mm = Number(month.slice(5, 7))
+    return { ok: true, data: { open_count, in_progress_count, month_new: mm, month_done: mm >= 20 ? 5 : 0, month_initial_open: 10 } }
   }
   // v1.1.12：各類別金額統計（mock，從 mockTickets 動態算，測金額統計）
   if (pathname === '/api/stats/amount-by-category') {
@@ -522,7 +530,7 @@ pages.list = function () {
   const root = document.getElementById('page')
   root.innerHTML = ''
   const tabs = [
-    ['active', '未結案'], ['open', '詢價中'], ['in_progress', '處理中'],
+    ['active', '未結案'], ['overdue', '逾期未更新'], ['open', '詢價中'], ['in_progress', '處理中'],
     ['done', '已完成'], ['void', '已作廢'], ['all', '全部'],
   ]
   let currentStatus = 'active'
@@ -801,7 +809,7 @@ pages.ticket = async function (id) {
   const isMgr = me && (me.role === 'manager' || me.role === 'admin')
   const canStatus = isMgr && (t.status === 'open' || t.status === 'in_progress')
   const canShare = !!me
-  const canEdit = me && (me.role === 'manager' || me.role === 'admin' || (me.role === 'committee' && t.created_by === me.id))
+  const canEdit = t.can_edit   // E1 方案B：後端已算好（manager/admin 全改、committee 僅自己建的單）
   const canVoid = me && (me.role === 'manager' || me.role === 'admin')
   const canReopen = me && me.role === 'admin' && (t.status === 'done' || t.status === 'void')
   const canReshare = me && (me.role === 'manager' || me.role === 'admin')
@@ -947,8 +955,13 @@ pages.ticket = async function (id) {
   const statusSelect = el('select', { class: 'select' })
   statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
   if (canStatus) {
-    statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記已發包' }))
-    statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
+    // F3（v1.1.14 決策）：依案件狀態決定可轉移目標——open→[in_progress,done]、in_progress→[done]
+    if (t.status === 'open') {
+      statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記已發包' }))
+      statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
+    } else if (t.status === 'in_progress') {
+      statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
+    }
   }
   // v1.1.12：選「已發包」時顯示金額輸入框（必填）
   const amountInput = el('input', { type: 'number', class: 'input', placeholder: '發包金額（必填）', style: 'display:none' })
@@ -1134,33 +1147,82 @@ pages.stats = function () {
     el('div', { class: 'loading-text', text: '載入統計…' }),
   ]))
 
-  api('/api/stats/summary').then((b) => {
-    const s = b.data
-    const openTotal = s.open_count + s.in_progress_count
-    const doneRate = s.month_new > 0 ? Math.round((s.month_done / s.month_new) * 100) : 0
-    const cards = [
-      ['詢價中', s.open_count, 'red'],
-      ['處理中', s.in_progress_count, 'yellow'],
-      ['未結案總數', openTotal, 'blue'],
-      ['本月新增', s.month_new, 'blue'],
-      ['本月完成', s.month_done, 'green'],
-      ['本月完成率', doneRate + '%', 'green'],
-    ]
-    const grid = el('div', { class: 'stats-grid' })
-    for (const [label, val, color] of cards) {
-      grid.appendChild(el('div', { class: 'stat-card' }, [
-        el('div', { class: 'stat-num', text: String(val) }),
-        el('div', { class: 'stat-label', text: label }),
+  // A4（v1.1.14）：月份下拉（近 12 個月），切換時 Promise.all 同步刷新 summary + amount-by-category
+  const monthSel = el('select', { class: 'select' })
+  const now = new Date()
+  const curMonth = taipeiMonth()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    monthSel.appendChild(el('option', { value: ym, text: ym, selected: ym === curMonth ? 'selected' : null }))
+  }
+  root.appendChild(el('div', { class: 'month-row' }, [
+    el('label', { text: '月份' }), monthSel,
+  ]))
+
+  const grid = el('div', { class: 'stats-grid' })
+  const amountBox = el('div', { class: 'amount-box' })
+  const amountTitle = el('h3', { class: 'section-title' })
+  root.appendChild(grid)
+  root.appendChild(amountTitle)
+  root.appendChild(amountBox)
+
+  async function load(month) {
+    root.querySelector('.loading-wrap')?.remove()
+    grid.innerHTML = ''
+    amountBox.innerHTML = ''
+    try {
+      // A4：Promise.all 同步刷新，避免上下月份不一致
+      const [sum, amt] = await Promise.all([
+        api(`/api/stats/summary?month=${month}`),
+        api(`/api/stats/amount-by-category?month=${month}`),
+      ])
+      const s = sum.data
+      const openTotal = s.open_count + s.in_progress_count
+      // A3（v1.1.14 方案②）：完成率 = 本月結案 / (期初未結案 + 本月新增)
+      const denom = (s.month_initial_open ?? 0) + s.month_new
+      const doneRate = denom > 0 ? Math.round((s.month_done / denom) * 100) : '—'
+      const cards = [
+        ['詢價中', s.open_count, 'red'],
+        ['處理中', s.in_progress_count, 'yellow'],
+        ['未結案總數', openTotal, 'blue'],
+        ['本月新增', s.month_new, 'blue'],
+        ['本月完成', s.month_done, 'green'],
+        ['本月完成率', doneRate + '%', 'green'],
+      ]
+      for (const [label, val, color] of cards) {
+        grid.appendChild(el('div', { class: 'stat-card' }, [
+          el('div', { class: 'stat-num', text: String(val) }),
+          el('div', { class: 'stat-label', text: label }),
+        ]))
+      }
+      // 各類別金額
+      amountTitle.textContent = `各類別金額（${month}，以發包時間計）`
+      const items = amt.data.items
+      if (!items || items.length === 0) {
+        amountBox.appendChild(el('p', { class: 'empty', text: '本月尚無已發包案件' }))
+        return
+      }
+      let grand = 0
+      for (const it of items) {
+        grand += it.total_amount
+        amountBox.appendChild(el('div', { class: 'amount-row' }, [
+          el('span', { text: it.category_label }),
+          el('span', { text: `${it.count} 件` }),
+          el('span', { class: 'amount-val', text: `$${it.total_amount.toLocaleString()}` }),
+        ]))
+      }
+      amountBox.appendChild(el('div', { class: 'amount-row amount-total' }, [
+        el('span', { text: '合計' }),
+        el('span', { class: 'amount-val', text: `$${grand.toLocaleString()}` }),
       ]))
+    } catch (e) {
+      grid.appendChild(el('p', { class: 'error', text: e.message }))
     }
-    root.querySelector('.loading-wrap')?.remove()
-    root.appendChild(grid)
-    // v1.1.12：各類別金額（以發包時間為月份基準）
-    loadAmountByCategory(root)
-  }).catch((e) => {
-    root.querySelector('.loading-wrap')?.remove()
-    root.appendChild(el('p', { class: 'error', text: e.message }))
-  })
+  }
+
+  monthSel.addEventListener('change', () => load(monthSel.value))
+  load(curMonth)
 
   // 匯出 CSV（僅 manager/admin，§5.5）
   if (me && (me.role === 'manager' || me.role === 'admin')) {
@@ -1170,39 +1232,6 @@ pages.stats = function () {
     ]))
   }
 }
-
-// v1.1.12：各類別金額（以發包時間為月份基準）
-async function loadAmountByCategory(root) {
-  const month = taipeiMonth()
-  const title = el('h3', { class: 'section-title', text: `各類別金額（${month}，以發包時間計）` })
-  const wrap = el('div', { class: 'amount-box' })
-  root.appendChild(title)
-  root.appendChild(wrap)
-  try {
-    const b = await api(`/api/stats/amount-by-category?month=${month}`)
-    const items = b.data.items
-    if (!items || items.length === 0) {
-      renderEmpty(wrap, '本月尚無已發包案件')
-      return
-    }
-    let grand = 0
-    for (const it of items) {
-      grand += it.total_amount
-      wrap.appendChild(el('div', { class: 'amount-row' }, [
-        el('span', { text: it.category_label }),
-        el('span', { text: `${it.count} 件` }),
-        el('span', { class: 'amount-val', text: `$${it.total_amount.toLocaleString()}` }),
-      ]))
-    }
-    wrap.appendChild(el('div', { class: 'amount-row amount-total' }, [
-      el('span', { text: '合計' }),
-      el('span', { class: 'amount-val', text: `$${grand.toLocaleString()}` }),
-    ]))
-  } catch (e) {
-    wrap.appendChild(el('p', { class: 'error', text: e.message }))
-  }
-}
-
 async function exportCsv() {  try {
     const b = await api('/api/exports/sign', { method: 'POST', body: JSON.stringify({}) })
     const url = location.origin + b.data.url

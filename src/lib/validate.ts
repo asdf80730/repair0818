@@ -106,15 +106,27 @@ export const updateUserSchema = z.object({
 })
 
 // CSV 匯出（§4.8，sign 與下載共用）
+// F2（v1.1.14）：日期格式 regex 之外，再驗證是真日期（防 2026-99-99 過 regex → new Date().toISOString() 丟例外 500）
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
+  const [y, m, d] = s.split('-').map(Number)
+  // 驗證是真日期：用 Date.UTC 解析後回讀年月日一致（能擋 2026-02-31、2026-99-99）
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return !isNaN(dt.getTime()) &&
+    dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+}, { message: '日期格式需為有效 YYYY-MM-DD' })
 export const exportQuerySchema = z.object({
   status: z.enum(['open', 'in_progress', 'done', 'void', 'active', 'all']).optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-})
+  from: dateStr.optional(),
+  to: dateStr.optional(),
+}).refine((v) => {
+  // F1（v1.1.14）：from <= to 驗證（防使用者送反）
+  if (v.from && v.to && v.from > v.to) return false
+  return true
+}, { message: 'from 不得晚於 to' })
 
 // 列表查詢（§4.3 GET /api/tickets）
 export const listTicketsQuerySchema = z.object({
-  status: z.enum(['active', 'open', 'in_progress', 'done', 'void', 'all']).default('active'),
+  status: z.enum(['active', 'open', 'in_progress', 'done', 'void', 'overdue', 'all']).default('active'),
   category_id: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),

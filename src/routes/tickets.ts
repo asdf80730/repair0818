@@ -47,6 +47,9 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
     }
   }
 
+  // G1（v1.1.14）：description 空字串/null/undefined 正規化為 null，與 PATCH 一致（避免存 '' 造成顯示/CSV 判斷差異）
+  const description = body.description == null || body.description.trim() === '' ? null : body.description
+
   const now = nowIso()
   const shareToken = crypto.randomUUID()
 
@@ -59,7 +62,7 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
   ).bind(
     body.category_id, categoryLabel,
     body.location_id, locationLabel,
-    body.description ?? null,
+    description,
     shareToken, user.id, now, now,
   ).run()
   const ticketId = insertResult.meta.last_row_id
@@ -83,12 +86,16 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
 ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema), async (c) => {
   const { status, category_id, page, limit } = c.req.valid('query')
 
-  // status 允許值：active(預設)/open/in_progress/done/void/all
-  // active = open + in_progress
+  // status 允許值：active(預設)/open/in_progress/done/void/overdue/all
+  // active = open + in_progress；overdue = 未結案且 last_activity_at 距今 >7 天（A5，排除 done/void）
   let where = 'WHERE 1=1'
   const binds: unknown[] = []
   if (status === 'active') {
     where += " AND t.status IN ('open','in_progress')"
+  } else if (status === 'overdue') {
+    // A5（v1.1.14）：逾期未更新——open/in_progress 且距今超過 7 天
+    where += " AND t.status IN ('open','in_progress') AND t.last_activity_at < ?"
+    binds.push(new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
   } else if (status !== 'all') {
     where += ' AND t.status = ?'
     binds.push(status)
@@ -138,11 +145,12 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   if (!Number.isInteger(id) || id <= 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   }
+  const user = c.get('user')   // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
 
   // 案件本體（含廠商名稱，停用時後綴「（已停用）」）
   const ticket = await c.env.DB.prepare(
     `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label, t.description, t.status,
-            t.vendor_id, v.name AS vendor_name, v.active AS vendor_active,
+            t.vendor_id, t.created_by, v.name AS vendor_name, v.active AS vendor_active,
             t.created_at, t.last_activity_at, t.closed_at, t.share_token,
             t.amount, t.amount_at
      FROM tickets t
@@ -151,7 +159,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   ).bind(id).first<{
     id: number; category_id: number | null; category_label: string
     location_id: number | null; location_label: string; description: string | null
-    status: string; vendor_id: number | null; vendor_name: string | null; vendor_active: number | null
+    status: string; vendor_id: number | null; created_by: number; vendor_name: string | null; vendor_active: number | null
     created_at: string; last_activity_at: string; closed_at: string | null; share_token: string
     amount: number | null; amount_at: string | null
   }>()
@@ -209,6 +217,9 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   return ok(c, {
     id: ticket.id,
     title: makeTitle(ticket.category_label, ticket.location_label, ticket.id),
+    // E1 方案B：由後端算 can_edit，不回傳 created_by（更封閉）
+    can_edit: user.role === 'manager' || user.role === 'admin' ||
+              (user.role === 'committee' && ticket.created_by === user.id),
     category_id: ticket.category_id,
     category_label: ticket.category_label,
     location_id: ticket.location_id,
@@ -404,6 +415,15 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
     return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可回報')
   }
 
+  // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）、允許 open→done 直接結案
+  const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+    open: ['in_progress', 'done'],
+    in_progress: ['done'],
+  }
+  if (!(ALLOWED_TRANSITIONS[ticket.status] || []).includes(body.status)) {
+    return fail(c, 400, 'VALIDATION_ERROR', `狀態不可從 ${ticket.status} 轉為 ${body.status}`)
+  }
+
   // 驗證照片
   const photoIds = body.photo_ids ?? []
   if (photoIds.length > 0) {
@@ -514,17 +534,22 @@ ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zVa
 
   const now = nowIso()
   // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
+  // E3（v1.1.14）：INSERT 改為帶 EXISTS 條件，狀態已變更時不寫入時間軸（避免假紀錄）
   const batchRes = await c.env.DB.batch([
     c.env.DB.prepare(
       "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
     ).bind('void', now, user.id, now, id),
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'status', 'void', ?, ?)`,
-    ).bind(id, user.id, body.note ?? null, now),
+       SELECT ?, ?, 'status', 'void', ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM tickets
+         WHERE id = ? AND status IN ('open','in_progress')
+       )`,
+    ).bind(id, user.id, body.note ?? null, now, id),
   ])
-  // 若 UPDATE 影響 0 筆，代表狀態已在他處變更（被結案/作廢/重開），回 400 而非重複寫入
-  if (batchRes[0].meta.changes === 0) {
+  // E3：以 INSERT 實際插入筆數判斷（changes===0 代表狀態已在別處變更，未寫入時間軸）
+  if (batchRes[1].meta.changes === 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
   }
 
@@ -553,17 +578,22 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('
   const prevStatusLabel = ticket.status === 'done' ? '已完成' : '已作廢'
 
   // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
+  // E3（v1.1.14）：INSERT 改為帶 EXISTS 條件，狀態已變更時不寫入時間軸（避免假紀錄）
   const batchRes = await c.env.DB.batch([
     c.env.DB.prepare(
       "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
     ).bind(targetStatus, now, id),
     c.env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'status', ?, ?, ?)`,
-    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now),
+       SELECT ?, ?, 'status', ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM tickets
+         WHERE id = ? AND status IN ('done','void')
+       )`,
+    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now, id),
   ])
-  // 若 UPDATE 影響 0 筆，代表狀態已在他處變更（被重開/作廢），回 400 而非重複寫入
-  if (batchRes[0].meta.changes === 0) {
+  // E3：以 INSERT 實際插入筆數判斷（changes===0 代表狀態已在他處變更，未寫入時間軸）
+  if (batchRes[1].meta.changes === 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
   }
 

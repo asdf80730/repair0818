@@ -129,4 +129,116 @@ describe('M4 案件動作（§4.3）', () => {
     })
     expect(r.status).toBe(403)
   })
+
+  // F3（v1.1.14 決策）：狀態流限制——鎖死退回、允許 open→done
+  it('F3：open 案件可直結 done（跳過已發包）', async () => {
+    const mgr = await loginAs('U-f3-open-done', '管理', 'manager')
+    const ticketId = await createTicket(mgr.cookie) // status=open
+    const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'done', note: '直接結案' }),
+    })
+    expect(r.status).toBe(200)
+  })
+
+  it('F3：in_progress 不可退回 open', async () => {
+    const mgr = await loginAs('U-f3-back', '管理', 'manager')
+    const ticketId = await createTicket(mgr.cookie)
+    // 先發包
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'in_progress', amount: 5000 }),
+    })
+    expect(r1.status).toBe(200)
+    // 退回 open → 應 400
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'open' }),
+    })
+    expect(r2.status).toBe(400)
+  })
+
+  it('F3：open→open 與 in_progress→in_progress 皆禁', async () => {
+    const mgr = await loginAs('U-f3-same', '管理', 'manager')
+    const ticketId = await createTicket(mgr.cookie)
+    // open→open
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'open' }),
+    })
+    expect(r1.status).toBe(400)
+    // 發包後 in_progress→in_progress
+    await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'in_progress', amount: 5000 }),
+    })
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ status: 'in_progress', amount: 6000 }),
+    })
+    expect(r2.status).toBe(400)
+  })
+
+  // E3（v1.1.14）：void/reopen 競態——狀態已變更時不寫入假時間軸
+  it('E3：雙 void——第二個回 400 且不新增時間軸', async () => {
+    const mgr = await loginAs('U-e3-void', '管理', 'manager')
+    const ticketId = await createTicket(mgr.cookie)
+    // 第一次作廢成功
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/void`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ note: '作廢' }),
+    })
+    expect(r1.status).toBe(200)
+    // 第二次作廢（狀態已 void）→ 400，且不新增時間軸
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/void`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
+      body: JSON.stringify({ note: '再作廢' }),
+    })
+    expect(r2.status).toBe(400)
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
+      headers: { Cookie: mgr.cookie },
+    })
+    const detailBody = await detail.json()
+    const voidUpdates = detailBody.data.updates.filter((u: any) => u.kind === 'status' && u.status === 'void')
+    expect(voidUpdates.length).toBe(1) // 只有第一次那筆
+  })
+
+  it('E3：雙 reopen——第二個回 400 且不新增時間軸', async () => {
+    const admin = await loginAs('U-e3-reopen', '管理', 'admin')
+    const ticketId = await createTicket(admin.cookie)
+    // 結案
+    await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: admin.cookie },
+      body: JSON.stringify({ status: 'done', note: '完成' }),
+    })
+    // 第一次 reopen 成功
+    const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/reopen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: admin.cookie },
+      body: JSON.stringify({ status: 'in_progress' }),
+    })
+    expect(r1.status).toBe(200)
+    // 第二次 reopen（狀態已 in_progress）→ 400，且不新增時間軸
+    const r2 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/reopen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: admin.cookie },
+      body: JSON.stringify({ status: 'in_progress' }),
+    })
+    expect(r2.status).toBe(400)
+    const detail = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
+      headers: { Cookie: admin.cookie },
+    })
+    const detailBody = await detail.json()
+    const reopenUpdates = detailBody.data.updates.filter((u: any) => u.note?.includes('重新開啟'))
+    expect(reopenUpdates.length).toBe(1) // 只有第一次那筆
+  })
 })

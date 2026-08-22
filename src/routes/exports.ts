@@ -133,7 +133,13 @@ async function buildCsv(c: AppContext) {
     sql += " AND t.status IN ('open','in_progress')"
   }
   if (from) { sql += ' AND t.created_at >= ?'; binds.push(new Date(from + 'T00:00:00+08:00').toISOString()) }
-  if (to) { sql += ' AND t.created_at < ?'; binds.push(new Date(to + 'T23:59:59.999+08:00').toISOString()) }
+  if (to) {
+    // F1（v1.1.14）：視 to 為「隔天 00:00 前」，避免漏掉 to 當天 23:59:59.999 的資料
+    const end = new Date(to + 'T00:00:00+08:00')
+    end.setUTCDate(end.getUTCDate() + 1)
+    sql += ' AND t.created_at < ?'
+    binds.push(end.toISOString())
+  }
   sql += ' ORDER BY t.id'
 
   const rows = await c.env.DB.prepare(sql).bind(...binds).all<{
@@ -177,8 +183,10 @@ async function buildCsv(c: AppContext) {
 /** CSV 儲存格：injection 防護 + quoting（§4.8） */
 function csvCell(value: string): string {
   let v = value
-  // CSV injection 防護：以 = + - @ \t \r 開頭前綴 '
-  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
+  // G2（v1.1.14）：忽略前導空白後再查首字元，防 "  =HYPERLINK(...)" 繞過 Excel 公式注入
+  const leadingTrimmed = v.replace(/^\s+/, '')
+  // CSV injection 防護：以 = + - @ \t \r 開頭（忽略前導空白）前綴 '
+  if (/^[=+\-@\t\r]/.test(leadingTrimmed)) v = "'" + v
   // Quoting：含 , " \n \r → 整欄雙引號包住；欄內 " → ""
   if (/[,"\n\r]/.test(v)) {
     v = '"' + v.replace(/"/g, '""') + '"'

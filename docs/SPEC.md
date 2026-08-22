@@ -123,7 +123,8 @@ repair-system/
 │   ├── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
 │   ├── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
 │   ├── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
-│   └── 0008_vendors_sort.sql      # 移除 vendors.phone、加 vendors.sort_order（v1.1.13）
+│   ├── 0008_vendors_sort.sql      # 移除 vendors.phone、加 vendors.sort_order（v1.1.13）
+│   └── 0009_vendors_idx_updates_trigger.sql  # vendors 複合索引 + ticket_updates append-only trigger（v1.1.14）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
