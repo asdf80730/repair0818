@@ -253,9 +253,11 @@ function mockApi(path, options = {}) {
     }
     const body = JSON.parse(options.body || '{}')
     const target = body.status || 'in_progress'
+    // #3（審查）：先記下原狀態再更新，避免 t.status 被覆寫後永遠判為「已作廢」
+    const prevLabel = t.status === 'done' ? '已完成' : '已作廢'
     t.status = target
     t.last_activity_at = new Date().toISOString()
-    mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: target, note: '重新開啟（原狀態：' + (t.status === 'done' ? '已完成' : '已作廢') + '）', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
+    mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: target, note: '重新開啟（原狀態：' + prevLabel + '）', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
     return { ok: true, data: { status: target } }
   }
   // A8（v1.1.14）：照片上傳 mock——回傳 {id, url}（attachPhotoPicker 需拿 id）

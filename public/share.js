@@ -24,7 +24,7 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })
 }
 
-const statusMap = { open: ['待處理', 'red'], in_progress: ['處理中', 'yellow'], done: ['已完成', 'green'], void: ['已作廢', 'black'] }
+const statusMap = { open: ['詢價中', 'red'], in_progress: ['處理中', 'yellow'], done: ['已完成', 'green'], void: ['已作廢', 'black'] }
 
 // H2：公開派工頁照片 Lightbox（與 app.js 一致）
 function openLightbox(src) {
