@@ -147,66 +147,54 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
   }
   const user = c.get('user')   // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
 
-  // 案件本體（含廠商名稱，停用時後綴「（已停用）」）
+  // A1（v1.1.14）：ticket 本體 + 主照片一次查詢（json_group_array），減少 roundtrip
+  // 坑：LEFT JOIN 無照片時 json_group_array 產 [{"id":null}]，用 CASE WHEN COUNT 空陣列防
   const ticket = await c.env.DB.prepare(
     `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label, t.description, t.status,
             t.vendor_id, t.created_by, v.name AS vendor_name, v.active AS vendor_active,
             t.created_at, t.last_activity_at, t.closed_at, t.share_token,
-            t.amount, t.amount_at
+            t.amount, t.amount_at,
+            CASE WHEN COUNT(p.id) = 0 THEN json('[]')
+                 ELSE json_group_array(json_object('id', p.id)) END AS photos_json
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
-     WHERE t.id = ?`,
+     LEFT JOIN photos p ON p.target_type = 'ticket' AND p.target_id = t.id
+     WHERE t.id = ?
+     GROUP BY t.id`,
   ).bind(id).first<{
     id: number; category_id: number | null; category_label: string
     location_id: number | null; location_label: string; description: string | null
     status: string; vendor_id: number | null; created_by: number; vendor_name: string | null; vendor_active: number | null
     created_at: string; last_activity_at: string; closed_at: string | null; share_token: string
     amount: number | null; amount_at: string | null
+    photos_json: string
   }>()
 
   if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
 
-  // 優化（v1.1.9）：photos 與 updates 彼此獨立 → Promise.all 並行（減少串行 D1 連線延遲）
-  const [photosRes, updatesRes] = await Promise.all([
-    c.env.DB.prepare(
-      "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ? ORDER BY id",
-    ).bind(id).all<{ id: number }>(),
-    c.env.DB.prepare(
-      `SELECT u.id, u.kind, u.status, u.note, u.created_at, u.amount,
-              usr.display_name
-       FROM ticket_updates u
-       LEFT JOIN users usr ON usr.id = u.user_id
-       WHERE u.ticket_id = ?
-       ORDER BY u.created_at, u.id`,
-    ).bind(id).all<{
-      id: number; kind: string; status: string | null; note: string | null; amount: number | null
-      created_at: string; display_name: string | null
-    }>(),
-  ])
-  const photos = photosRes
-  const updates = updatesRes
+  const photos = JSON.parse(ticket.photos_json) as { id: number }[]
 
-  // 每筆 update 的照片
-  const updateIds = updates.results.map((u) => u.id)
-  const updatePhotos = new Map<number, string[]>()
-  if (updateIds.length > 0) {
-    // B4：IN 陣列分塊（每 50 個一組），避免超過 D1 綁定上限
-    const IN_CHUNK = 50
-    for (let i = 0; i < updateIds.length; i += IN_CHUNK) {
-      const chunk = updateIds.slice(i, i + IN_CHUNK)
-      const placeholders = chunk.map(() => '?').join(',')
-      const up = await c.env.DB.prepare(
-        `SELECT target_id, id FROM photos
-         WHERE target_type = 'update' AND target_id IN (${placeholders})
-         ORDER BY id`,
-      ).bind(...chunk).all<{ target_id: number; id: number }>()
-      for (const p of up.results) {
-        const arr = updatePhotos.get(p.target_id) ?? []
-        arr.push(`/api/photos/${p.id}`)
-        updatePhotos.set(p.target_id, arr)
-      }
-    }
-  }
+  // A1（v1.1.14）：updates + 每筆 update 的照片一次查詢（json_group_array）
+  // LEFT JOIN 無照片時 CASE WHEN 防 [{"id":null}]
+  const updatesRes = await c.env.DB.prepare(
+    `SELECT u.id, u.kind, u.status, u.note, u.created_at, u.amount,
+            usr.display_name,
+            CASE WHEN COUNT(up.id) = 0 THEN json('[]')
+                 ELSE json_group_array(json_object('photo_url', '/api/photos/' || up.id)) END AS photo_urls_json
+     FROM ticket_updates u
+     LEFT JOIN users usr ON usr.id = u.user_id
+     LEFT JOIN photos up ON up.target_type = 'update' AND up.target_id = u.id
+     WHERE u.ticket_id = ?
+     GROUP BY u.id
+     ORDER BY u.created_at, u.id`,
+  ).bind(id).all<{
+    id: number; kind: string; status: string | null; note: string | null; amount: number | null
+    created_at: string; display_name: string | null; photo_urls_json: string
+  }>()
+  const updates = updatesRes.results.map((u) => ({
+    ...u,
+    photo_urls: JSON.parse(u.photo_urls_json).map((p: { photo_url: string }) => p.photo_url),
+  }))
 
   const vendorName = ticket.vendor_name
     ? ticket.vendor_active === 0
@@ -232,9 +220,9 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
     created_at: ticket.created_at,
     last_activity_at: ticket.last_activity_at,
     closed_at: ticket.closed_at,
-    photos: photos.results.map((p) => ({ id: p.id, url: `/api/photos/${p.id}` })),
+    photos: photos.map((p) => ({ id: p.id, url: `/api/photos/${p.id}` })),
     share_url: `/share.html?token=${ticket.share_token}`,
-    updates: updates.results.map((u) => ({
+    updates: updates.map((u) => ({
       id: u.id,
       kind: u.kind,
       status: u.status,
@@ -242,7 +230,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
       amount: u.amount,
       display_name: u.display_name,
       created_at: u.created_at,
-      photo_urls: updatePhotos.get(u.id) ?? [],
+      photo_urls: u.photo_urls,
     })),
   })
 })
