@@ -559,8 +559,8 @@ pages.list = function () {
   const root = document.getElementById('page')
   root.innerHTML = ''
   const tabs = [
-    ['active', '未結案'], ['open', '詢價中'], ['in_progress', '處理中'],
-    ['done', '已完成'], ['void', '已作廢'], ['all', '全部'],
+    ['active', '未結'], ['open', '詢價'], ['in_progress', '處理'],
+    ['done', '完成'], ['void', '作廢'], ['all', '全部'],
   ]
   let currentStatus = 'active'
   let currentCategory = ''

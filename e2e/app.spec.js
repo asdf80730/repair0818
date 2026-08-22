@@ -108,9 +108,9 @@ test('編輯頁：四欄都從原案件資料帶入（類別/地點/說明/廠�
 })
 
 test('切換狀態 tab 篩選', async ({ page }) => {
-  await page.locator('.tab', { hasText: '已完成' }).click()
-  await expect(page.locator('.tab.active')).toHaveText('已完成')
-  await page.locator('.tab', { hasText: '詢價中' }).click()
+  await page.locator('.tab', { hasText: '完成' }).click()
+  await expect(page.locator('.tab.active')).toHaveText('完成')
+  await page.locator('.tab', { hasText: '詢價' }).click()
   await expect(page.locator('.ticket-card').first()).toBeVisible({ timeout: 10000 })
   await expect(page.getByText('電梯－停車場 #0001')).toBeVisible()
 })

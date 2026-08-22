@@ -788,7 +788,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ### 5.1 P1 案件列表
 
-- 狀態篩選 tabs：**未結案（=active，預設）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應；類別下拉篩選
+- 狀態篩選 tabs：**未結（=active，預設）／詢價（open）／處理（in_progress，代表已發包）／完成（done）／作廢（void）／全部（all）**——名稱與 status 值一一對應；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
 - **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
@@ -1031,7 +1031,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 | # | 頁面 | 動作 | 預期（DOM 斷言） |
 |---|---|---|---|
-| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結案／詢價中／處理中／已完成／已作廢／全部」 |
+| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結／詢價／處理／完成／作廢／全部」 |
 | 2 | 統計頁 `/stats` | 讀 `.month-row select` options | 近 12 個月（如 `2026-08`…`2025-09`） |
 | 2b | 統計頁 | 選另一月（`change` 事件）後讀 `.stat-card` 與 `.section-title` | 「本月新增」數與「各類別金額（YYYY-MM」標題**同步**變為該月（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增 |
 | 3 | 詳情 `/ticket/2` | 點 ⋮ → 讀 `.menu-item` | 含「編輯案件」（`can_edit` 由後端算，E1 方案B） |
