@@ -24,6 +24,7 @@ let mockTickets = [
   { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', description: '頂樓水塔噪音', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
 ]
 let mockNextId = 7
+let mockPhotosCount = 0 // A8：mock 照片上傳計數（產生唯一 id）
 // mock 時間軸（v1.1.12：測金額顯示；id=2 已發包含金額）
 let mockUpdates = [
   { id: 1, ticket_id: 2, kind: 'status', status: 'in_progress', note: '已發包施作', amount: 12000, display_name: '測試用戶', created_at: '2026-08-18T11:00:00.000Z', photo_urls: [] },
@@ -233,6 +234,39 @@ function mockApi(path, options = {}) {
     const t = mockTickets.find(x => x.id === Number(reshareMatch[1]))
     const token = 'mock-token-' + (t ? t.id : 'new')
     return { ok: true, data: { share_url: '/share.html?token=' + token } }
+  }
+  // A9（v1.1.14）：作廢 mock——更新 mockTickets 狀態 + 加時間軸（E2E 驗證狀態/時間軸變化）
+  const voidMatch = pathname.match(/^\/api\/tickets\/(\d+)\/void$/)
+  if (voidMatch && method === 'POST') {
+    const t = mockTickets.find(x => x.id === Number(voidMatch[1]))
+    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (t.status !== 'open' && t.status !== 'in_progress') {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '案件狀態已變更，請重新整理' } }
+    }
+    t.status = 'void'
+    t.last_activity_at = new Date().toISOString()
+    mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'void', note: '', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
+    return { ok: true, data: { status: 'void' } }
+  }
+  // A9（v1.1.14）：重新開啟 mock——更新狀態 + 時間軸
+  const reopenMatch = pathname.match(/^\/api\/tickets\/(\d+)\/reopen$/)
+  if (reopenMatch && method === 'POST') {
+    const t = mockTickets.find(x => x.id === Number(reopenMatch[1]))
+    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (t.status !== 'done' && t.status !== 'void') {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '僅已結案或已作廢的案件可重新開啟' } }
+    }
+    const body = JSON.parse(options.body || '{}')
+    const target = body.status || 'in_progress'
+    t.status = target
+    t.last_activity_at = new Date().toISOString()
+    mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: target, note: '重新開啟（原狀態：' + (t.status === 'done' ? '已完成' : '已作廢') + '）', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
+    return { ok: true, data: { status: target } }
+  }
+  // A8（v1.1.14）：照片上傳 mock——回傳 {id, url}（attachPhotoPicker 需拿 id）
+  if (pathname === '/api/photos' && method === 'POST') {
+    const id = 100 + (mockPhotosCount = (mockPhotosCount || 0) + 1)
+    return { ok: true, data: { id, url: `/api/photos/${id}` } }
   }
   // 其他 mutation 一律成功
   if (method !== 'GET') {

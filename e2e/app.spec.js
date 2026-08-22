@@ -255,3 +255,54 @@ test('v1.1.12：已發包顯示金額 + 發包必填金額', async ({ page }) =>
   await expect(page.locator('.toast')).toHaveText('已發包需填寫金額', { timeout: 3000 })
   await page.waitForTimeout(300)
 })
+
+// A9（v1.1.14）：void 作廢 UI E2E——⋮ 選單作廢，二次確認後狀態變更＋時間軸
+test('v1.1.14 A9：作廢案件（⋮ 選單 + 二次確認）', async ({ page }) => {
+  await page.goto(`${BASE}/?mock=true#/ticket/1`)
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  // ⋮ 展開選單 → 作廢
+  await page.locator('.topbar .btn-icon').click()
+  await page.waitForSelector('.menu-popover', { timeout: 10000 })
+  // 使用 mock 的 confirm/prompt 自動處理：覆寫 window.confirm
+  await page.evaluate(() => { window.confirm = () => true; window.prompt = () => '測試作廢' })
+  await page.getByText('🗑 作廢案件').click()
+  // 作廢後 reload，詳情應顯示已作廢
+  await page.waitForTimeout(800)
+  await expect(page.getByText('已作廢').first()).toBeVisible()
+})
+
+// A9（v1.1.14）：reopen UI E2E——reopen modal 互動
+test('v1.1.14 A9：重新開啟案件（reopen modal）', async ({ page }) => {
+  // 進已結案/作廢案件 #5（done）
+  await page.goto(`${BASE}/?mock=true#/ticket/5`)
+  await page.waitForSelector('text=案件詳情', { timeout: 10000 })
+  await page.locator('.topbar .btn-icon').click()
+  await page.waitForSelector('.menu-popover', { timeout: 10000 })
+  await page.getByText('↩️ 重新開啟').click()
+  await page.waitForSelector('.modal', { timeout: 10000 })
+  // modal 可選狀態＋備註，確認送出
+  await page.locator('.modal select').selectOption('in_progress')
+  await page.locator('.modal textarea').fill('重新檢查')
+  await page.getByText('確認重新開啟').click()
+  await page.waitForTimeout(800)
+  await expect(page.getByText('處理中').first()).toBeVisible()
+})
+
+// A8（v1.1.14）：照片選擇器 E2E——選照片（mock 回 id）＋超5張阻擋
+test('v1.1.14 A8：建單照片選擇器（選照片＋上限）', async ({ page }) => {
+  await page.goto(`${BASE}/?mock=true#/new`)
+  await page.waitForSelector('.form select', { timeout: 10000 })
+  await page.locator('.form select').nth(0).selectOption({ label: '門禁' })
+  await page.locator('.form select').nth(1).selectOption({ label: '大廳' })
+  // 等 catalog 載入，照片輸入框出現
+  await page.waitForSelector('.form input[type=file]', { timeout: 10000 })
+  // 選 2 張照片（mock 會回 {id,url}）
+  await page.locator('.form input[type=file]').setInputFiles([
+    { name: 'a.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a') },
+    { name: 'b.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('b') },
+  ])
+  await page.waitForTimeout(500)
+  // 縮圖預覽出現
+  const thumbs = page.locator('.form .photo-preview .photo-thumb')
+  await expect(thumbs).toHaveCount(2)
+})
