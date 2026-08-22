@@ -1046,8 +1046,9 @@ function renderUpdate(u) {
     ])
   }
   if (u.kind === 'system') {
+    // v1.1.14：system 留痕顯示實際操作者（編輯者）名字；無名字時 fallback「系統」
     return el('div', { class: 'update system' }, [
-      el('div', { class: 'update-head', text: `系統 · ${fmtTime(u.created_at)}` }),
+      el('div', { class: 'update-head', text: `${u.display_name || '系統'} · ${fmtTime(u.created_at)}` }),
       el('div', { class: 'update-body', text: u.note }),
     ])
   }
