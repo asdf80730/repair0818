@@ -955,11 +955,13 @@ pages.ticket = async function (id) {
   const statusSelect = el('select', { class: 'select' })
   statusSelect.appendChild(el('option', { value: '', text: '僅留言（不更新狀態）' }))
   if (canStatus) {
-    // F3（v1.1.14 決策）：依案件狀態決定可轉移目標——open→[in_progress,done]、in_progress→[done]
+    // F3（v1.1.14 決策）：依案件狀態決定可轉移目標
+    //   open→[in_progress,done]；in_progress→[in_progress(多次發包覆寫),done]
     if (t.status === 'open') {
       statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 標記已發包' }))
       statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
     } else if (t.status === 'in_progress') {
+      statusSelect.appendChild(el('option', { value: 'in_progress', text: '🟡 更新發包金額' }))
       statusSelect.appendChild(el('option', { value: 'done', text: '🟢 標記完成並結案' }))
     }
   }

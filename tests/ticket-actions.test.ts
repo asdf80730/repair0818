@@ -161,17 +161,17 @@ describe('M4 案件動作（§4.3）', () => {
     expect(r2.status).toBe(400)
   })
 
-  it('F3：open→open 與 in_progress→in_progress 皆禁', async () => {
+  it('F3：open→open 禁、in_progress→in_progress 允許（多次發包覆寫）', async () => {
     const mgr = await loginAs('U-f3-same', '管理', 'manager')
     const ticketId = await createTicket(mgr.cookie)
-    // open→open
+    // open→open 禁
     const r1 = await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
       body: JSON.stringify({ status: 'open' }),
     })
     expect(r1.status).toBe(400)
-    // 發包後 in_progress→in_progress
+    // 發包後 in_progress→in_progress 允許（覆寫金額，v1.1.13 語意）
     await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
@@ -182,7 +182,7 @@ describe('M4 案件動作（§4.3）', () => {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: mgr.cookie },
       body: JSON.stringify({ status: 'in_progress', amount: 6000 }),
     })
-    expect(r2.status).toBe(400)
+    expect(r2.status).toBe(200)
   })
 
   // E3（v1.1.14）：void/reopen 競態——狀態已變更時不寫入假時間軸

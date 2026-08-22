@@ -415,10 +415,11 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
     return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可回報')
   }
 
-  // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）、允許 open→done 直接結案
+  // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）；允許 open→done 直接結案。
+  //   in_progress→in_progress 允許（多次發包覆寫 amount，v1.1.13 語意鎖死，勿禁）。
   const ALLOWED_TRANSITIONS: Record<string, string[]> = {
     open: ['in_progress', 'done'],
-    in_progress: ['done'],
+    in_progress: ['in_progress', 'done'],
   }
   if (!(ALLOWED_TRANSITIONS[ticket.status] || []).includes(body.status)) {
     return fail(c, 400, 'VALIDATION_ERROR', `狀態不可從 ${ticket.status} 轉為 ${body.status}`)
@@ -534,24 +535,19 @@ ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zVa
 
   const now = nowIso()
   // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
-  // E3（v1.1.14）：INSERT 改為帶 EXISTS 條件，狀態已變更時不寫入時間軸（避免假紀錄）
-  const batchRes = await c.env.DB.batch([
-    c.env.DB.prepare(
-      "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
-    ).bind('void', now, user.id, now, id),
-    c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       SELECT ?, ?, 'status', 'void', ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM tickets
-         WHERE id = ? AND status IN ('open','in_progress')
-       )`,
-    ).bind(id, user.id, body.note ?? null, now, id),
-  ])
-  // E3：以 INSERT 實際插入筆數判斷（changes===0 代表狀態已在別處變更，未寫入時間軸）
-  if (batchRes[1].meta.changes === 0) {
+  // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT。
+  //   不能用 batch + INSERT...WHERE EXISTS：batch 內依序執行，UPDATE 先改狀態後 EXISTS 已讀到新狀態→永遠 false。
+  const upd = await c.env.DB.prepare(
+    "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
+  ).bind('void', now, user.id, now, id).run()
+  if (upd.meta.changes === 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
   }
+  // 狀態確已變更，寫入時間軸（此處不再有競態——上一步已原子變更）
+  await c.env.DB.prepare(
+    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+     VALUES (?, ?, 'status', 'void', ?, ?)`,
+  ).bind(id, user.id, body.note ?? null, now).run()
 
   return ok(c, { status: 'void' })
 })
@@ -578,24 +574,18 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('
   const prevStatusLabel = ticket.status === 'done' ? '已完成' : '已作廢'
 
   // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
-  // E3（v1.1.14）：INSERT 改為帶 EXISTS 條件，狀態已變更時不寫入時間軸（避免假紀錄）
-  const batchRes = await c.env.DB.batch([
-    c.env.DB.prepare(
-      "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
-    ).bind(targetStatus, now, id),
-    c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       SELECT ?, ?, 'status', ?, ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM tickets
-         WHERE id = ? AND status IN ('done','void')
-       )`,
-    ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now, id),
-  ])
-  // E3：以 INSERT 實際插入筆數判斷（changes===0 代表狀態已在他處變更，未寫入時間軸）
-  if (batchRes[1].meta.changes === 0) {
+  // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT（理由同 void）
+  const upd = await c.env.DB.prepare(
+    "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
+  ).bind(targetStatus, now, id).run()
+  if (upd.meta.changes === 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
   }
+  // 狀態確已變更，寫入時間軸
+  await c.env.DB.prepare(
+    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+     VALUES (?, ?, 'status', ?, ?, ?)`,
+  ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now).run()
 
   return ok(c, { status: targetStatus })
 })
