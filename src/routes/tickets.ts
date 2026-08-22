@@ -86,16 +86,12 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
 ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema), async (c) => {
   const { status, category_id, page, limit } = c.req.valid('query')
 
-  // status 允許值：active(預設)/open/in_progress/done/void/overdue/all
-  // active = open + in_progress；overdue = 未結案且 last_activity_at 距今 >7 天（A5，排除 done/void）
+  // status 允許值：active(預設)/open/in_progress/done/void/all
+  // active = open + in_progress
   let where = 'WHERE 1=1'
   const binds: unknown[] = []
   if (status === 'active') {
     where += " AND t.status IN ('open','in_progress')"
-  } else if (status === 'overdue') {
-    // A5（v1.1.14）：逾期未更新——open/in_progress 且距今超過 7 天
-    where += " AND t.status IN ('open','in_progress') AND t.last_activity_at < ?"
-    binds.push(new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
   } else if (status !== 'all') {
     where += ' AND t.status = ?'
     binds.push(status)

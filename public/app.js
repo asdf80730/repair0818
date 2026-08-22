@@ -132,11 +132,6 @@ function mockApi(path, options = {}) {
     const status = url.searchParams.get('status') || 'active'
     let items = mockTickets
     if (status === 'active') items = mockTickets.filter(t => t.status === 'open' || t.status === 'in_progress')
-    else if (status === 'overdue') {
-      // A5：逾期 = open/in_progress 且 last_activity_at 距今 >7 天
-      const cutoff = Date.now() - 7 * 24 * 3600 * 1000
-      items = mockTickets.filter(t => (t.status === 'open' || t.status === 'in_progress') && new Date(t.last_activity_at).getTime() < cutoff)
-    }
     else if (status !== 'all') items = mockTickets.filter(t => t.status === status)
     return { ok: true, data: { items, page: 1, limit: 20, has_more: false } }
   }
@@ -564,7 +559,7 @@ pages.list = function () {
   const root = document.getElementById('page')
   root.innerHTML = ''
   const tabs = [
-    ['active', '未結案'], ['overdue', '逾期未更新'], ['open', '詢價中'], ['in_progress', '處理中'],
+    ['active', '未結案'], ['open', '詢價中'], ['in_progress', '處理中'],
     ['done', '已完成'], ['void', '已作廢'], ['all', '全部'],
   ]
   let currentStatus = 'active'

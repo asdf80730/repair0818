@@ -14,7 +14,7 @@
 
 | 版本 | 內容 |
 |---|---|
-| v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all、逾期 Tab；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
+| v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
 | v1.0 | 初版：技術棧、schema、API、畫面、部署、里程碑 |
 | v1.1 | 外部評審修訂（20 項）：Cookie session 取代 Bearer、時間格式統一 ISO8601、label 快照、刪除 ticket_no、void/編輯留痕、業主決策 D1–D4 等 |
 | v1.1.1 | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等 |
@@ -520,7 +520,7 @@ export function requireAuth(opts?: {
 **GET `/api/tickets`**（三角色）
 
 - Query：`status`、`category_id`、`page`（預設 1）、`limit`（預設 20，上限 50）
-- **`status` 允許值寫死**：`active`（＝open+in_progress，**預設**）｜`overdue`（open/in_progress 且 `last_activity_at` 距今 >7 天，排除 done/void，v1.1.14 A5）｜`open`｜`in_progress`｜`done`｜`void`｜`all`；未帶參數時預設 `active`
+- **`status` 允許值寫死**：`active`（＝open+in_progress，**預設**）｜`open`｜`in_progress`｜`done`｜`void`｜`all`；未帶參數時預設 `active`
 - 排序：`last_activity_at DESC`
 - 回應：`{ items, page, limit, has_more }`（實作：查 `limit+1` 筆判斷）
 - item 欄位：`id, title, status, category_label, location_label, vendor_name, created_at, last_activity_at`
@@ -788,7 +788,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ### 5.1 P1 案件列表
 
-- 狀態篩選 tabs：**未結案（=active，預設）／逾期未更新（overdue）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應（overdue 為 v1.1.14 A5：open/in_progress 且 `last_activity_at` 距今 >7 天，排除 done/void）；類別下拉篩選
+- 狀態篩選 tabs：**未結案（=active，預設）／詢價中（open）／處理中（in_progress，代表已發包）／已完成（done）／已作廢（void）／全部（all）**——名稱與 status 值一一對應；類別下拉篩選
 - 卡片：標題、狀態徽章、廠商、最後活動時間
 - **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
@@ -1031,8 +1031,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 | # | 頁面 | 動作 | 預期（DOM 斷言） |
 |---|---|---|---|
-| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結案／逾期未更新／詢價中／處理中／已完成／已作廢／全部」 |
-| 1b | 首頁 `/` | 點「逾期未更新」tab，讀 `.ticket-card` 數 | 只列 open/in_progress 且 `last_activity_at` 距今 >7 天（mock 資料皆近期 → 應為 0 張 + `.ticket-list` 顯示「沒有符合條件的案件」）；done/void 絕不列入 |
+| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結案／詢價中／處理中／已完成／已作廢／全部」 |
 | 2 | 統計頁 `/stats` | 讀 `.month-row select` options | 近 12 個月（如 `2026-08`…`2025-09`） |
 | 2b | 統計頁 | 選另一月（`change` 事件）後讀 `.stat-card` 與 `.section-title` | 「本月新增」數與「各類別金額（YYYY-MM」標題**同步**變為該月（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增 |
 | 3 | 詳情 `/ticket/2` | 點 ⋮ → 讀 `.menu-item` | 含「編輯案件」（`can_edit` 由後端算，E1 方案B） |

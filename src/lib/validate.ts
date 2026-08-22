@@ -126,7 +126,7 @@ export const exportQuerySchema = z.object({
 
 // 列表查詢（§4.3 GET /api/tickets）
 export const listTicketsQuerySchema = z.object({
-  status: z.enum(['active', 'open', 'in_progress', 'done', 'void', 'overdue', 'all']).default('active'),
+  status: z.enum(['active', 'open', 'in_progress', 'done', 'void', 'all']).default('active'),
   category_id: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
