@@ -8,6 +8,9 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined) continue // 跳過 null/undefined
     if (k === 'class') node.className = v
     else if (k === 'text') node.textContent = v
+    else if (k === 'selected') node.selected = !!v
+    else if (k === 'value') node.value = v // textarea/select 用 property（setAttribute 對 textarea 無效）
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v) // 事件處理（與 app.js 一致）
     else node.setAttribute(k, v)
   }
   for (const c of [].concat(children)) {
