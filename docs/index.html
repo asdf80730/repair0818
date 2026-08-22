@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -138,10 +137,10 @@ a{color:#64b5f6}
 <!-- ===== 主體 ===== -->
 <div class="main">
 
-<!-- 折疊面板：來源與設定 -->
-<div class="panel" id="panel-source" style="max-height:500px">
+<!-- 折疊面板：來源（不再包含排除/輸出設定） -->
+<div class="panel" id="panel-source" style="max-height:320px">
 <div class="panel-header open" id="ph-source" onclick="togglePanel()">
-<span class="ph-title">📂 來源與設定</span>
+<span class="ph-title">📂 來源</span>
 <span class="ph-arrow">▼</span>
 </div>
 <div class="panel-body" id="pb-source">
@@ -163,35 +162,49 @@ a{color:#64b5f6}
 <div class="tab-content" id="t-github">
 <div class="field-row">
 <div><label>Repo（owner/repo 或網址）</label><input type="text" id="gu" placeholder="owner/repo"></div>
-<div><label>分支（空白＝自動）</label><input type="text" id="gb" placeholder="main"></div>
-<div><label>子目錄</label><input type="text" id="gs" placeholder="src/"></div>
+<div><label>分支（空白＝自動；下載按鈕會預設 main）</label><input type="text" id="gb" placeholder="main"></div>
+<div><label>子目錄（用於載入解壓後的子資料夾）</label><input type="text" id="gs" placeholder="src/"></div>
 </div>
+
 <div class="field-row">
 <div><label>Token（公開可留空）</label><input type="password" id="gt" placeholder="ghp_..."></div>
-<div style="display:flex;align-items:flex-end;gap:8px">
+<div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
 <label class="chk"><input type="checkbox" id="gk"> 記住</label>
 <button class="btn btn-sec btn-sm" onclick="clearToken()">清除</button>
+
 <button class="btn btn-green" onclick="processGitHub()">下載並載入</button>
+
+<!-- 新增：下載到本機（免API） -->
+<button class="btn btn-sec btn-sm" onclick="downloadGithubZipToLocal()" title="下載 ZIP 到本機後，請到 ZIP 上傳選擇該檔。">📥 下載 ZIP 到本機</button>
 </div>
 </div>
+
 <div class="rate-warn" id="rw"></div>
+<div class="small" style="margin-top:6px">
+💡 如果「下載並載入」不順，你可以先用「下載 ZIP 到本機」，再切到「ZIP 上傳」上傳該檔。
+</div>
 </div>
 
 <!-- ZIP -->
 <div class="tab-content" id="t-zip">
 <div class="zip-zone" id="zip-zone">
 <div>📦 拖入 ZIP 檔或點擊選擇</div>
-<div class="small">GitHub 下載的 ZIP 會自動去除頂層目錄</div>
+<div class="small" style="margin-top:4px">GitHub 下載的 ZIP 會自動去除頂層目錄</div>
 </div>
 <input type="file" id="zip-input" accept=".zip" hidden>
 <div class="small">💡 手動下載：<code>github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip</code></div>
 </div>
 
-<hr style="border-color:#37474f;margin:12px 0">
+</div>
+</div>
+</div>
 
-<!-- 排除規則 -->
-<details style="margin-bottom:8px">
-<summary style="cursor:pointer;color:#90caf9;font-size:.82rem">🚫 排除規則（自動套用）</summary>
+<!-- 排除規則（不跟著來源TAB收合） -->
+<details style="margin-bottom:0;border-bottom:1px solid #333;background:#1e2a3a" open>
+<summary style="cursor:pointer;color:#90caf9;font-size:.82rem;padding:10px 16px;background:#1e2a3a;border-bottom:none">
+🚫 排除規則（自動套用）
+</summary>
+<div style="padding:12px 16px;background:#1e2a3a">
 <div class="preset-row">
 <span class="preset-chip" data-rule="node_modules/">node_modules/</span>
 <span class="preset-chip" data-rule=".git/">.git/</span>
@@ -215,20 +228,20 @@ a{color:#64b5f6}
 </div>
 </div>
 <div class="rule-status" id="rule-status"></div>
+</div>
 </details>
 
 <!-- 輸出設定 -->
-<details>
-<summary style="cursor:pointer;color:#90caf9;font-size:.82rem">⚙️ 輸出設定</summary>
-<div style="margin-top:8px">
+<details style="margin-bottom:0;background:#1e2a3a">
+<summary style="cursor:pointer;color:#90caf9;font-size:.82rem;padding:10px 16px;background:#1e2a3a">
+⚙️ 輸出設定
+</summary>
+<div style="padding:12px 16px 16px;background:#1e2a3a">
 <label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
 <label class="chk"><input type="checkbox" id="o5" checked> 長檔注入路徑戳記</label>
 <label class="chk" style="margin-top:4px">間隔行數：<input type="number" id="o8" value="12" min="4" max="80"></label>
 </div>
 </details>
-
-</div>
-</div>
 
 <!-- 檔案清單區 -->
 <div class="file-area">
@@ -274,6 +287,7 @@ a{color:#64b5f6}
 <div class="analysis"><h3>排除</h3><pre id="a2">—</pre></div>
 <div class="analysis"><h3>敏感</h3><pre id="a3">—</pre></div>
 </details>
+
 </div>
 
 </div>
@@ -298,12 +312,14 @@ var tok=0,srcFiles=null,srcMeta=null,outputs=null;
 var checked=new Set();
 var sensFlags={};
 var apiCallCount=0;
+
 var STORAGE_KEY="pov.exclude.rules";
 var TOKEN_KEY="pov.gh.token";
 var GH_REPO_KEY="pov.gh.repo";
 var GH_BRANCH_KEY="pov.gh.branch";
 var GH_SUBDIR_KEY="pov.gh.subdir";
-var BIN_EXTS=[".png",".jpg",".jpeg",".gif",".bmp",".ico",".webp",".svg",".woff",".woff2",".ttf",".eot",".otf",".mp3",".mp4",".wav",".avi",".mov",".zip",".tar",".gz",".rar",".7z",".pdf",".exe",".dll",".so",".dylib",".bin",".dat",".db",".sqlite",".class",".jar",".pyc",".o",".a",".obj",".wasm"];
+
+var BIN_EXTS=[".png",".jpg",".jpeg",".gif",".bmp",".ico",".webp",".svg",".woff",".woff2",".ttf",".eot",".otf",".mp3",".mp4",".wav",".avi",".mov",".zip",".tar",".gz",".rar",".7z",".pdf",".exe",".dll",".so",".dylib",".pdf",".bin",".dat",".db",".sqlite",".class",".jar",".pyc",".o",".a",".obj",".wasm"];
 
 function $(id){return document.getElementById(id)}
 function st(t){$("st").textContent=t}
@@ -316,13 +332,13 @@ function isBinaryExt(p){return BIN_EXTS.indexOf(ext(p))>=0}
 function showProgress(pct,txt){$("pw").style.display="block";$("pf").style.width=pct+"%";$("pt").textContent=txt}
 function hideProgress(){$("pw").style.display="none"}
 
-/* 面板折疊 */
+/* 面板折疊（僅控制來源區，不影響排除/輸出設定） */
 window.togglePanel=function(){
 var panel=$("panel-source");
 var header=$("ph-source");
 if(panel.classList.contains("collapsed")){
 panel.classList.remove("collapsed");
-panel.style.maxHeight="500px";
+panel.style.maxHeight="320px";
 header.classList.add("open");
 }else{
 panel.classList.add("collapsed");
@@ -330,13 +346,18 @@ header.classList.remove("open");
 }
 };
 
-/* 分頁切換 */
-document.querySelectorAll(".tab").forEach(function(tab){
-tab.addEventListener("click",function(){
+/* 分頁切換（來源TAB） */
+function activateTab(tabId){
 document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});
 document.querySelectorAll(".tab-content").forEach(function(c){c.classList.remove("active")});
-tab.classList.add("active");
-$(tab.dataset.tab).classList.add("active");
+var tab=document.querySelector('.tab[data-tab="'+tabId+'"]');
+var content=document.getElementById(tabId);
+if(tab)tab.classList.add("active");
+if(content)content.classList.add("active");
+}
+document.querySelectorAll(".tab").forEach(function(tab){
+tab.addEventListener("click",function(){
+activateTab(tab.dataset.tab);
 });
 });
 
@@ -346,7 +367,10 @@ function saveRules(){try{localStorage.setItem(STORAGE_KEY,$("rules").value)}catc
 function getRulePatterns(){return $("rules").value.split("\n").map(function(l){return l.trim()}).filter(function(l){return l.length>0&&!l.startsWith("#")})}
 function matchPattern(path,pattern){
 if(pattern.endsWith("/"))return path.indexOf(pattern)>=0;
-if(pattern.indexOf("*")>=0){var re=new RegExp("^"+pattern.replace(/\./g,"\\.").replace(/\*/g,".*")+"$","i");return re.test(path)||re.test(base(path))}
+if(pattern.indexOf("*")>=0){
+var re=new RegExp("^"+pattern.replace(/\./g,"\\.").replace(/\*/g,".*")+"$","i");
+return re.test(path)||re.test(base(path));
+}
 return path.toLowerCase().indexOf(pattern.toLowerCase())>=0;
 }
 window.applyRules=function(silent){
@@ -356,10 +380,13 @@ if(patterns.length===0){if(!silent)$("rule-status").textContent="沒有規則。
 var count=0;
 for(var i=0;i<srcFiles.length;i++){
 for(var j=0;j<patterns.length;j++){
-if(matchPattern(srcFiles[i].path,patterns[j])){checked.delete(srcFiles[i].path);count++;break}
+if(matchPattern(srcFiles[i].path,patterns[j])){
+checked.delete(srcFiles[i].path);count++;break;
 }
 }
-saveRules();renderFileTable();
+}
+saveRules();
+renderFileTable();
 $("rule-status").textContent=(silent?"自動":"已")+"排除 "+count+" 個。";
 };
 window.clearRules=function(){$("rules").value="";saveRules();$("rule-status").textContent="已清空。"};
@@ -395,7 +422,10 @@ return null;
 }
 function ghHeaders(useAuth){
 var h={"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
-if(useAuth){var t=$("gt").value.trim();if(t)h["Authorization"]="Bearer "+t}
+if(useAuth){
+var t=$("gt").value.trim();
+if(t)h["Authorization"]="Bearer "+t;
+}
 return h;
 }
 window.saveToken=function(){try{var t=$("gt").value.trim();if($("gk").checked&&t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}};
@@ -432,8 +462,11 @@ return "// [File: "+path+"]";
 }
 function injectStamps(text,path,extn,interval){
 var lines=text.split("\n");var stamp=stampComment(path,extn);var out=[stamp];var since=0;
-for(var i=0;i<lines.length;i++){out.push(lines[i]);if(lines[i].trim()!=="")since++;
-if(since>=interval&&lines[i].trim()!==""&&lines[i].indexOf("[File:")<0){out.push(stamp);since=0}}
+for(var i=0;i<lines.length;i++){
+out.push(lines[i]);
+if(lines[i].trim()!=="")since++;
+if(since>=interval&&lines[i].trim()!==""&&lines[i].indexOf("[File:")<0){out.push(stamp);since=0}
+}
 return out.join("\n");
 }
 async function sha256(text){
@@ -442,14 +475,25 @@ var buf=new TextEncoder().encode(text);var hash=await crypto.subtle.digest("SHA-
 return Array.from(new Uint8Array(hash)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");
 }
 function fenceFor(text){var max=0,re=/^(`{3,})/gm,m;while((m=re.exec(text))!==null){if(m[1].length>max)max=m[1].length}return "`".repeat(Math.max(max+1,3))}
-function langForFence(e){var map={".js":"javascript",".jsx":"jsx",".ts":"typescript",".tsx":"tsx",".vue":"vue",".svelte":"svelte",".py":"python",".rb":"ruby",".go":"go",".rs":"rust",".java":"java",".kt":"kotlin",".swift":"swift",".c":"c",".cpp":"cpp",".h":"c",".cs":"csharp",".php":"php",".sql":"sql",".html":"html",".css":"css",".scss":"scss",".json":"json",".yaml":"yaml",".yml":"yaml",".toml":"toml",".md":"markdown",".txt":"text",".sh":"bash",".xml":"xml",".svg":"xml"};return map[e]||e.replace(".","")}
+function langForFence(e){
+var map={".js":"javascript",".jsx":"jsx",".ts":"typescript",".tsx":"tsx",".vue":"vue",".svelte":"svelte",".py":"python",".rb":"ruby",".go":"go",".rs":"rust",".java":"java",".kt":"kotlin",".swift":"swift",".c":"c",".cpp":"cpp",".h":"c",".cs":"csharp",".php":"php",".sql":"sql",".html":"html",".css":"css",".scss":"scss",".json":"json",".yaml":"yaml",".yml":"yaml",".toml":"toml",".md":"markdown",".txt":"text",".sh":"bash",".xml":"xml",".svg":"xml"};
+return map[e]||e.replace(".","");
+}
 function buildTree(paths){
 var tree={};
 paths.forEach(function(p){var parts=p.split("/");var node=tree;for(var i=0;i<parts.length;i++){if(!node[parts[i]])node[parts[i]]={};node=node[parts[i]]}});
 function render(node,prefix){
-var keys=Object.keys(node).sort(function(a,b){var aD=Object.keys(node[a]).length>0,bD=Object.keys(node[b]).length>0;if(aD&&!bD)return -1;if(!aD&&bD)return 1;return a.localeCompare(b)});
+var keys=Object.keys(node).sort(function(a,b){
+var aD=Object.keys(node[a]).length>0,bD=Object.keys(node[b]).length>0;
+if(aD&&!bD)return -1;if(!aD&&bD)return 1;
+return a.localeCompare(b);
+});
 var lines=[];
-for(var i=0;i<keys.length;i++){var k=keys[i];lines.push(prefix+((i===keys.length-1)?"└── ":"├── ")+k);if(Object.keys(node[k]).length>0)lines=lines.concat(render(node[k],prefix+((i===keys.length-1)?"    ":"│   ")))}
+for(var i=0;i<keys.length;i++){
+var k=keys[i];
+lines.push(prefix+((i===keys.length-1)?"└── ":"├── ")+k);
+if(Object.keys(node[k]).length>0)lines=lines.concat(render(node[k],prefix+((i===keys.length-1)?"    ":"│   ")));
+}
 return lines;
 }
 return render(tree,"").join("\n");
@@ -458,10 +502,20 @@ function detectTechStack(files){
 var root=null;
 for(var i=0;i<files.length;i++){if(files[i].path==="package.json"){root=files[i];break}}
 if(root&&root.content){
-try{var pkg=JSON.parse(root.content);var deps=Object.keys(pkg.dependencies||{}).concat(Object.keys(pkg.devDependencies||{}));var stack=[];
-if(deps.indexOf("vue")>=0)stack.push("Vue");if(deps.indexOf("react")>=0)stack.push("React");if(deps.indexOf("svelte")>=0)stack.push("Svelte");if(deps.indexOf("hono")>=0)stack.push("Hono");if(deps.indexOf("express")>=0)stack.push("Express");if(deps.indexOf("wrangler")>=0)stack.push("CF Workers");if(deps.indexOf("typescript")>=0)stack.push("TS");
+try{
+var pkg=JSON.parse(root.content);
+var deps=Object.keys(pkg.dependencies||{}).concat(Object.keys(pkg.devDependencies||{}));
+var stack=[];
+if(deps.indexOf("vue")>=0)stack.push("Vue");
+if(deps.indexOf("react")>=0)stack.push("React");
+if(deps.indexOf("svelte")>=0)stack.push("Svelte");
+if(deps.indexOf("hono")>=0)stack.push("Hono");
+if(deps.indexOf("express")>=0)stack.push("Express");
+if(deps.indexOf("wrangler")>=0)stack.push("CF Workers");
+if(deps.indexOf("typescript")>=0)stack.push("TS");
 return{name:pkg.name||"unknown",desc:pkg.description||"",stack:stack.length?stack.join(", "):"JS/Node"};
-}catch(e){}}
+}catch(e){}
+}
 return{name:"unknown",desc:"",stack:"未知"};
 }
 
@@ -472,99 +526,209 @@ st("解壓中...");
 showProgress(30,"載入 ZIP...");
 var zip=await JSZip.loadAsync(zipBlob);
 if(tok!==myTok)return;
+
 srcFiles=[];checked.clear();sensFlags={};
+outputs=null;
+$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
+$("pb").disabled=true;
+
 var entries=Object.values(zip.files);
 var prefix="";
-if(entries.length>0){var fp=entries[0].name;var si=fp.indexOf("/");if(si>0)prefix=fp.slice(0,si+1)}
+if(entries.length>0){
+var fp=entries[0].name;
+var si=fp.indexOf("/");
+if(si>0)prefix=fp.slice(0,si+1);
+}
+
 var count=0;
 for(var i=0;i<entries.length;i++){
 if(tok!==myTok)return;
 var entry=entries[i];
 if(entry.dir)continue;
+
 var fullPath=entry.name;
 var relPath=prefix&&fullPath.startsWith(prefix)?fullPath.slice(prefix.length):fullPath;
-if(subdir){if(!relPath.startsWith(subdir+"/"))continue;relPath=relPath.slice(subdir.length+1)}
+
+if(subdir){
+if(!relPath.startsWith(subdir+"/"))continue;
+relPath=relPath.slice(subdir.length+1);
+}
 if(!relPath||relPath==="/")continue;
-var content=null;var failed=false;
+
+var failed=false;
+var content=null;
+var rawLen=0;
+
 try{
 var raw=await entry.async("uint8array");
+rawLen=raw.byteLength;
+
 var isBin=isBinaryExt(relPath);
-if(!isBin){content=new TextDecoder("utf-8",{fatal:false}).decode(raw);if(isBinaryText(content)){isBin=true;content=null}}
+if(!isBin){
+var decoded=new TextDecoder("utf-8",{fatal:false}).decode(raw);
+if(isBinaryText(decoded)){isBin=true;content=null}
+else content=decoded;
+}
 if(isBin)content="[二進位檔]";
-}catch(e){failed=true}
-srcFiles.push({path:relPath,size:content?content.length:0,content:content,failed:failed});
+}catch(e){
+failed=true;
+rawLen=0;
+content=null;
+}
+
+srcFiles.push({path:relPath,size:rawLen,content:content,failed:failed});
 checked.add(relPath);
-var nw=detectSensName(relPath);if(nw.length>0)sensFlags[relPath]=nw;
+
+var nw=detectSensName(relPath);
+if(nw.length>0)sensFlags[relPath]=nw;
+
 count++;
 if(count%10===0)showProgress(30+Math.round(count/entries.length*70),"解壓 "+count+"/"+entries.length+"...");
 }
+
 hideProgress();
 $("pb").disabled=false;
-applyRules(true);renderFileTable();
-togglePanel();
-st("✅ "+srcFiles.length+" 個檔案。");
+
+applyRules(true);
+renderFileTable();
+
+st("✅ "+srcFiles.length+" 個檔案已載入。");
 }
 
 /* 本機 */
 $("fi").addEventListener("change",function(e){
 if(e.target.files.length===0)return;
 var myTok=++tok;
+
 srcFiles=[];checked.clear();sensFlags={};
+outputs=null;
+
+$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
+$("pb").disabled=true;
+
 var arr=Array.from(e.target.files);
 for(var i=0;i<arr.length;i++){
-var f=arr[i];var p=(f.webkitRelativePath||f.name).replace(/\\/g,"/");
+var f=arr[i];
+var p=(f.webkitRelativePath||f.name).replace(/\\/g,"/");
 srcFiles.push({path:p,size:f.size,content:null,text:function(ff){return function(){return ff.text()}}(f),failed:false});
-checked.add(p);var nw=detectSensName(p);if(nw.length>0)sensFlags[p]=nw;
+checked.add(p);
+
+var nw=detectSensName(p);
+if(nw.length>0)sensFlags[p]=nw;
 }
+
 srcMeta={type:"local"};
 $("local-info").textContent="已選 "+srcFiles.length+" 個";
-$("pb").disabled=false;applyRules(true);renderFileTable();togglePanel();
+
+$("pb").disabled=false;
+applyRules(true);
+renderFileTable();
+
 st("已載入 "+srcFiles.length+" 個。");
 });
 
-/* GitHub */
+/* GitHub：免API下載到本機 */
+window.downloadGithubZipToLocal=function(){
+$("rw").style.display="none";
+var parsed=parseGHUrl($("gu").value);
+if(!parsed){
+st("無法解析 Repo。請輸入 owner/repo 或完整 GitHub 網址。");
+return;
+}
+var owner=parsed.owner,repo=parsed.repo;
+
+var branch=($("gb").value||"").trim();
+if(!branch)branch=parsed.branch||"main";
+
+var subdir=($("gs").value||"").trim();
+if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
+
+var zipUrl="https://github.com/"+owner+"/"+repo+"/archive/refs/heads/"+encodeURIComponent(branch)+".zip";
+
+var a=document.createElement("a");
+a.href=zipUrl;
+a.target="_blank";
+a.rel="noopener";
+a.download="repo-"+owner+"-"+repo+"-"+branch+".zip";
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+
+st("ZIP 下載已開始。請切到「ZIP 上傳」選擇檔案。");
+activateTab("t-zip");
+};
+
+/* GitHub：下載並載入（走 API；可能會遇到你遇到的配額/失敗） */
 window.processGitHub=async function(){
 var myTok=++tok;saveToken();
 $("rw").style.display="none";
+
 var parsed=parseGHUrl($("gu").value);
 if(!parsed){st("無法解析。");return}
 var owner=parsed.owner,repo=parsed.repo;
+
 var branch=$("gb").value.trim()||parsed.branch;
 var subdir=$("gs").value.trim()||parsed.subdir;
 if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
+
 var token=$("gt").value.trim();
 var useAuth=!!token;
+
 try{
+$("pb").disabled=true;
+st("下載 ZIP（API 方式）...");
+showProgress(10,"下載中...");
+
 if(!branch){
 st("偵測分支...");
 var repoRes=await fetch("https://api.github.com/repos/"+owner+"/"+repo,{headers:ghHeaders(useAuth)});
 apiCallCount++;$("s6").textContent=apiCallCount;
+
 if(tok!==myTok)return;
+
 if(!repoRes.ok){
-if(repoRes.status===403){$("rw").style.display="block";$("rw").innerHTML="⏳ 速率限制。填 Token 或手動 ZIP。";st("403");return}
-st("失敗："+repoRes.status);return;
+if(repoRes.status===403){
+$("rw").style.display="block";
+$("rw").innerHTML="⏳ 速率限制。你可以改用「下載 ZIP 到本機」。";
+st("403");
+return;
 }
-var repoData=await repoRes.json();if(tok!==myTok)return;
-branch=repoData.default_branch||"main";$("gb").value=branch;
+st("失敗："+repoRes.status);
+return;
 }
+var repoData=await repoRes.json();
+if(tok!==myTok)return;
+branch=repoData.default_branch||"main";
+$("gb").value=branch;
+}
+
 srcMeta={type:"github",owner:owner,repo:repo,branch:branch};
-st("下載 ZIP（1 次 API）...");
-showProgress(10,"下載中...");
+
 var zipUrl="https://api.github.com/repos/"+owner+"/"+repo+"/zipball/"+encodeURIComponent(branch);
 var zipRes=await fetch(zipUrl,{headers:ghHeaders(true)});
+
 apiCallCount++;$("s6").textContent=apiCallCount;
 if(tok!==myTok)return;
+
 if(zipRes.status===403){
 $("rw").style.display="block";
-$("rw").innerHTML="⏳ 配額用完。<br>可手動下載：<a href='https://github.com/"+owner+"/"+repo+"/archive/refs/heads/"+branch+".zip' target='_blank'>ZIP 連結</a>，然後用「ZIP 上傳」。";
-hideProgress();st("403");return;
+$("rw").innerHTML="⏳ 配額用完。你可以先用「下載 ZIP 到本機」，再用 ZIP 上傳。";
+hideProgress();
+st("403");
+return;
 }
 if(!zipRes.ok){st("失敗："+zipRes.status);return}
+
 var zipBlob=await zipRes.blob();
 if(tok!==myTok)return;
+
 showProgress(20,"解壓中...");
 await processZipBlob(zipBlob,subdir);
-}catch(e){if(tok!==myTok)return;hideProgress();st("錯誤："+e.message)}
+}catch(e){
+if(tok!==myTok)return;
+hideProgress();
+st("錯誤："+e.message);
+}
 };
 
 /* ZIP 上傳 */
@@ -578,51 +742,117 @@ processZipFile(e.dataTransfer.files[0]);
 }else st("請拖入 .zip");
 });
 $("zip-input").addEventListener("change",function(e){if(e.target.files.length>0)processZipFile(e.target.files[0])});
+
 function processZipFile(file){
 var myTok=++tok;
 srcMeta={type:"zip",name:file.name};
-var subdir=$("gs").value.trim();if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
+var subdir=$("gs").value.trim();
+if(subdir&&subdir.endsWith("/"))subdir=subdir.slice(0,-1);
 processZipBlob(file,subdir);
 }
 
 /* 產生輸出 */
 window.generate=async function(){
-var myTok=++tok;st("產生中...");
+var myTok=++tok;
+st("產生中...");
+
+outputs=null;
+$("d0").disabled=true;$("d1").disabled=true;$("d2").disabled=true;$("da").disabled=true;
+$("pb").disabled=true;
+
 var included=[],excludedList=[];
+var excludedIndexByPath=new Map();
+
 for(var i=0;i<srcFiles.length;i++){
 var f=srcFiles[i];
-if(checked.has(f.path))included.push(f);else excludedList.push(f.path);
+if(checked.has(f.path))included.push(f);
+else{
+excludedIndexByPath.set(f.path, excludedList.length);
+excludedList.push(f.path);
 }
+}
+
+showProgress(0,"準備中...");
+
 var processed=[];
+var totalWork=included.length||1;
+
 for(var i=0;i<included.length;i++){
 if(tok!==myTok)return;
+
 var f=included[i];
 var text=null;
+
+try{
 if(f.content)text=f.content;
 else if(f.text)text=await f.text();
-if(!text||text.startsWith("[二進位")){excludedList.push(f.path+"（二進位）");continue}
-if(isBinaryText(text)){excludedList.push(f.path+"（二進位）");continue}
-if(f.failed){excludedList.push(f.path+"（失敗）");continue}
+}catch(e){
+f.failed=true;
+text=null;
+}
+
+var addExcluded=function(label){
+if(!excludedIndexByPath.has(f.path)){
+excludedIndexByPath.set(f.path, excludedList.length);
+excludedList.push(f.path+label);
+}else{
+var idx=excludedIndexByPath.get(f.path);
+if(excludedList[idx]===f.path)excludedList[idx]=f.path+label;
+}
+};
+
+if(!text||String(text).startsWith("[二進位")){
+addExcluded="（二進位）";
+continue;
+}
+if(isBinaryText(text)){
+addExcluded="（二進位）";
+continue;
+}
+if(f.failed){
+addExcluded="（失敗）";
+continue;
+}
+
 var cs=detectSensContent(text);
-if(cs.length>0){if(!sensFlags[f.path])sensFlags[f.path]=[];sensFlags[f.path]=sensFlags[f.path].concat(cs)}
+if(cs.length>0){
+if(!sensFlags[f.path])sensFlags[f.path]=[];
+sensFlags[f.path]=sensFlags[f.path].concat(cs);
+}
+
 var hash=await sha256(text);
 f.sha256=hash;
+
 var out=text;
 if($("o4").checked)out=maskSensitive(out);
 out=compressBlank(out);
+
 var si=Math.max(4,Math.min(80,parseInt($("o8").value)||12));
 if($("o5").checked)out=injectStamps(out,f.path,ext(f.path),si);
 else out=stampComment(f.path,ext(f.path))+"\n"+out;
-f.output=out;f.outputLength=out.length;f.originalLength=text.length;
+
+f.output=out;
+f.outputLength=out.length;
+f.originalLength=text.length;
+
 processed.push(f);
+
+var pct=Math.round(((i+1)/totalWork)*85);
+showProgress(pct,"產生 "+(i+1)+"/"+totalWork+"...");
 }
+
 if(tok!==myTok)return;
+
 processed.sort(function(a,b){return a.path.localeCompare(b.path)});
+hideProgress();
+
 var totalChars=processed.reduce(function(s,f){return s+f.outputLength},0);
 var tech=detectTechStack(processed);
 var tree=buildTree(processed.map(function(f){return f.path}));
 var now=new Date().toISOString();
+
 var sourceStr=srcMeta.type==="local"?"本機":srcMeta.type==="zip"?srcMeta.name:(srcMeta.owner+"/"+srcMeta.repo+"@"+srcMeta.branch);
+
 var md=[];
 md.push("# 完整專案總覽");md.push("");
 md.push("> **RAG 閱讀指引**：找最近的 `[File: 路徑]` 或 `FILE START:` 定位。");
@@ -630,35 +860,91 @@ md.push("");md.push("## 專案："+tech.name);md.push("");
 md.push("- 技術棧："+tech.stack);
 if(tech.desc)md.push("- 說明："+tech.desc);
 md.push("- 時間："+now);md.push("- 來源："+sourceStr);
-md.push("- 包含："+processed.length+"｜排除："+excludedList.length+"｜字元："+fmtN(totalChars));
+md.push("- 包含："+processed.length+"｜排除："+excludedIndexByPath.size+"｜字元："+fmtN(totalChars));
 md.push("");md.push("### 目錄樹");md.push("");md.push("```");md.push(tree);md.push("```");md.push("");
+
 processed.forEach(function(f){
 var fence=fenceFor(f.output);
-md.push("<!-- FILE START: "+f.path+" -->");md.push("<document>");md.push("<source>"+f.path+"</source>");md.push("<sha256>"+f.sha256+"</sha256>");md.push("<document_content>");
+md.push("<!-- FILE START: "+f.path+" -->");
+md.push("<document>");
+md.push("<source>"+f.path+"</source>");
+md.push("<sha256>"+f.sha256+"</sha256>");
+md.push("<document_content>");
 md.push("## File: "+f.path);md.push("");
 md.push("- 原始："+f.originalLength+"｜輸出："+f.outputLength+"｜SHA-256：`"+f.sha256+"`");
 if(sensFlags[f.path]&&sensFlags[f.path].length>0)md.push("- ⚠️ "+sensFlags[f.path].join("、"));
-md.push("");md.push(fence+langForFence(ext(f.path)));md.push(f.output);md.push(fence);
-md.push("</document_content>");md.push("</document>");md.push("<!-- FILE END: "+f.path+" -->");md.push("");
+md.push("");
+md.push(fence+langForFence(ext(f.path)));
+md.push(f.output);
+md.push(fence);
+md.push("</document_content>");
+md.push("</document>");
+md.push("<!-- FILE END: "+f.path+" -->");md.push("");
 });
+
 var mainMd=md.join("\n");
-outputs={main:mainMd,index:buildIndex(processed,excludedList,now,totalChars),json:buildJSON(processed,excludedList,now,totalChars)};
+
+outputs={
+main:mainMd,
+index:buildIndex(processed,excludedList,now,totalChars),
+json:buildJSON(processed,excludedList,now,totalChars,excludedIndexByPath.size)
+};
+
 var outSize=new Blob([mainMd]).size;
-$("s0").textContent=srcFiles.length;$("s1").textContent=processed.length;$("s2").textContent=excludedList.length;
-$("s3").textContent=Object.keys(sensFlags).length;$("s4").textContent=fmtN(totalChars);$("s5").textContent=fmtSize(outSize);
+
+$("s0").textContent=srcFiles.length;
+$("s1").textContent=processed.length;
+$("s2").textContent=excludedIndexByPath.size;
+$("s3").textContent=Object.keys(sensFlags).length;
+$("s4").textContent=fmtN(totalChars);
+$("s5").textContent=fmtSize(outSize);
+
 $("d0").disabled=false;$("d1").disabled=false;$("d2").disabled=false;$("da").disabled=false;
+
 $("analysis-section").style.display="block";
 $("a1").textContent=processed.map(function(f){return f.path}).join("\n")||"無";
 $("a2").textContent=excludedList.join("\n")||"無";
 var sk=Object.keys(sensFlags);
 $("a3").textContent=sk.length>0?sk.join("\n"):"無";
+
+$("pb").disabled=false;
+
 st("✅ 完成。"+processed.length+" 檔，"+fmtN(totalChars)+" 字元。");
 };
-function buildIndex(p,e,now,tc){var l=["# 索引","","- 時間："+now,"- 包含："+p.length+"｜排除："+e.length,"","## 包含"];p.forEach(function(f){l.push("- "+f.path)});l.push("","## 排除");e.forEach(function(x){l.push("- "+x)});return l.join("\n")}
-function buildJSON(p,e,now,tc){return JSON.stringify({generatedAt:now,counts:{total:srcFiles.length,included:p.length,excluded:e.length,totalChars:tc},included:p.map(function(f){return{path:f.path,sha256:f.sha256}}),excluded:e},null,2)}
+
+function buildIndex(p,e,now,tc){
+var l=["# 索引","","- 時間："+now,"- 包含："+p.length+"｜排除："+e.length,"","## 包含"];
+p.forEach(function(f){l.push("- "+f.path)});
+l.push("","## 排除");
+e.forEach(function(x){l.push("- "+x)});
+return l.join("\n");
+}
+
+function buildJSON(p,e,now,tc,excludedUniqueCount){
+return JSON.stringify({
+generatedAt:now,
+counts:{
+total:srcFiles.length,
+included:p.length,
+excluded:excludedUniqueCount,
+totalChars:tc
+},
+included:p.map(function(f){return{path:f.path,sha256:f.sha256}}),
+excluded:e
+},null,2);
+}
 
 /* 下載 */
-function download(name,content,type){var blob=new Blob([content],{type:type||"text/plain;charset=utf-8"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},5000)}
+function download(name,content,type){
+var blob=new Blob([content],{type:type||"text/plain;charset=utf-8"});
+var url=URL.createObjectURL(blob);
+var a=document.createElement("a");
+a.href=url;a.download=name;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+setTimeout(function(){URL.revokeObjectURL(url)},5000);
+}
 window.dlMain=function(){if(outputs)download("project-overview.md",outputs.main)};
 window.dlIndex=function(){if(outputs)download("00-review-index.md",outputs.index)};
 window.dlJSON=function(){if(outputs)download("review-report.json",outputs.json,"application/json")};
@@ -667,32 +953,64 @@ window.dlAll=function(){if(!outputs)return;download("project-overview.md",output
 /* 表格 */
 function getSortedFiltered(){
 if(!srcFiles)return[];
-var filter=$("flt").value.trim().toLowerCase();var key=$("sort-key").value;var dir=$("sort-dir").value==="asc"?1:-1;
+var filter=$("flt").value.trim().toLowerCase();
+var key=$("sort-key").value;
+var dir=$("sort-dir").value==="asc"?1:-1;
+
 var list=srcFiles.filter(function(f){return !filter||f.path.toLowerCase().indexOf(filter)>=0});
-list.sort(function(a,b){switch(key){case "path":return a.path.localeCompare(b.path)*dir;case "size":return((a.size||0)-(b.size||0))*dir;case "ext":return ext(a.path).localeCompare(ext(b.path))*dir||a.path.localeCompare(b.path);case "depth":return(depth(a.path)-depth(b.path))*dir;default:return 0}});
+
+list.sort(function(a,b){
+switch(key){
+case "path":return a.path.localeCompare(b.path)*dir;
+case "size":return((a.size||0)-(b.size||0))*dir;
+case "ext":return ext(a.path).localeCompare(ext(b.path))*dir||a.path.localeCompare(b.path);
+case "depth":return(depth(a.path)-depth(b.path))*dir;
+default:return 0;
+}
+});
+
 return list;
 }
+
 window.renderFileTable=function(){
 var tbody=$("ft-body");
-if(!srcFiles||srcFiles.length===0){tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入</td></tr>';return}
-var list=getSortedFiltered();var html="";
-for(var i=0;i<list.length;i++){var f=list[i];
-var chk=checked.has(f.path)?" checked":"";var rc=checked.has(f.path)?" class='checked-row'":"";
-var warn="";if(isBinaryExt(f.path))warn+='<span class="binary-tag">BIN</span> ';if(f.failed)warn+='<span class="fail-tag">FAIL</span> ';if(sensFlags[f.path])warn+='<span class="sens-mark">⚠️</span>';
+if(!srcFiles||srcFiles.length===0){
+tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:#78909c">尚未載入</td></tr>';
+return;
+}
+var list=getSortedFiltered();
+var html="";
+
+for(var i=0;i<list.length;i++){
+var f=list[i];
+var chk=checked.has(f.path)?" checked":"";
+var rc=checked.has(f.path)?" class='checked-row'":"";
+var warn="";
+if(isBinaryExt(f.path))warn+='<span class="binary-tag">BIN</span> ';
+if(f.failed)warn+='<span class="fail-tag">FAIL</span> ';
+if(sensFlags[f.path])warn+='<span class="sens-mark">⚠️</span>';
+
 html+="<tr"+rc+'><td class="col-chk"><input type="checkbox" data-p="'+f.path+'"'+chk+'></td><td class="col-path">'+f.path+'</td><td class="col-size">'+fmtSize(f.size)+'</td><td class="col-ext">'+(ext(f.path)||"—")+'</td><td class="col-depth">'+depth(f.path)+'</td><td>'+warn+'</td></tr>';
 }
+
 tbody.innerHTML=html;
+
 $("chk-all").checked=list.length>0&&list.every(function(f){return checked.has(f.path)});
+
 var sk=Object.keys(sensFlags);
-if(sk.length>0){$("sw").style.display="block";$("sw").innerHTML="<strong>⚠️ "+sk.length+" 個敏感</strong>："+sk.slice(0,5).join("、")+(sk.length>5?"...":"")}
-else $("sw").style.display="none";
+if(sk.length>0){
+$("sw").style.display="block";
+$("sw").innerHTML="<strong>⚠️ "+sk.length+" 個敏感</strong>："+sk.slice(0,5).join("、")+(sk.length>5?"...":"");
+}else $("sw").style.display="none";
 };
+
 $("ft-body").addEventListener("change",function(e){
 if(e.target.type==="checkbox"&&e.target.dataset.p){
 if(e.target.checked)checked.add(e.target.dataset.p);else checked.delete(e.target.dataset.p);
 renderFileTable();
 }
 });
+
 window.sortBy=function(key){
 if($("sort-key").value===key)$("sort-dir").value=$("sort-dir").value==="asc"?"desc":"asc";
 else{$("sort-key").value=key;$("sort-dir").value="asc"}
@@ -702,12 +1020,18 @@ window.chkAll=function(ic){getSortedFiltered().forEach(function(f){if(ic)checked
 window.selAll=function(){chkAll(true)};
 window.selNone=function(){chkAll(false)};
 
-/* 預設規則快捷 */
+/* 預設規則快捷：加入後立即套用 */
 document.querySelectorAll(".preset-chip").forEach(function(chip){
 chip.addEventListener("click",function(){
 var rule=this.getAttribute("data-rule");
 var lines=$("rules").value.trim()?$("rules").value.trim().split("\n"):[];
-if(lines.indexOf(rule)<0){lines.push(rule);$("rules").value=lines.join("\n");saveRules();$("rule-status").textContent="已加入："+rule}
+if(lines.indexOf(rule)<0){
+lines.push(rule);
+$("rules").value=lines.join("\n");
+saveRules();
+$("rule-status").textContent="已加入："+rule;
+}
+applyRules(false);
 });
 });
 
@@ -724,23 +1048,24 @@ $("gk").addEventListener("change",function(){saveToken();});
 
 })();
 </script>
-<script>window.parent.postMessage({ action: "ready" }, "*"); 
- 
+
+<script>
+window.parent.postMessage({ action: "ready" }, "*");
 window.console = new Proxy(console, {
   get(target, prop) {
     if (['log', 'warn', 'error'].includes(prop)) {
       return new Proxy(target[prop], {
         apply(fn, thisArg, args) {
           fn.apply(thisArg, args);
-          window.parent.postMessage({ action: 'console', 
-            type: prop, 
+          window.parent.postMessage({ action: 'console',
+            type: prop,
             args: args.map((arg) => {
               try {
                 return JSON.stringify(arg).replace(/^["']|["']$/g, '');
               } catch (e) {
                 return arg;
               }
-            }) 
+            })
           }, '*');
         }
       });
@@ -748,5 +1073,7 @@ window.console = new Proxy(console, {
     return target[prop];
   }
 });
-</script></body>
+</script>
+
+</body>
 </html>
