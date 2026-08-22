@@ -1015,14 +1015,27 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。
 
-**人工驗收流程（v1.1.14 新增）**：CI 全綠後，另對正式網域 `?mock=true` 逐項實測（不碰正式資料，同 E2E 安全前提）。每次改版後至少跑一遍以下 checklist：
+**人工驗收流程（v1.1.14 新增）**：CI 全綠後，另對正式網域 `?mock=true` 逐項實測（不碰正式資料，同 E2E 安全前提）。每次改版後至少跑一遍以下 checklist。
 
-1. **首頁 tabs**：含「未結案／逾期未更新／詢價中／處理中／已完成／已作廢／全部」；點「逾期未更新」只列 open/in_progress 且 `last_activity_at` 距今 >7 天（排除 done/void）
-2. **統計頁月份切換（A4）**：月份下拉（近 12 個月）切換後，六張數字卡與「各類別金額」標題/內容**同步**更新（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增（A3 方案②）
-3. **詳情 ⋮ 選單**：含「編輯案件」（`can_edit` 由後端算，E1 方案B）
-4. **編輯頁**：有「照片」label＋file input＋縮圖預覽（E2）；廠商下拉含「— 清空指派 —」選項（E5）
-5. **留言框狀態選項依案件狀態過濾（F3）**：open 案件→「標記已發包／標記完成並結案」；in_progress 案件→「更新發包金額／標記完成並結案」；皆無退回選項
-6. **建單頁**：照片選擇器（file input＋preview）正常
+**驗收工具與方法（明確規格）**：
+- **工具**：用瀏覽器自動化工具（Minis 內建 `browser_use`，或等價 Playwright / 手動瀏覽器 DevTools）開啟 `https://repair-system-4re.pages.dev/?mock=true`。**禁止用此方式對正式資料寫入**（僅檢視，mock 模式本來就不碰 D1/R2）。
+- **方法**：以「讀取 DOM 狀態」為主——對目標元素下 `execute_js`（或 Playwright `locator`）取 `.textContent`／`.value`／元素數量／`.classList` 內含的 `active` 等，**與預期值比對**。不以肉眼描述截圖為準，改以**可斷言的文字/數值**判斷（避免誤判）。
+- **判斷準則**：每一項下方列「預期」與「實測」；兩者相符＝PASS，不符＝FAIL（需修復後重跑）。非等到自動載入完的項目，實測前可用 `await sleep(500ms)` 等非同步渲染。
+
+**checklist（工具：`execute_js` 取 DOM；預期如下）**：
+
+| # | 頁面 | 動作 | 預期（DOM 斷言） |
+|---|---|---|---|
+| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結案／逾期未更新／詢價中／處理中／已完成／已作廢／全部」 |
+| 1b | 首頁 `/` | 點「逾期未更新」tab，讀 `.ticket-card` 數 | 只列 open/in_progress 且 `last_activity_at` 距今 >7 天（mock 資料皆近期 → 應為 0 張 + `.ticket-list` 顯示「沒有符合條件的案件」）；done/void 絕不列入 |
+| 2 | 統計頁 `/stats` | 讀 `.month-row select` options | 近 12 個月（如 `2026-08`…`2025-09`） |
+| 2b | 統計頁 | 選另一月（`change` 事件）後讀 `.stat-card` 與 `.section-title` | 「本月新增」數與「各類別金額（YYYY-MM」標題**同步**變為該月（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增 |
+| 3 | 詳情 `/ticket/2` | 點 ⋮ → 讀 `.menu-item` | 含「編輯案件」（`can_edit` 由後端算，E1 方案B） |
+| 4 | 編輯 `/edit/2` | 讀 `.form label` 清單、`.form input[type=file]`、`.form .photo-preview` | label 含「照片」；有 file input＋preview；`.photo-thumb` 數 ≥0（既有照片） |
+| 4b | 編輯 `/edit/2` | 讀廠商 `.form select` options | 含「— 清空指派 —」（值 `_clear`，E5） |
+| 5 | 詳情 `/ticket/1`(open) | 開留言框讀狀態 select options | 僅「僅留言／標記已發包／標記完成並結案」，無退回 |
+| 5b | 詳情 `/ticket/2`(in_progress) | 開留言框讀狀態 select options | 僅「僅留言／更新發包金額／標記完成並結案」，無退回 |
+| 6 | 建單 `/new` | 讀 `.form input[type=file]`＋`.photo-preview` | 兩者存在（照片選擇器正常） |
 
 > 上述為人工/瀏覽器實測（非自動化），與 §8.7 的 CI 自動化互補；實測結果記錄於當次改版報告。
 
