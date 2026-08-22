@@ -131,6 +131,7 @@ repair-system/
 ├── docs/
 │   ├── SPEC.md                    # 最新規格（單一真相來源）
 │   ├── lib-spec.md / test-cases.md / page-api-map.md
+│   ├── index.html                 # 外部審查工具：完整專案總覽 Markdown 產生器（產出 project-overview.md 供外部審查，非修繕系統 runtime）
 │   └── archive/                   # 歷史變更需求報告（已施工）
 └── wrangler.toml                  # 見 §8
 ```
