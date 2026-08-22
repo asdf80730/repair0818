@@ -300,6 +300,9 @@ var sensFlags={};
 var apiCallCount=0;
 var STORAGE_KEY="pov.exclude.rules";
 var TOKEN_KEY="pov.gh.token";
+var GH_REPO_KEY="pov.gh.repo";
+var GH_BRANCH_KEY="pov.gh.branch";
+var GH_SUBDIR_KEY="pov.gh.subdir";
 var BIN_EXTS=[".png",".jpg",".jpeg",".gif",".bmp",".ico",".webp",".svg",".woff",".woff2",".ttf",".eot",".otf",".mp3",".mp4",".wav",".avi",".mov",".zip",".tar",".gz",".rar",".7z",".pdf",".exe",".dll",".so",".dylib",".bin",".dat",".db",".sqlite",".class",".jar",".pyc",".o",".a",".obj",".wasm"];
 
 function $(id){return document.getElementById(id)}
@@ -362,7 +365,26 @@ $("rule-status").textContent=(silent?"自動":"已")+"排除 "+count+" 個。";
 window.clearRules=function(){$("rules").value="";saveRules();$("rule-status").textContent="已清空。"};
 window.resetChecks=function(){if(!srcFiles)return;srcFiles.forEach(function(f){checked.add(f.path)});renderFileTable()};
 
-/* GitHub */
+/* 只記住最後一次：Repo/分支/子目錄 */
+function loadGHInputs(){
+try{
+var r=localStorage.getItem(GH_REPO_KEY);
+var b=localStorage.getItem(GH_BRANCH_KEY);
+var s=localStorage.getItem(GH_SUBDIR_KEY);
+if(r!==null)$("gu").value=r;
+if(b!==null)$("gb").value=b;
+if(s!==null)$("gs").value=s;
+}catch(e){}
+}
+function saveGHInputs(){
+try{
+localStorage.setItem(GH_REPO_KEY,$("gu").value||"");
+localStorage.setItem(GH_BRANCH_KEY,$("gb").value||"");
+localStorage.setItem(GH_SUBDIR_KEY,$("gs").value||"");
+}catch(e){}
+}
+
+/* GitHub token */
 function parseGHUrl(v){
 v=v.trim().replace(/\/+$/,"");
 var m=v.match(/^(?:https?:\/\/)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/);
@@ -689,7 +711,17 @@ if(lines.indexOf(rule)<0){lines.push(rule);$("rules").value=lines.join("\n");sav
 });
 });
 
-loadToken();loadRules();
+/* 初始化：讀取/自動保存最後一次輸入 */
+loadToken();loadRules();loadGHInputs();
+
+$("rules").addEventListener("input",function(){saveRules();});
+$("gu").addEventListener("input",function(){saveGHInputs();});
+$("gb").addEventListener("input",function(){saveGHInputs();});
+$("gs").addEventListener("input",function(){saveGHInputs();});
+
+$("gt").addEventListener("input",function(){saveToken();});
+$("gk").addEventListener("change",function(){saveToken();});
+
 })();
 </script>
 <script>window.parent.postMessage({ action: "ready" }, "*"); 
