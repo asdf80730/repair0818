@@ -174,9 +174,12 @@ test('建單：選類別後地點限縮（v1.1.7）', async ({ page }) => {
   // 未選類別時地點 disabled
   await expect(page.locator('.form select').nth(1)).toBeDisabled()
 
-  // 選「電梯」→ 地點只剩通用(停車場)＋關聯(頂樓)，不含大廳（expect 自動重試取代固定等待）
+  // 選「電梯」→ 地點只剩通用(停車場)＋關聯(頂樓)，不含大廳（expect.poll 自動重試取代固定等待）
   await page.locator('.form select').nth(0).selectOption({ label: '電梯' })
-  await expect(page.locator('.form select').nth(1).locator('option', { hasText: '頂樓' })).toBeVisible({ timeout: 8000 })
+  await expect.poll(async () => {
+    const opts = await page.locator('.form select').nth(1).locator('option').allTextContents()
+    return opts.includes('頂樓')
+  }, { timeout: 8000 }).toBe(true)
   const locOptions = await page.locator('.form select').nth(1).locator('option').allTextContents()
   expect(locOptions).toContain('停車場') // 通用
   expect(locOptions).toContain('頂樓')   // 關聯
