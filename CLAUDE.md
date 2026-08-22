@@ -12,7 +12,12 @@
 - 測試：@cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock）。
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
-  測試設定見 vitest.config.ts（main=Pages Functions build + ASSETS binding + D1 migrations）。
+  測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
+- **CI 工作流（本專案硬性）**：`.github/workflows/test.yml` 在 **push 後由 GitHub Actions 自動執行**
+  `npm ci → typecheck → npm test（單元）→ E2E`。因此**本機不需、也不宜自行跑測試**——程式碼改好後
+  commit + push 到 GitHub，等 CI 綠燈即可（見 SPEC §8.7）。沙箱內本機可做的驗證只有
+  `npm run typecheck`（tsc）與 `node --check <file>`（JS 語法）；**單元測試/E2E 一律靠 push 後的 CI**。
+  部署由 Cloudflare 整合自動處理（push main 走 production，preview 已關閉，見 §0.3）。
 
 ## 硬性規則
 1. SQL 一律 env.DB.prepare(...).bind(...)，禁止字串拼接；
