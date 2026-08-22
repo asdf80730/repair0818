@@ -11,7 +11,6 @@
 html,body{height:100%;overflow:hidden}
 body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5}
 
-/* ===== 頂部固定欄 ===== */
 .top-bar{position:fixed;top:0;left:0;right:0;z-index:200;background:#16213e;border-bottom:1px solid #333;padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .top-bar .title{font-size:1rem;font-weight:bold;color:#90caf9;margin-right:8px;white-space:nowrap}
 .top-bar .title small{font-size:.7rem;color:#78909c;font-weight:normal}
@@ -29,7 +28,6 @@ body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-s
 .btn-sm{padding:3px 8px;font-size:.72rem}
 .top-status{margin-left:auto;font-size:.75rem;color:#90a4ae;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
 
-/* ===== Toast ===== */
 #toasts{position:fixed;top:52px;right:16px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px}
 .toast{padding:10px 14px;border-radius:6px;font-size:.78rem;box-shadow:0 4px 14px rgba(0,0,0,.4);display:flex;gap:8px;align-items:flex-start;animation:slide-in .25s ease;word-break:break-word}
 .toast.info{background:#0d3b66;border:1px solid #2a6cb0;color:#bfe3ff}
@@ -40,10 +38,8 @@ body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-s
 .toast .t-close:hover{opacity:1}
 @keyframes slide-in{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
 
-/* ===== 主體佈局 ===== */
 .main{position:fixed;top:48px;bottom:36px;left:0;right:0;display:flex;flex-direction:column;overflow:hidden}
 
-/* ===== 折疊面板 ===== */
 .panel{background:#1e2a3a;border-bottom:1px solid #333;overflow:hidden;transition:max-height .3s ease}
 .panel.collapsed{max-height:0!important;border-bottom:none}
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;cursor:pointer;user-select:none;background:#263238}
@@ -54,14 +50,12 @@ body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-s
 .panel-body{padding:12px 16px;max-height:360px;overflow-y:auto}
 .panel-body.grow{max-height:420px}
 
-/* 分頁 */
 .tabs{display:flex;gap:0;margin-bottom:12px}
 .tab{padding:5px 14px;font-size:.8rem;cursor:pointer;border:1px solid #546e7a;background:#263238;color:#90a4ae;border-radius:4px 4px 0 0;margin-right:-1px}
 .tab.active{background:#1565c0;color:#fff;border-color:#1565c0}
 .tab-content{display:none}
 .tab-content.active{display:block}
 
-/* 表單 */
 .field-row{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0}
 .field-row>div{flex:1;min-width:180px}
 .field-row label{font-size:.75rem;color:#90a4ae;display:block;margin-bottom:2px}
@@ -73,7 +67,6 @@ label.chk{display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer
 a{color:#64b5f6}
 .gh-saved{font-size:.72rem;color:#a5d6a7;background:#1a2a1a;border:1px solid #388e3c;border-radius:4px;padding:5px 8px;margin-top:6px;word-break:break-all;display:none}
 
-/* 排除規則 */
 .preset-row{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
 .preset-chip{background:#37474f;border:1px solid #546e7a;border-radius:10px;padding:1px 8px;font-size:.7rem;cursor:pointer;color:#b0bec5}
 .preset-chip:hover{background:#455a64;color:#fff}
@@ -83,11 +76,9 @@ a{color:#64b5f6}
 .rule-status{font-size:.72rem;color:#a5d6a7;margin-top:4px}
 .cfg-sep{border:none;border-top:1px solid #37474f;margin:10px 0}
 
-/* ZIP 上傳區 */
 .zip-zone{border:2px dashed #546e7a;border-radius:6px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s;margin:8px 0}
 .zip-zone:hover,.zip-zone.dragover{border-color:#4caf50;background:#1a2a1a}
 
-/* ===== 檔案清單區 ===== */
 .file-area{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:0 16px}
 .file-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid #333}
 .file-toolbar select{background:#263238;color:#e0e0e0;border:1px solid #546e7a;border-radius:3px;padding:3px 6px;font-size:.75rem}
@@ -111,24 +102,20 @@ a{color:#64b5f6}
 .fail-tag{background:#e65100;color:#fff;font-size:.6rem;padding:1px 3px;border-radius:2px}
 .sens-mark{color:#ffb300;font-size:.7rem}
 
-/* ===== 底部固定欄 ===== */
 .bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#16213e;border-top:1px solid #333;padding:6px 16px;display:flex;align-items:center;gap:16px;font-size:.75rem}
 .bottom-bar .stat{color:#90a4ae}
 .bottom-bar .stat b{color:#90caf9}
 .bottom-bar .warn{color:#ffb300}
 
-/* 進度條 */
 .progress-wrap{position:fixed;top:48px;left:0;right:0;z-index:150;background:#263238;padding:4px 16px;display:none}
 .progress-wrap .pbar{height:4px;background:#37474f;border-radius:2px;overflow:hidden}
 .progress-wrap .pfill{height:100%;background:#4caf50;transition:width .2s}
 .progress-wrap .ptxt{font-size:.7rem;color:#90a4ae;margin-top:2px}
 
-/* 警告 */
 .rate-warn{background:#1a237e;border:1px solid #5c6bc0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#c5cae9;display:none}
 .sens-warn{background:#4a3000;border:1px solid #ffb300;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:.78rem;color:#ffe082;display:none}
 .sha-warn{background:#4a1010;border:1px solid #ef5350;border-radius:4px;padding:6px 10px;margin:6px 0;font-size:.72rem;color:#ffcdd2;display:none}
 
-/* 輸出預覽 */
 .output-section{padding:8px 0}
 .output-section h3{font-size:.82rem;color:#a5d6a7;margin-bottom:6px}
 .analysis{background:#263238;border-radius:4px;padding:8px;margin:4px 0;font-size:.75rem}
@@ -137,9 +124,8 @@ a{color:#64b5f6}
 </head>
 <body>
 
-<!-- ===== 頂部固定欄 ===== -->
 <div class="top-bar">
-<span class="title">專案總覽產生器 <small>v15</small></span>
+<span class="title">專案總覽產生器 <small>v16</small></span>
 <button class="btn" onclick="togglePanel('source')">📂 載入來源</button>
 <button class="btn" onclick="togglePanel('config')">⚙️ 設定</button>
 <button class="btn btn-red" id="rst" disabled onclick="resetAll()" title="清除所有已載入資料">🗑 清除</button>
@@ -149,19 +135,15 @@ a{color:#64b5f6}
 <span class="top-status" id="st">就緒</span>
 </div>
 
-<!-- ===== Toast ===== -->
 <div id="toasts"></div>
 
-<!-- ===== 進度條 ===== -->
 <div class="progress-wrap" id="pw">
 <div class="pbar"><div class="pfill" id="pf"></div></div>
 <div class="ptxt" id="pt"></div>
 </div>
 
-<!-- ===== 主體 ===== -->
 <div class="main">
 
-<!-- 面板 1：載入來源（可獨立折疊） -->
 <div class="panel" id="panel-source" style="max-height:420px">
 <div class="panel-header open" onclick="togglePanel('source')">
 <span class="ph-title">📂 載入來源</span>
@@ -169,20 +151,17 @@ a{color:#64b5f6}
 </div>
 <div class="panel-body grow">
 
-<!-- 來源分頁 -->
 <div class="tabs">
 <div class="tab active" data-tab="t-local">本機資料夾</div>
 <div class="tab" data-tab="t-github">GitHub</div>
 <div class="tab" data-tab="t-zip">ZIP 上傳</div>
 </div>
 
-<!-- 本機 -->
 <div class="tab-content active" id="t-local">
 <button class="btn" onclick="$('fi').click()">選取專案資料夾</button>
 <span class="small" id="local-info"></span>
 </div>
 
-<!-- GitHub -->
 <div class="tab-content" id="t-github">
 <div class="field-row">
 <div><label>Repo（owner/repo 或網址）</label><input type="text" id="gu" placeholder="owner/repo"></div>
@@ -202,7 +181,6 @@ a{color:#64b5f6}
 <div class="rate-warn" id="rw"></div>
 </div>
 
-<!-- ZIP -->
 <div class="tab-content" id="t-zip">
 <div class="zip-zone" id="zip-zone">
 <div>📦 拖入 ZIP 檔或點擊選擇</div>
@@ -215,7 +193,6 @@ a{color:#64b5f6}
 </div>
 </div>
 
-<!-- 面板 2：排除規則 + 輸出設定（可獨立折疊，預設展開） -->
 <div class="panel" id="panel-config" style="max-height:380px">
 <div class="panel-header open" onclick="togglePanel('config')">
 <span class="ph-title">🚫 排除規則 &amp; ⚙️ 輸出設定</span>
@@ -223,7 +200,6 @@ a{color:#64b5f6}
 </div>
 <div class="panel-body">
 
-<!-- 排除規則 -->
 <div class="preset-row">
 <span class="preset-chip" data-rule="node_modules/">node_modules/</span>
 <span class="preset-chip" data-rule=".git/">.git/</span>
@@ -251,7 +227,6 @@ a{color:#64b5f6}
 
 <hr class="cfg-sep">
 
-<!-- 輸出設定 -->
 <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
 <div>
 <label class="chk"><input type="checkbox" id="o4" checked> 遮罩疑似敏感值</label>
@@ -259,14 +234,13 @@ a{color:#64b5f6}
 </div>
 <div>
 <label class="chk" style="margin-top:0">間隔行數：<input type="number" id="o8" value="12" min="10" max="200"></label>
-<div class="small">戳記注入上限 100 個／檔，避免輸出過度膨脹</div>
+<div class="small">戳記注入上限 100 個／檔；每 N 個非空行插入路徑＋原始行號標註</div>
 </div>
 </div>
 
 </div>
 </div>
 
-<!-- 檔案清單區 -->
 <div class="file-area">
 <div class="file-toolbar">
 <select id="sort-key" onchange="renderFileTable()">
@@ -305,7 +279,6 @@ a{color:#64b5f6}
 </table>
 </div>
 
-<!-- 分析區（折疊） -->
 <details class="output-section" id="analysis-section" style="display:none">
 <summary style="cursor:pointer;color:#a5d6a7;font-size:.82rem">📊 分析結果</summary>
 <div class="analysis"><h3>包含</h3><pre id="a1">—</pre></div>
@@ -316,7 +289,6 @@ a{color:#64b5f6}
 
 </div>
 
-<!-- ===== 底部固定欄 ===== -->
 <div class="bottom-bar">
 <span class="stat">總計 <b id="s0">0</b></span>
 <span class="stat">包含 <b id="s1">0</b></span>
@@ -356,8 +328,8 @@ function isBinaryExt(p){return BIN_EXTS.indexOf(ext(p))>=0}
 function showProgress(pct,txt){$("pw").style.display="block";$("pf").style.width=pct+"%";$("pt").textContent=txt}
 function hideProgress(){$("pw").style.display="none"}
 function hasCrypto(){return !!(window.crypto&&crypto.subtle)}
+function pad4(n){return ("000"+n).slice(-4)}
 
-/* Toast */
 function toast(msg,type){
 type=type||"info";
 var box=document.createElement("div");box.className="toast "+type;
@@ -368,7 +340,6 @@ $("toasts").appendChild(box);
 setTimeout(function(){if(box.parentNode)box.remove()},6000);
 }
 
-/* 分離式面板折疊 */
 window.togglePanel=function(which){
 var panel=$("panel-"+which);
 var header=panel.querySelector(".panel-header");
@@ -382,7 +353,6 @@ header.classList.remove("open");
 }
 };
 
-/* 清除所有資料 */
 window.resetAll=function(){
 if(!srcFiles||srcFiles.length===0){toast("目前沒有已載入資料","info");return}
 if(!confirm("確定要清除所有已載入的檔案與產出結果嗎？"))return;
@@ -396,7 +366,6 @@ $("local-info").textContent="";$("sw").style.display="none";$("shw").style.displ
 toast("已清除所有資料","ok");
 };
 
-/* 複製輸出 */
 window.copyMain=async function(){
 if(!outputs){toast("請先產生輸出","warn");return}
 try{
@@ -405,11 +374,9 @@ toast("已複製完整 MD 到剪貼簿（"+outputs.main.length+" 字元）","ok"
 }catch(e){toast("複製失敗："+e.message,"err")}
 };
 
-/* 下載 MD */
 function download(name,content,type){var blob=new Blob([content],{type:type||"text/plain;charset=utf-8"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},5000)}
 window.dlMain=function(){if(outputs){download("project-overview.md",outputs.main);toast("已下載 MD","ok")}};
 
-/* 分頁切換 */
 document.querySelectorAll(".tab").forEach(function(tab){
 tab.addEventListener("click",function(){
 document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});
@@ -419,7 +386,6 @@ $(tab.dataset.tab).classList.add("active");
 });
 });
 
-/* 排除規則 */
 function loadRules(){try{var s=localStorage.getItem(STORAGE_KEY);if(s)$("rules").value=s}catch(e){}}
 function saveRules(){try{localStorage.setItem(STORAGE_KEY,$("rules").value)}catch(e){}}
 function getRulePatterns(){return $("rules").value.split("\n").map(function(l){return l.trim()}).filter(function(l){return l.length>0&&!l.startsWith("#")})}
@@ -444,7 +410,6 @@ $("rule-status").textContent=(silent?"自動":"已")+"排除 "+count+" 個。";
 window.clearRules=function(){$("rules").value="";saveRules();$("rule-status").textContent="已清空。"};
 window.resetChecks=function(){if(!srcFiles)return;srcFiles.forEach(function(f){checked.add(f.path)});renderFileTable();$("rule-status").textContent="已全選："+checked.size+" 個";};
 
-/* 排除所有敏感項目 */
 window.excludeSens=function(){
 if(!srcFiles)return;
 var keys=Object.keys(sensFlags);
@@ -454,7 +419,6 @@ renderFileTable();
 toast("已將 "+keys.length+" 個敏感項目取消勾選","warn");
 };
 
-/* GitHub 設定記憶 / 回填 */
 function loadGHInputs(){
 try{
 var r=localStorage.getItem(GH_REPO_KEY);
@@ -482,7 +446,6 @@ el.innerHTML=text;el.style.display="block";
 }else{el.style.display="none"}
 }
 
-/* GitHub 一鍵下載 ZIP（免 API，直接走 archive 連結，供 ZIP 上傳使用） */
 window.dlGHZip=function(){
 var parsed=parseGHUrl($("gu").value);
 if(!parsed){toast("請先填寫有效的 Repo（owner/repo）","warn");return}
@@ -493,7 +456,6 @@ toast("開始下載 "+branch+" 的 ZIP…（下方會另開分頁）","warn");
 window.open(url,"_blank");
 };
 
-/* GitHub Token */
 function parseGHUrl(v){
 v=v.trim().replace(/\/+$/,"");
 var m=v.match(/^(?:https?:\/\/)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?$/);
@@ -511,7 +473,6 @@ window.saveToken=function(){try{var t=$("gt").value.trim();if($("gk").checked&&t
 function loadToken(){try{var t=localStorage.getItem(TOKEN_KEY);if(t){$("gt").value=t;$("gk").checked=true}}catch(e){}}
 window.clearToken=function(){try{localStorage.removeItem(TOKEN_KEY)}catch(e){}$("gt").value="";$("gk").checked=false};
 
-/* 敏感偵測 */
 function detectSensName(path){
 var b=base(path).toLowerCase();var r=[];
 if(/\.env(\.|$)/.test(b)||b===".env")r.push(".env");
@@ -542,11 +503,20 @@ if([".md",".mdx",".html",".htm",".xml",".svg",".vue",".svelte"].indexOf(extn)>=0
 return "// [File: "+path+"]";
 }
 function injectStamps(text,path,extn,interval){
-var lines=text.split("\n");var stamp=stampComment(path,extn);var out=[stamp];var since=0;var stamps=1;
+var lines=text.split("\n");
+var stampBase=stampComment(path,extn);
+var out=[];
+var since=0;
+var stamps=0;
+out.push(stampBase+"  |  標註 1/∞ @ 原始行 0001");
+stamps=1;
 for(var i=0;i<lines.length;i++){
 out.push(lines[i]);
 if(lines[i].trim()!=="")since++;
-if(since>=interval&&lines[i].trim()!==""&&lines[i].indexOf("[File:")<0&&stamps<MAX_STAMPS){out.push(stamp);since=0;stamps++}
+if(since>=interval && lines[i].trim()!=="" && stamps<MAX_STAMPS){
+out.push(stampBase+"  |  標註 "+(stamps+1)+" @ 原始行 "+pad4(i+1));
+since=0;stamps++;
+}
 }
 return out.join("\n");
 }
@@ -579,7 +549,6 @@ return{name:pkg.name||"unknown",desc:pkg.description||"",stack:stack.length?stac
 return{name:"unknown",desc:"",stack:"未知"};
 }
 
-/* ZIP 解壓 */
 async function processZipBlob(zipBlob,subdir){
 var myTok=tok;
 st("解壓中...");
@@ -621,7 +590,6 @@ st("✅ "+srcFiles.length+" 個檔案。");
 toast("載入完成："+srcFiles.length+" 個檔案","ok");
 }
 
-/* 本機 */
 $("fi").addEventListener("change",function(e){
 if(e.target.files.length===0)return;
 var myTok=++tok;
@@ -639,7 +607,6 @@ st("已載入 "+srcFiles.length+" 個。");
 toast("已載入 "+srcFiles.length+" 個檔案","ok");
 });
 
-/* GitHub */
 window.processGitHub=async function(){
 var myTok=++tok;saveToken();saveGHInputs();updateGHSaved();
 $("rw").style.display="none";
@@ -685,7 +652,6 @@ await processZipBlob(zipBlob,subdir);
 }catch(e){if(tok!==myTok)return;hideProgress();st("錯誤："+e.message);toast("出現錯誤："+e.message,"err")}
 };
 
-/* ZIP 上傳 */
 $("zip-zone").addEventListener("click",function(){$("zip-input").click()});
 $("zip-zone").addEventListener("dragover",function(e){e.preventDefault();this.classList.add("dragover")});
 $("zip-zone").addEventListener("dragleave",function(){this.classList.remove("dragover")});
@@ -703,7 +669,6 @@ var subdir=$("gs").value.trim();if(subdir&&subdir.endsWith("/"))subdir=subdir.sl
 processZipBlob(file,subdir);
 }
 
-/* 產生輸出 */
 window.generate=async function(){
 if(generating){return}
 if(!srcFiles||srcFiles.length===0||checked.size===0){toast("沒有可輸出的檔案（請先載入來源並勾選項目）","warn");return}
@@ -753,14 +718,24 @@ var tech=detectTechStack(processed);
 var tree=buildTree(processed.map(function(f){return f.path}));
 var now=new Date().toISOString();
 var sourceStr=srcMeta.type==="local"?"本機":srcMeta.type==="zip"?srcMeta.name:(srcMeta.owner+"/"+srcMeta.repo+"@"+srcMeta.branch);
+var intervalConfig=Math.max(10,Math.min(200,parseInt($("o8").value)||12));
 var md=[];
 md.push("# 完整專案總覽");md.push("");
-md.push("> **RAG 閱讀指引**：找最近的 `[File: 路徑]` 或 `FILE START:` 定位。");
+md.push("> **RAG 閱讀指引**：找最近的 `[File: 路徑]` 或 `FILE START:`（若開啟路徑戳記）定位。");
 md.push("");md.push("## 專案："+tech.name);md.push("");
 md.push("- 技術棧："+tech.stack);
 if(tech.desc)md.push("- 說明："+tech.desc);
 md.push("- 時間："+now);md.push("- 來源："+sourceStr);
 md.push("- 包含："+processed.length+"｜排除："+excludedList.length+"｜字元："+fmtN(totalChars));
+md.push("");md.push("### 📌 路徑標註規則");md.push("");
+md.push("> 每個檔案的 `document_content` 內，會以註解形式插入下方標註：");
+md.push(">");md.push("> ```");
+md.push("> "+stampComment("src/example.js",".js")+"  |  標註 2/N @ 原始行 0012");
+md.push("> ```");
+md.push("> - `標註 2/N`：該檔案第 2 個標註（N 為此檔標註總數）。");
+md.push("> - `原始行 0012`：此標註對應**原始檔案**（尚未插入任何標註前）的該行。行號不因標註插入而偏移，可直接對照原始碼。");
+md.push("> - 每約 **"+intervalConfig+"** 個非空行插入一個標註（可於工具「輸出設定」調整）。");
+md.push("> - 標註本身為新增行，會使輸出行數略大於原始檔。");
 md.push("");md.push("### 目錄樹");md.push("");md.push("```");md.push(tree);md.push("```");md.push("");
 processed.forEach(function(f){
 var fence=fenceFor(f.output);
@@ -791,7 +766,6 @@ st("✅ 完成。");
 toast("完成："+processed.length+" 檔，"+fmtN(totalChars)+" 字元","ok");
 };
 
-/* 表格 */
 function getSortedFiltered(){
 if(!srcFiles)return[];
 var filter=$("flt").value.trim().toLowerCase();var key=$("sort-key").value;var dir=$("sort-dir").value==="asc"?1:-1;
@@ -840,7 +814,6 @@ window.chkAll=function(ic){getSortedFiltered().forEach(function(f){if(ic)checked
 window.selAll=function(){if(!srcFiles)return;srcFiles.forEach(function(f){checked.add(f.path)});renderFileTable();toast("已全選 "+checked.size+" 個","ok")};
 window.selNone=function(){if(!srcFiles)return;checked.clear();renderFileTable();toast("已全取消","info")};
 
-/* 預設規則快捷 */
 document.querySelectorAll(".preset-chip").forEach(function(chip){
 chip.addEventListener("click",function(){
 var rule=this.getAttribute("data-rule");
@@ -849,12 +822,10 @@ if(lines.indexOf(rule)<0){lines.push(rule);$("rules").value=lines.join("\n");sav
 });
 });
 
-/* 產生中可點狀態列取消 */
 $("st").addEventListener("click",function(){
 if(generating){cancelFlag=true;st("正在取消...");}
 });
 
-/* 初始化 */
 loadToken();loadRules();loadGHInputs();
 
 $("rules").addEventListener("input",function(){saveRules();});
