@@ -19,7 +19,8 @@
 | | | `/api/options/catalog`(ensureCatalog **force**) | 短 TTL 30s（v1.1.8） |
 | | | `/api/vendors` | 指派廠商下拉 |
 | | | `/api/photos`(上傳) | 附加照片時 |
-| **統計** | `#/stats` | `/api/stats/summary` | 主查詢 |
+| **統計** | `#/stats` | `/api/stats/summary?month=` | 主查詢（v1.1.14 支援月份切換） |
+| | | `/api/stats/amount-by-category?month=` | 各類別金額（v1.1.12；v1.1.14 與 summary 同步 Promise.all） |
 | | | `/api/exports/sign` | 匯出 CSV 時 |
 | **成員** | `#/users` | `/api/users` | 列表 |
 | | | `/api/users/:id`(PATCH) | 改權限/停用時 |
