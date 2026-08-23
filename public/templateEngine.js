@@ -92,9 +92,8 @@
         break
       }
       const arrayName = text.slice(eachNameStart, eachNameEnd).trim()
-      const closeTag = '{{/' + arrayName + '}}'
       const blockStart = eachNameEnd + 2
-      const blockEnd = findMatchingEnd(text, blockStart, arrayName)
+      const blockEnd = findMatchingEnd(text, blockStart)
       if (blockEnd < 0) {
         // 找不到對應 close，原樣輸出
         out.push(text.slice(eachOpen))
@@ -109,32 +108,28 @@
         }
       }
       // 空陣列 → 整段不輸出
-      i = blockEnd + closeTag.length
+      i = blockEnd + '{{/each}}'.length
     }
     return out.join('')
   }
 
-  // 找對應的 {{/X}}，處理巢狀
-  function findMatchingEnd(text, from, name) {
+  // 找對應的 {{/each}}，處理巢狀（每層都叫 each，巢狀時靠 depth++）
+  function findMatchingEnd(text, from) {
     let depth = 1
     let i = from
     while (i < text.length) {
       const openIdx = text.indexOf('{{#each ', i)
-      const closeIdx = text.indexOf('{{/' + name + '}}', i)
+      const closeIdx = text.indexOf('{{/each}}', i)
       if (closeIdx < 0) return -1
       if (openIdx >= 0 && openIdx < closeIdx) {
-        // 內層是 other name 的 each？只有同 name 才增加 depth
-        const innerNameEnd = text.indexOf('}}', openIdx + '{{#each '.length)
-        if (innerNameEnd >= 0 && innerNameEnd > openIdx) {
-          const innerName = text.slice(openIdx + '{{#each '.length, innerNameEnd).trim()
-          if (innerName === name) depth++
-        }
-        i = (innerNameEnd >= 0 ? innerNameEnd : openIdx) + 2
+        depth++
+        const innerEnd = text.indexOf('}}', openIdx + '{{#each '.length)
+        i = (innerEnd >= 0 ? innerEnd : openIdx) + 2
         continue
       }
       depth--
       if (depth === 0) return closeIdx
-      i = closeIdx + ('{{/' + name + '}}').length
+      i = closeIdx + '{{/each}}'.length
     }
     return -1
   }

@@ -65,25 +65,23 @@ function lookup(key: string, ctx: any, eachStack: EachFrame[]): any {
   return lookupRaw(key, ctx, eachStack)
 }
 
-function findMatchingEnd(text: string, from: number, name: string): number {
+function findMatchingEnd(text: string, from: number): number {
   let depth = 1
   let i = from
   while (i < text.length) {
     const openIdx = text.indexOf('{{#each ', i)
-    const closeIdx = text.indexOf('{{/' + name + '}}', i)
+    const closeIdx = text.indexOf('{{/each}}', i)
     if (closeIdx < 0) return -1
     if (openIdx >= 0 && openIdx < closeIdx) {
-      const innerNameEnd = text.indexOf('}}', openIdx + '{{#each '.length)
-      if (innerNameEnd >= 0) {
-        const innerName = text.slice(openIdx + '{{#each '.length, innerNameEnd).trim()
-        if (innerName === name) depth++
-      }
-      i = (innerNameEnd >= 0 ? innerNameEnd : openIdx) + 2
+      // 內層又是 each → depth++
+      depth++
+      const innerEnd = text.indexOf('}}', openIdx + '{{#each '.length)
+      i = (innerEnd >= 0 ? innerEnd : openIdx) + 2
       continue
     }
     depth--
     if (depth === 0) return closeIdx
-    i = closeIdx + ('{{/' + name + '}}').length
+    i = closeIdx + '{{/each}}'.length
   }
   return -1
 }
@@ -121,9 +119,8 @@ function renderSegment(text: string, ctx: any, eachStack: EachFrame[]): string {
       break
     }
     const arrayName = text.slice(eachNameStart, eachNameEnd).trim()
-    const closeTag = '{{/' + arrayName + '}}'
     const blockStart = eachNameEnd + 2
-    const blockEnd = findMatchingEnd(text, blockStart, arrayName)
+    const blockEnd = findMatchingEnd(text, blockStart)
     if (blockEnd < 0) {
       out.push(text.slice(eachOpen))
       break
@@ -136,7 +133,7 @@ function renderSegment(text: string, ctx: any, eachStack: EachFrame[]): string {
         out.push(renderSegment(block, ctx, newStack))
       }
     }
-    i = blockEnd + closeTag.length
+    i = blockEnd + '{{/each}}'.length
   }
   return out.join('')
 }
