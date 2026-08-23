@@ -783,6 +783,7 @@ GROUP BY category_label ORDER BY total_amount DESC
   ```
 - **total_count = 0 時**：回 `template.body` 為 active 的 `empty` 模板 body（不是 report 模板）
 - **既有 tickets 條件**：`last_activity_at` 在區間內**且** `created_at < startIso`（非當日新建）
+- **業主決策（2026-08-23）**：當日新建 + 當日又有 update 的案件，**只出現在 `new_tickets`，不在 `existing_tickets` 重複**。**新建披露不帶當日 update**（以「新建詳細披露」為主）。語意上承認：報告後續若該案再有 update，要到**下一輪 daily-report 才會進既有清單**（因為 last_activity_at 仍在當日，但 id 已被當日 daily-report 排除）。
 - **updates_today 上限**：每張既有 tickets 最多 3 筆（依 `created_at` 正序，slice(0,3)）
 
 ### 4.8 CSV 匯出（D3）
@@ -858,6 +859,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - `{{#each array}}...{{/each}}` 迴圈；支援巢狀（如 existing_tickets[].updates_today[]）
 - `{{序}}` 為迴圈計數器（1-based）
 - 渲染為**純函式** `templateEngine.render(body, ctx)`（src/lib/templateEngine.ts + public/templateEngine.js）
+- **變數解析順序**（F8 v1.1.15）：巢狀 each 內變數查找 = 當前 item → 外層 each item（遞迴向上）→ ctx 頂層。內層有同名變數時遮蔽外層。
 
 ---
 

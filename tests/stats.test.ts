@@ -554,10 +554,19 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     const ex = body.data.existing_tickets.find((t: { id: number }) => t.id === tid)
     expect(ex).toBeTruthy()
     expect(ex.updates_today).toHaveLength(3)
-    // F12-1：時間正序 → t3、t4、t5（最新 3 筆，由舊到新）
+    // F12-1 硬斷言：時間正序 → t3、t4、t5（最新 3 筆，由舊到新）
     expect(ex.updates_today[0].note).toBe('update 3 (t3)')
     expect(ex.updates_today[1].note).toBe('update 4 (t4)')
     expect(ex.updates_today[2].note).toBe('update 5 (t5)')
+    // 加固：明確驗證時間序列是 ASC（[0].time < [2].time）
+    expect(ex.updates_today[0].time < ex.updates_today[2].time).toBe(true)
+    // 加固：被切掉的兩筆是 t1 和 t2（不是 t4/t5）—— 確保是「保留最新 3 筆」
+    const keptNotes = ex.updates_today.map((u: { note: string }) => u.note)
+    expect(keptNotes).not.toContain('update 1 (t1)')
+    expect(keptNotes).not.toContain('update 2 (t2)')
+    expect(keptNotes).toContain('update 3 (t3)')
+    expect(keptNotes).toContain('update 4 (t4)')
+    expect(keptNotes).toContain('update 5 (t5)')
   })
 
   it('當日無任何案件 → new_count + existing_count = 0、total_count = 0', async () => {
