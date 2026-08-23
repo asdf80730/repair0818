@@ -27,16 +27,25 @@ describe('v1.1.15 time helpers', () => {
     expect(r.endMs - r.startMs).toBe(24 * 3600 * 1000)  // 半開區間 = 24h
   })
 
-  it('taipeiDayRangeUtc 半開區間 = 該日 00:00:00.000 UTC ~ 明日 00:00:00.000 UTC', () => {
+  it('taipeiDayRangeUtc 半開區間 = 該日台灣 00:00 的 UTC 對應 ~ 明日台灣 00:00 的 UTC 對應', () => {
+    // 台灣 00:00 = UTC 前一日 16:00
     const r = taipeiDayRangeUtc('2026-08-23')
-    expect(new Date(r.startMs).toISOString()).toBe('2026-08-23T00:00:00.000Z')
-    expect(new Date(r.endMs).toISOString()).toBe('2026-08-24T00:00:00.000Z')
+    expect(new Date(r.startMs).toISOString()).toBe('2026-08-22T16:00:00.000Z')
+    expect(new Date(r.endMs).toISOString()).toBe('2026-08-23T16:00:00.000Z')
   })
 
   it('F11-2 F11-7：date 字串格式錯或空 → startMs=0（caller 應回 400 INVALID_DATE）', () => {
     expect(taipeiDayRangeUtc('2026-13-99').startMs).toBe(0)
     expect(taipeiDayRangeUtc('').startMs).toBe(0)
     expect(taipeiDayRangeUtc('not-a-date').startMs).toBe(0)
+  })
+
+  it('F2 統計語意：台灣當天的 UTC 邊界（date=2026-08-23 → startMs=該日台灣 00:00 的 UTC = 前日 16:00）', () => {
+    // 業主意圖：「保全在台灣 8/23 想看 8/23 整天」= 8/23 00:00~23:59 台灣
+    // 台灣 8/23 00:00 = UTC 8/22 16:00；台灣 8/24 00:00 = UTC 8/23 16:00
+    const r = taipeiDayRangeUtc('2026-08-23')
+    expect(new Date(r.startMs).toISOString()).toBe('2026-08-22T16:00:00.000Z')
+    expect(new Date(r.endMs).toISOString()).toBe('2026-08-23T16:00:00.000Z')
   })
 
   it('isValidDate 接受 2026-08-23，拒絕 2026-02-30', () => {

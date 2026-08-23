@@ -484,9 +484,12 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(ex).toBeTruthy()
     expect(ex.current_status).toBe('open') // tickets.status 沒被動，預設 open
     expect(ex.status_label).toBe('待處理')
-    expect(ex.updates_today).toHaveLength(3) // slice(0,3)
-    expect(ex.updates_today[0].kind).toBe('status')
-    expect(ex.updates_today[0].note).toBeNull()
+    expect(ex.updates_today).toHaveLength(3) // SQL DESC LIMIT 3 + reverse 回 ASC（F12-1）
+    // 4 筆依序：status(10:00)、comment(10:01)、status(10:02)、comment(10:03)
+    // DESC LIMIT 3 拿 comment(10:03)、status(10:02)、comment(10:01)
+    // reverse 回 ASC：comment(10:01)、status(10:02)、comment(10:03)
+    expect(ex.updates_today[0].kind).toBe('comment')  // 第一筆是 10:01 的 comment
+    expect(ex.updates_today[0].note).toBe('a')
     expect(ex.updates_today[0].amount).toBeNull()
     expect(ex.updates_today[0].time).toMatch(/^\d{2}:\d{2}$/)
   })

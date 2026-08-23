@@ -96,22 +96,27 @@ export function toTaipeiDisplay(iso: string): string {
 }
 
 /**
- * 台灣指定日期邊界（UTC 毫秒秒數），供 SQL 帶入（F2 v1.1.15）。
- * 回傳 { startMs, endMs }：startMs 為該日 00:00（台灣）的 UTC 值，
- * endMs 為**明日** 00:00（台灣）的 UTC 值（半開區間，不含 endIso）。
- * 例：date='2026-08-23' → startMs = 該日 00:00 台灣的 UTC 毫秒
- *                    → endMs   = 2026-08-24 00:00 台灣的 UTC 毫秒
+ * 台灣指定日期邊界（UTC 毫秒秒數），供 SQL 帶入（F2 v1.1.15 / F11-7）。
+ * 回傳 { startMs, endMs }：startMs 為「**該日台灣 00:00 的 UTC 對應**」，
+ *                         endMs 為「**明日台灣 00:00 的 UTC 對應**」（半開區間 [start, end)）。
+ *
+ * 重要：「該日台灣」= 該日 00:00:00 Asia/Taipei，**不是** UTC 當天 00:00:00。
+ * 台灣時區為 UTC+8，所以 date='2026-08-23'：
+ *   - startMs = 2026-08-22T16:00:00.000Z（台灣 8/23 00:00 的 UTC 對應）
+ *   - endMs   = 2026-08-23T16:00:00.000Z（台灣 8/24 00:00 的 UTC 對應）
+ *
+ * SQL 用法：WHERE created_at >= startMs AND created_at < endMs（半開區間）
  *
  * **呼叫前請先用 isValidDate() 驗證**——本函式只校驗 regex，不驗證真實日期。
  */
 export function taipeiDayRangeUtc(date: string): { startMs: number; endMs: number } {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { startMs: 0, endMs: 0 }
   const [y, m, d] = date.split('-').map(Number)
-  const start = toUtcMs(y, m, d)
-  // 明日：日 + 1，Date.UTC 自然跨月進位（例：2026-08-31 + 1 → 2026-09-01）
-  const tmrw = new Date(Date.UTC(y, m - 1, d + 1))
-  const end = toUtcMs(tmrw.getUTCFullYear(), tmrw.getUTCMonth() + 1, tmrw.getUTCDate())
-  return { startMs: start, endMs: end }
+  // 台灣時區 = UTC+8。台灣該日 00:00 = UTC 前一日 16:00
+  // 用 Date.UTC 算「該日台灣 00:00 的 UTC 毫秒」= Date.UTC(y, m-1, d-1, 16)
+  const start = Date.UTC(y, m - 1, d - 1, 16, 0, 0, 0)
+  // end = start + 24 小時
+  return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 }
 }
 
 /** 驗證 YYYY-MM-DD 格式且為真實日期（F2 v1.1.15） */
