@@ -4,7 +4,7 @@
 import { Hono } from 'hono'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { taipeiMonthRangeUtc, taipeiDayRangeUtc, isValidDate, toTaipeiDisplay } from '../lib/time'
+import { taipeiMonthRangeUtc, taipeiDayRangeUtc, isValidDate, toTaipeiDisplay, taipeiToday } from '../lib/time'
 import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
 
@@ -118,8 +118,9 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   const date = c.req.query('date')
   const categoryIdStr = c.req.query('category_id')
 
-  if (!date) return fail(c, 400, 'VALIDATION_ERROR', 'date 必填（YYYY-MM-DD）')
-  if (!isValidDate(date)) return fail(c, 400, 'VALIDATION_ERROR', 'date 格式需為 YYYY-MM-DD 且為真實日期')
+  if (!date) return fail(c, 400, 'MISSING_DATE', 'date 必填（YYYY-MM-DD）')
+  if (!isValidDate(date)) return fail(c, 400, 'INVALID_DATE', 'date 格式需為 YYYY-MM-DD 且為真實日期')
+  if (date > taipeiToday()) return fail(c, 400, 'DATE_FUTURE', 'date 不可晚於今天（台灣）')
   if (!categoryIdStr) return fail(c, 400, 'VALIDATION_ERROR', 'category_id 必填')
   const categoryId = Number(categoryIdStr)
   if (!Number.isInteger(categoryId) || categoryId <= 0) {
@@ -127,7 +128,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   }
 
   const { startMs, endMs } = taipeiDayRangeUtc(date)
-  if (startMs === 0) return fail(c, 400, 'VALIDATION_ERROR', 'date 格式需為 YYYY-MM-DD')
+  if (startMs === 0) return fail(c, 400, 'INVALID_DATE', 'date 格式需為 YYYY-MM-DD')
   const startIso = new Date(startMs).toISOString()
   const endIso = new Date(endMs).toISOString()
 

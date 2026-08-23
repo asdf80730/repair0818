@@ -124,3 +124,11 @@ export function isValidDate(date: string): boolean {
   const [y, m, day] = date.split('-').map(Number)
   return d.getUTCFullYear() === y && d.getUTCMonth() === m - 1 && d.getUTCDate() === day
 }
+
+/** 取得今天台灣日期 YYYY-MM-DD（F11-2 v1.1.15：用於 daily-report date 驗證） */
+export function taipeiToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TAIWAN_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}

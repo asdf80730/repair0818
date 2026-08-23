@@ -102,6 +102,17 @@ describe('F8 模板渲染引擎', () => {
     expect(render('', { a: 1 })).toBe('')
   })
 
+  it('F11-4 note_or_status kind=system 用 note，不顯示狀態', () => {
+    const tpl = '{{#each updates}}{{time}} {{actor_name}}：{{note_or_status}}\n{{/each}}'
+    const out = render(tpl, {
+      updates: [
+        { kind: 'system', actor_name: '系統', time: '10:00', note: '編輯留痕：金額變更' },
+      ],
+    } as any)
+    expect(out).toContain('10:00 系統：編輯留痕：金額變更')
+    expect(out).not.toContain('狀態：')
+  })
+
   it('null/undefined 模板回空字串', () => {
     expect(render(null as any, {})).toBe('')
     expect(render(undefined as any, {})).toBe('')

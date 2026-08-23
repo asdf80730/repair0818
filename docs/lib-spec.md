@@ -56,11 +56,16 @@ nowIso(): string                       // new Date().toISOString()，寫入 side
 taipeiMonthRangeUtc(): { startMs, endMs }  // 台灣當月邊界（UTC 毫秒），§4.7 統計用
 taipeiDate(): string                   // 台灣時區 YYYY-MM-DD（CSV 檔名用）
 toTaipeiDisplay(iso): string           // UTC ISO → 台灣 'YYYY-MM-DD HH:mm'（CSV 內容用）
+taipeiDayRangeUtc(date: string): { startMs, endMs }  // v1.1.15：指定日期的 UTC 半開區間邊界（daily-report 用）
+isValidDate(date: string): boolean     // v1.1.15：YYYY-MM-DD 格式 + 真實日期驗證（擋 2026-02-30）
+taipeiToday(): string                  // v1.1.15：今天台灣日期 YYYY-MM-DD（daily-report DATE_FUTURE 驗證用）
 ```
 
 **規則**：
 - 寫入一律 `nowIso()`，禁止 `datetime('now')`
 - 月份邊界只准用 `taipeiMonthRangeUtc()`（Asia/Taipei），禁止自行算時區
+- 日期邊界只准用 `taipeiDayRangeUtc()`（**半開區間 `[start, end)`**，禁止 `BETWEEN` + `23:59:59.999` 反模式）
+- DATE_FUTURE 驗證用 `taipeiToday()` 比對
 - 純 Web API（`Intl`），無 Node.js 專屬 API
 
 ## 4. validate.ts — zod schemas（§4.1）

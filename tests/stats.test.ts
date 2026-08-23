@@ -340,7 +340,7 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     }).format(new Date())
   }
 
-  it('date 缺 → 400 VALIDATION_ERROR', async () => {
+  it('F11-2 date 缺 → 400 MISSING_DATE', async () => {
     const { cookie } = await loginAs('U-f1-nodate', '管', 'admin')
     const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
     const r = await worker.fetch(`http://example.com/api/stats/daily-report?category_id=${cat!.id}`, {
@@ -348,7 +348,7 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     })
     expect(r.status).toBe(400)
     const body = await r.json()
-    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.code).toBe('MISSING_DATE')
   })
 
   it('category_id 缺 → 400 VALIDATION_ERROR', async () => {
@@ -361,13 +361,27 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(body.error.code).toBe('VALIDATION_ERROR')
   })
 
-  it('date 格式錯誤（2026-13-99）→ 400', async () => {
+  it('F11-2 date 格式錯誤（2026-13-99）→ 400 INVALID_DATE', async () => {
     const { cookie } = await loginAs('U-f1-baddate', '管', 'admin')
     const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
     const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=2026-13-99&category_id=${cat!.id}`, {
       headers: { Cookie: cookie },
     })
     expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('INVALID_DATE')
+  })
+
+  it('F11-2 date 晚於今天 → 400 DATE_FUTURE', async () => {
+    const { cookie } = await loginAs('U-f1-future', '管', 'admin')
+    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
+    // 用 2030-01-01 確保晚於 today
+    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=2030-01-01&category_id=${cat!.id}`, {
+      headers: { Cookie: cookie },
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('DATE_FUTURE')
   })
 
   it('category_id 不存在 → 404', async () => {

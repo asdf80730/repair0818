@@ -432,9 +432,11 @@ function hasSegment(cur, label) {
 }
 
 // A4（v1.1.15）：el() 事件名白名單——拼錯事件名（如 onfoo）開發期 console.warn 提示
-// 白名單取 Web 常見 DOM 事件；onXxx 用 slice(2) 取事件名比對。
-// 命中才 addEventListener，未命中 console.warn 但仍照舊 setAttribute（不破壞既有呼叫，
-// 但確保開發者會看到拼錯警告）。若事件已存在於 setAttribute 路徑，不會被誤判為拼錯。
+// **dev-only**：production 不掛（依業主決策 2026-08-23：console noise 也算影響）
+// 判斷：hostname 為 localhost / 127.0.0.1 / 帶 ?dev=1 query / mock 模式 → dev
+const IS_DEV = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ||
+               new URLSearchParams(location.search).has('dev') ||
+               new URLSearchParams(location.search).get('mock') === 'true'
 const EL_VALID_EVENTS = new Set([
   'click','dblclick','mousedown','mouseup','mouseover','mouseout','mousemove','mouseenter','mouseleave',
   'keydown','keyup','keypress','input','change','submit','reset','focus','blur','focusin','focusout',
@@ -456,7 +458,7 @@ function el(tag, attrs = {}, children = []) {  const node = document.createEleme
     else if (k === 'value') node.value = v // textarea/select 用 property（setAttribute 對 textarea 無效）
     else if (k.startsWith('on')) {
       const ev = k.slice(2)
-      if (!EL_VALID_EVENTS.has(ev)) {
+      if (IS_DEV && !EL_VALID_EVENTS.has(ev)) {
         console.warn(`[el] 未知事件名「${k}」（slice 後「${ev}」不在白名單）。常見拼錯：onclick/onchange/oninput/onkeydown/onmouseover 等。請檢查拼字。`)
       }
       node.addEventListener(ev, v)
@@ -937,7 +939,7 @@ pages.ticket = async function (id) {
           const note = prompt('作廢原因（選填）')
           if (note === null) return
           if (!confirm('確定作廢此案件？')) return
-          try { await api(`/api/tickets/${id}/void`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) }); location.reload() }
+          try { await api(`/api/tickets/${id}/void`, { method: 'POST', body: JSON.stringify({ note: note || undefined }) }); router() /* A5 v1.1.15：局部刷新 */ }
           catch (e) { toast(e.message) }
         } }))
       }
@@ -956,7 +958,7 @@ pages.ticket = async function (id) {
               el('div', { class: 'modal-actions' }, [
                 el('button', { class: 'btn btn-ghost', text: '取消', onclick: () => modal.remove() }),
                 el('button', { class: 'btn btn-primary', text: '確認重新開啟', onclick: async () => {
-                  try { await api(`/api/tickets/${id}/reopen`, { method: 'POST', body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }) }); location.reload() }
+                  try { await api(`/api/tickets/${id}/reopen`, { method: 'POST', body: JSON.stringify({ status: sel.value, note: noteEl.value || undefined }) }); router() /* A5 v1.1.15：局部刷新 */ }
                   catch (e) { toast(e.message) }
                 } }),
               ]),
@@ -1766,7 +1768,8 @@ pages.admin = function () {
   ]))
 
   // 選項管理 + 廠商管理 tab（問題9：廠商管理獨立 tab，不再每個類別都顯示）
-  const types = [['category', '類別'], ['location', '地點'], ['description', '使用範本'], ['comment_desc', '回報範本'], ['vendors', '廠商']]
+  // F11-1：訊息模板從 admin 內進，不放 nav
+  const types = [['category', '類別'], ['location', '地點'], ['description', '使用範本'], ['comment_desc', '回報範本'], ['vendors', '廠商'], ['message_templates', '訊息模板']]
   const tabBar = el('div', { class: 'tabs' })
   const content = el('div', {})
   let currentType = 'category'
@@ -1925,7 +1928,12 @@ pages.admin = function () {
         for (const b of tabBar.children) b.classList.remove('active')
         e.currentTarget.classList.add('active')
         // 廠商 tab 有自己內嵌的新增列，隱藏選項新增列
-        addRow.style.display = val === 'vendors' ? 'none' : ''
+        addRow.style.display = (val === 'vendors' || val === 'message_templates') ? 'none' : ''
+        // F11-1：訊息模板走獨立頁 pages.messageTemplates()
+        if (val === 'message_templates') {
+          pages.messageTemplates()
+          return
+        }
         if (val === 'vendors') renderVendors()
         else renderOptions()
       },
@@ -1964,7 +1972,7 @@ function renderNav() {
     ['#/stats', '📊 統計'],
   ]
   if (me && (me.role === 'manager' || me.role === 'admin')) items.push(['#/admin', '⚙ 管理'])
-  if (me && (me.role === 'manager' || me.role === 'admin')) items.push(['#/message-templates', '📝 訊息模板'])
+  // F11-1：訊息模板從 admin 內 tab 進，不放 nav（committee 不該看到入口）
   if (me && me.role === 'admin') items.push(['#/users', '👥 成員'])
   for (const [href, label] of items) {
     nav.appendChild(el('a', { href, class: 'nav-item', text: label }))

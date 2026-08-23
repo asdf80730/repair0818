@@ -22,9 +22,11 @@
       return isoToHHMM(iso)
     }
     // 自動變數：note_or_status（updates 區段內自動組字）
+    // F11-4：kind='system' 也用 note（編輯留痕的系統訊息），不顯示狀態
     if (key === 'note_or_status') {
       const kind = lookupRaw('kind', ctx, eachStack)
-      if (kind === 'comment') return lookupRaw('note', ctx, eachStack) || ''
+      if (kind === 'comment' || kind === 'system') return lookupRaw('note', ctx, eachStack) || ''
+      // kind='status'（預設）：顯示「狀態：{label}」
       const statusLabel = lookupRaw('status_label', ctx, eachStack) || lookupRaw('status', ctx, eachStack) || ''
       return `狀態：${statusLabel}`
     }

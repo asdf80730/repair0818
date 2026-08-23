@@ -3,7 +3,7 @@
 社區管委會用的修繕案件管理 LINE 應用：住戶／委員透過 LINE LIFF 報修，管理公司派單給廠商，廠商透過公開分享連結接收派工單。
 
 - **正式網域**：https://repair-system-4re.pages.dev
-- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.14 定稿，單一真相來源）
+- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.15 定稿，單一真相來源）
 - **施工規則**：[CLAUDE.md](CLAUDE.md)
 
 ## 技術棧
@@ -52,3 +52,13 @@ npm run db:migrate:remote  # 套用 D1 migration 到 production
 | `docs/test-cases.md` | 測試案例與測試檔結構 |
 | `docs/page-api-map.md` | 頁面 → API 對照表＋實測耗時 |
 | `docs/archive/` | 歷史變更需求報告（已施工、內容被 SPEC 吸收） |
+
+## v1.1.15 主要變更
+
+- **案件動態訊息框**：統計頁新增「案件動態」區塊，manager/admin 可用 F1 daily-report + F5 變數模板產生訊息、複製貼到 LINE 群組
+- **訊息模板管理頁**：manager/admin 從「管理」頁 tab「訊息模板」進入（F11-1 業主決策：放管理內、不從 nav 進）
+- **F2 日期選擇器**：任選一天、max=今天、`localStorage` 記住類別
+- **LIFF 進入點健化**：C1 loggingIn flag、C2 openWindow fallback、C3 boot 兜底
+- **A4 el() 白名單**：dev-only 拼錯警告（production 靜默）
+- **A5 留言/回報/作廢/重開**：局部刷新時間軸（不再整頁 reload）
+- 詳細變更與決策紀錄：[docs/v1.1.15-變更需求清單.md](docs/v1.1.15-變更需求清單.md)、[docs/SPEC.md](docs/SPEC.md) §0.1 版本歷程

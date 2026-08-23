@@ -53,7 +53,8 @@ function lookup(key: string, ctx: any, eachStack: EachFrame[]): any {
   }
   if (key === 'note_or_status') {
     const kind = lookupRaw('kind', ctx, eachStack)
-    if (kind === 'comment') return lookupRaw('note', ctx, eachStack) || ''
+    if (kind === 'comment' || kind === 'system') return lookupRaw('note', ctx, eachStack) || ''
+    // kind='status'（預設）：顯示「狀態：{label}」
     const statusLabel = lookupRaw('status_label', ctx, eachStack) || lookupRaw('status', ctx, eachStack) || ''
     return `狀態：${statusLabel}`
   }
