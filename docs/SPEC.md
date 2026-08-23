@@ -743,7 +743,11 @@ GROUP BY category_label ORDER BY total_amount DESC
 | `date` | **必填** | `YYYY-MM-DD` 台灣時區；**不驗證真實日期以外的合法性**（前端 max=今天） |
 | `category_id` | **必填** | 正整數；不存在 → `404 NOT_FOUND` |
 
-- **時間計算**：`taipeiDayRangeUtc(date)` 回 `{startMs, endMs}` → `startIso` 該日 00:00:00.000 UTC、`endIso` 明日 00:00:00.000 UTC（**半開區間 `[startIso, endIso)`**，F11-7）
+- **時間計算**：`taipeiDayRangeUtc(date)` 回 `{startMs, endMs}`（毫秒數字）
+  - `startMs` = 該日**台灣 00:00** 的 UTC 對應 = 前一日 16:00:00.000Z
+  - `endMs`   = **明日台灣 00:00** 的 UTC 對應 = 該日 16:00:00.000Z
+  - **半開區間 `[startMs, endMs)`**（F11-7）
+  - 台灣時區 UTC+8，**不是** UTC 當天 00:00 — 見 `tests/time.test.ts` F2 統計語意 case
 - **回應結構**（純資料 + template.body，前端負責渲染）：
   ```jsonc
   {
