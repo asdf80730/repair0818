@@ -1757,6 +1757,8 @@ async function boot() {
           liff.login()
           return
         } catch (e2) {
+          // C3（v1.1.15）：外部瀏覽器 boot 二次兜底失敗——印錯誤細節方便排查
+          console.warn('[boot] LIFF retry init failed:', e2)
           root.innerHTML = ''
           root.appendChild(el('p', { class: 'error', text: '登入失敗，請重新從 LINE 開啟' }))
           return
