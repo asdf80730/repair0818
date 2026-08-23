@@ -78,6 +78,26 @@
 - preview 自動部署已關閉（preview_deployment_setting: none）。單人開發直接 push main 走 production。
 - production 的 D1/R2/JWT_SECRET/LINE_CHANNEL_ID 已設定；preview 未設（也不需設）。
 
+## 沙箱 git push 限制與解法（v1.1.15 發現）
+
+**目標 repo**：`https://github.com/asdf80730/repair0818.git`（`asdf80730/repair0818`，origin = `https://github.com/asdf80730/repair0818.git`）。
+
+沙箱（Alpine PRoot）對 `https://github.com/` 沒有預設認證，裸 `git push` 會撞：
+```
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+
+**解法**：
+1. 環境變數有專案專用 token：`GITHUB_TOKEN_REPAIR0818`（**不可 echo / cat / print 它的值**；只引用 `$GITHUB_TOKEN_REPAIR0818`）
+2. push 時用注入式 URL（避免污染 `git remote` config）：
+   ```bash
+   REMOTE_URL="https://x-access-token:${GITHUB_TOKEN_REPAIR0818}@github.com/asdf80730/repair0818.git"
+   git -c user.name='asdf80730' -c user.email='asdf80730@users.noreply.github.com' push "$REMOTE_URL" main
+   ```
+3. 身份用 `-c user.name/-c user.email` 注入，**不要** `git config --global` 改（會污染未來所有 commit）
+4. 身份用**遠端歷史最後一位作者**（`git log -1 --format='%an <%ae>' origin/main`），不要自己掰
+5. token **值**不寫進 memory / CLAUDE.md / commit message（可能 rotate；每次 push 前重新讀 env）；變數名（`GITHUB_TOKEN_REPAIR0818`）可寫，方便未來 AI 知道要用哪個
+
 ## 類別關聯（v1.1.7 起，AI 動作約束；設計契約見 SPEC §P7 與 §4.x API）
 - **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。任何關聯變更一律寫新的 migration。
 - **`option_categories` 的 INSERT/DELETE 只允許出現在 `POST` / `PATCH /api/options` 兩處**（兩階段 batch：先 RETURNING id 再寫關聯）；DELETE WHERE 只能是 `option_id = ?`。**禁止**在其他端點動關聯。
