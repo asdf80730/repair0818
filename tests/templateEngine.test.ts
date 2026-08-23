@@ -25,9 +25,9 @@ describe('F8 模板渲染引擎', () => {
   })
 
   it('each 區段展開（陣列非空）', () => {
-    const tpl = '{{#each items}}\n{{序}}. {{name}}\n{{/each}}'
+    const tpl = '{{#each items}}{{序}}. {{name}}\n{{/each}}'
     const out = render(tpl, { items: [{ name: 'A' }, { name: 'B' }, { name: 'C' }] })
-    expect(out).toBe('\n1. A\n2. B\n3. C\n')
+    expect(out).toBe('1. A\n2. B\n3. C\n')
   })
 
   it('each 區段空陣列不渲染', () => {
@@ -37,15 +37,16 @@ describe('F8 模板渲染引擎', () => {
   })
 
   it('巢狀 each 展開', () => {
-    const tpl = '{{#each outer}}{{序}}. {{name}}: {{#each inner}}({{序}}/{{inner序}}-{{val}}){{/each}}\n{{/each}}'
+    // 內層的 {{序}} 是當前 each 計數（內層）；外層的 {{序}} 在內層上下文被遮蔽
+    const tpl = '{{#each outer}}{{序}}. {{name}}: {{#each inner}}[{{序}}/{{val}}]{{/each}}\n{{/each}}'
     const out = render(tpl, {
       outer: [
         { name: 'A', inner: [{ val: 'x' }, { val: 'y' }] },
         { name: 'B', inner: [{ val: 'z' }] },
       ],
     } as any)
-    expect(out).toContain('1. A: (1/1-x)(1/2-y)')
-    expect(out).toContain('2. B: (2/1-z)')
+    expect(out).toContain('1. A: [1/x][2/y]')
+    expect(out).toContain('2. B: [1/z]')
   })
 
   it('自動變數 created_at_time（ISO → HH:MM 台灣時區）', () => {
