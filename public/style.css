@@ -286,3 +286,22 @@ button { cursor: pointer; }
 .toast.show { opacity: 1; }
 .assoc-list { display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow-y: auto; } /* D7 v1.1.15：200px → 45vh，長類別關聯列表不需大量滾動 */
 .assoc-list .assoc-check { display: flex; align-items: center; gap: 6px; }
+
+/* F7（v1.1.15）：模板編輯器 */
+.modal-wide { max-width: 900px; width: 95vw; max-height: 92vh; overflow-y: auto; }
+.tmpl-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tmpl-toolbar label { font-size: 13px; color: var(--muted); }
+.tmpl-editor-grid { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+.tmpl-editor-left { position: relative; }
+.tmpl-body { width: 100%; min-height: 320px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; resize: vertical; }
+.tmpl-suggest { position: absolute; top: 8px; left: 8px; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10; min-width: 280px; }
+.tmpl-suggest.hidden { display: none; }
+.tmpl-suggest-item { padding: 6px 12px; cursor: pointer; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; }
+.tmpl-suggest-item:hover, .tmpl-suggest-item.active { background: var(--blue); color: #fff; }
+.insert-panel { max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #fafafa; }
+.insert-panel-group { margin-bottom: 12px; }
+.insert-panel-group:last-child { margin-bottom: 0; }
+.insert-panel-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.insert-chip { display: block; width: 100%; text-align: left; padding: 4px 8px; margin-bottom: 2px; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+.insert-chip:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+@media (max-width: 640px) { .tmpl-editor-grid { grid-template-columns: 1fr; } .insert-panel { max-height: 240px; } }

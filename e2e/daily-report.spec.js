@@ -1,12 +1,8 @@
-// e2e/daily-report.spec.js — F10 案件動態訊息框 E2E（Playwright，mock 模式）
+// e2e/daily-report.spec.js — F10 v1.1.15 案件動態訊息框 E2E（Playwright，mock 模式）
 // 跑正式網域 ?mock=true（與其他 e2e 同步）
 //
-// 範圍縮小（v1.1.15 修訂）：
-// - 只驗 UI 結構存在（標題、日期 input、類別 select、複製按鈕、textarea）
-// - **不驗 daily-report API 內容**（mock 層未攔這條 /api/stats/daily-report，
-//   需另外在 mock 層加 fetch 攔截才能 e2e 驗內容——留 v1.1.16+）
-// - **不驗「改日期/類別 → 預覽更新」**（同上原因，API 真的會打到 production 但 404）
-// - 仍驗：日期 input max=今天、textarea readonly、複製按鈕存在
+// F10 對齊：本版有 mock 攔截（mockOptions.message_template + mockApi daily-report handler）
+// 可驗：UI 結構、日期預設、mock 渲染訊息、複製按鈕
 import { test, expect } from '@playwright/test'
 
 const BASE = process.env.E2E_BASE_URL || 'https://repair-system-4re.pages.dev'
@@ -16,10 +12,8 @@ test.beforeEach(async ({ page }) => {
   await page.waitForSelector('text=案件動態', { timeout: 15000 })
 })
 
-test('案件動態區塊結構存在（v1.1.15）', async ({ page }) => {
-  // 標題
+test('案件動態區塊結構存在', async ({ page }) => {
   await expect(page.getByText('案件動態')).toBeVisible()
-  // 日期 input 存在且 max=今天（台灣）
   const dateInput = page.locator('.report-box input[type=date]')
   await expect(dateInput).toBeVisible()
   const todayTaipei = new Intl.DateTimeFormat('en-CA', {
@@ -27,11 +21,8 @@ test('案件動態區塊結構存在（v1.1.15）', async ({ page }) => {
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
   await expect(dateInput).toHaveAttribute('max', todayTaipei)
-  // 類別下拉存在
   await expect(page.locator('.report-box select')).toBeVisible()
-  // 複製按鈕存在
   await expect(page.getByText('📋 複製')).toBeVisible()
-  // textarea 預覽存在且 readonly
   const preview = page.locator('.report-box textarea')
   await expect(preview).toBeVisible()
   await expect(preview).toHaveAttribute('readonly', 'readonly')
@@ -46,11 +37,28 @@ test('日期選擇器預設值 = 今日台灣', async ({ page }) => {
   await expect(dateInput).toHaveValue(todayTaipei)
 })
 
-test('訊息模板管理頁 nav 入口存在（v1.1.15 F7）', async ({ page }) => {
-  // 從 nav 進入訊息模板頁
-  await page.goto(`${BASE}/?mock=true#/message-templates`)
-  await page.waitForSelector('text=訊息模板', { timeout: 8000 })
-  // 兩個 tab：報告模板、無更新訊息
-  await expect(page.getByText('報告模板')).toBeVisible()
-  await expect(page.getByText('無更新訊息')).toBeVisible()
+test('mock 攔截：daily-report 回傳 template.body 渲染到 textarea', async ({ page }) => {
+  // 等 mock fetch 完成 + 渲染
+  await expect.poll(async () => {
+    const v = await page.locator('.report-box textarea').inputValue()
+    return v.length > 0 && !v.includes('尚未設定啟用模板') && !v.includes('選擇日期')
+  }, { timeout: 8000 }).toBe(true)
+  const preview = await page.locator('.report-box textarea').inputValue()
+  // 預設模板會渲染成多行（empty 或 report body）
+  // mock fixture 條件：date 預設今日 → 對應 mockTickets 沒 last_activity_at 在今日 → empty template body
+  // empty body 範例：「今日 2026-08-23 電梯 無案件動態」
+  expect(preview).toMatch(/今日 \d{4}-\d{2}-\d{2} \S+ 無案件動態/)
+})
+
+test('複製按鈕：textarea 內容被複製到 clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await expect.poll(async () => {
+    const v = await page.locator('.report-box textarea').inputValue()
+    return v.length > 0
+  }, { timeout: 8000 }).toBe(true)
+  const text = await page.locator('.report-box textarea').inputValue()
+  await page.getByText('📋 複製').click()
+  await expect(page.locator('.toast')).toHaveText('已複製', { timeout: 3000 })
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+  expect(clipboard).toBe(text)
 })

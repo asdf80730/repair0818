@@ -39,7 +39,20 @@ const mockOptions = {
   location: [{ id: 1, label: '停車場' }, { id: 2, label: '大廳' }, { id: 3, label: '頂樓' }],
   description: [{ id: 1, label: '水泵浦異音' }, { id: 2, label: '照明故障' }],
   comment_desc: [{ id: 1, label: '已通知廠商處理' }, { id: 2, label: '已到場勘查' }],
+  // F6（v1.1.15）：訊息模板 mock fixture — 兩套預設（簡潔、詳細）+ empty
+  message_template: [
+    {
+      id: 1, type: 'message_template', label: 'report', sort_order: 0, active: 1, body: '📅 {{date}} {{category_label}}案件動態（共 {{total_count}} 件）\n\n{{#each new_tickets}}\n{{序}}. {{title}}\n   {{description}}{{creator_name}} {{created_at_time}}\n   詳情：{{detail_url}}\n{{/each}}\n\n{{#each existing_tickets}}\n{{序}}. {{title}} → {{status_label}}\n{{#each updates_today}}\n   {{time}} {{actor_name}}：{{note_or_status}}{{amount_text}}\n{{/each}}{{/each}}',
+      is_category_specific: false,
+    },
+    {
+      id: 2, type: 'message_template', label: 'empty', sort_order: 1, active: 1, body: '今日 {{date}} {{category_label}} 無案件動態',
+      is_category_specific: false,
+    },
+  ],
 }
+// mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
+const mockTplAssoc = [] // 訊息模板無類別關聯（全域預設）
 const mockUsers = [
   { id: 1, display_name: '測試用戶', role: 'admin', active: 1 },
   { id: 2, display_name: '王任鋒', role: 'admin', active: 1 },
@@ -214,6 +227,79 @@ function mockApi(path, options = {}) {
     }
     const items = Object.entries(byCat).map(([category_label, v]) => ({ category_label, total_amount: v.total_amount, count: v.count }))
     return { ok: true, data: { items } }
+  }
+  // F1（v1.1.15）：daily-report mock — 依 date 過濾今天 tickets，回純資料 + template
+  if (pathname === '/api/stats/daily-report') {
+    const date = url.searchParams.get('date')
+    const categoryId = Number(url.searchParams.get('category_id'))
+    if (!date) return { ok: false, error: { code: 'MISSING_DATE', message: 'date 必填' } }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: { code: 'INVALID_DATE', message: 'date 格式錯' } }
+    const today = new Date().toISOString().slice(0, 10)
+    if (date > today) return { ok: false, error: { code: 'DATE_FUTURE', message: 'date 不可晚於今天' } }
+    if (!categoryId) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
+    const cat = mockOptions.category.find(c => c.id === categoryId)
+    if (!cat) return { ok: false, error: { code: 'NOT_FOUND', message: '類別不存在' } }
+    // 撈今天屬於該類別的 tickets（created_at 是今天 ISO 日期開頭）
+    const start = `${date}T00:00:00.000Z`
+    const end = `${date}T23:59:59.999Z`
+    const inCat = mockTickets.filter(t => t.category_label === cat.label)
+    const newTs = inCat.filter(t => t.created_at >= start && t.created_at <= end)
+    const existingTs = inCat.filter(t => t.last_activity_at >= start && t.last_activity_at <= end && t.created_at < start)
+    const newTickets = newTs.map(t => ({
+      id: t.id, title: `${t.category_label}-${t.location_label} #${String(t.id).padStart(4, '0')}`,
+      location_label: t.location_label, description: t.description ?? '', creator_name: '測試用戶',
+      created_at: t.created_at, created_at_time: t.created_at.slice(11, 16), status: t.status,
+      detail_url: `https://repair-system-4re.pages.dev/#/ticket/${t.id}`,
+    }))
+    const existingTickets = existingTs.map(t => ({
+      id: t.id, title: `${t.category_label}-${t.location_label} #${String(t.id).padStart(4, '0')}`,
+      current_status: t.status, status_label: ({ open: '待處理', in_progress: '已發包', done: '已完成', void: '已作廢' }[t.status] || t.status),
+      detail_url: `https://repair-system-4re.pages.dev/#/ticket/${t.id}`,
+      updates_today: mockUpdates.filter(u => u.ticket_id === t.id && u.created_at >= start && u.created_at <= end).slice(0, 3).map(u => ({
+        kind: u.kind, status: u.status, actor_name: u.display_name, time: u.created_at.slice(11, 16), note: u.note, amount: u.amount,
+      })),
+    }))
+    const total = newTickets.length + existingTickets.length
+    // 選模板：total=0 用 empty；否則用 report
+    const tmplId = total === 0 ? 2 : 1
+    const tmpl = mockOptions.message_template.find(t => t.id === tmplId)
+    return {
+      ok: true,
+      data: {
+        date, category_id: categoryId, category_label: cat.label,
+        new_count: newTickets.length, existing_count: existingTickets.length, total_count: total,
+        new_tickets: newTickets, existing_tickets: existingTickets,
+        template: tmpl ? { id: tmpl.id, body: tmpl.body } : null,
+      },
+    }
+  }
+  // F6（v1.1.15）：message-templates 列表 + 單筆 GET
+  if (pathname === '/api/message-templates' && method === 'GET') {
+    const label = url.searchParams.get('label')
+    let items = mockOptions.message_template.filter(t => t.label === label || !label)
+    return { ok: true, data: { templates: items } }
+  }
+  const tmplMatch = pathname.match(/^\/api\/message-templates\/(\d+)$/)
+  if (tmplMatch && method === 'GET') {
+    const id = Number(tmplMatch[1])
+    const t = mockOptions.message_template.find(x => x.id === id)
+    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '模板不存在' } }
+    return { ok: true, data: t }
+  }
+  if (tmplMatch && method === 'PUT') {
+    const id = Number(tmplMatch[1])
+    const idx = mockOptions.message_template.findIndex(x => x.id === id)
+    if (idx < 0) return { ok: false, error: { code: 'NOT_FOUND', message: '模板不存在' } }
+    const body = JSON.parse(options.body || '{}')
+    if (body.body !== undefined && body.body.trim() === '') return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'body 不可為空' } }
+    const cur = mockOptions.message_template[idx]
+    const updated = {
+      ...cur,
+      body: body.body ?? cur.body,
+      label: body.label ?? cur.label,
+    }
+    mockOptions.message_template[idx] = updated
+    return { ok: true, data: updated }
   }
   // users
   if (pathname === '/api/users' && method === 'GET') {
@@ -1656,24 +1742,229 @@ pages.messageTemplates = async function () {
     }
   }
 
-  // 編輯 modal
+  // 編輯 modal（F7 v1.1.15：變數下拉插入 + 點擊面板 + IntelliSense）
   async function openEdit(t) {
     let cur = t
     const modal = el('div', { class: 'modal-bg', onclick: (e) => { if (e.target === modal) close() } })
-    const content = el('div', { class: 'modal' })
+    const content = el('div', { class: 'modal modal-wide' })
     modal.appendChild(content)
     content.appendChild(el('h2', { text: '編輯模板' }))
 
     const nameInput = el('input', { class: 'select', type: 'text', value: cur.label })
-    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 14, value: cur.body ?? '' })
+    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 16, value: cur.body ?? '' })
     const previewBox = el('pre', { class: 'tmpl-preview', text: '(預覽將顯示於此)' })
 
     content.appendChild(el('div', { class: 'form-row' }, [
       el('label', { text: '標籤（label）' }), nameInput,
     ]))
+
+    // ===== F7：變數定義（頂層 / 迴圈欄位 / 巢狀迴圈 / 自動變數 / 控制語法） =====
+    const VARIABLE_GROUPS = [
+      {
+        label: '頂層變數',
+        items: ['{{date}}', '{{category_label}}', '{{total_count}}', '{{new_count}}', '{{existing_count}}'],
+      },
+      {
+        label: 'new_tickets 迴圈欄位',
+        prefix: '{{#each new_tickets}}',
+        suffix: '{{/each}}',
+        items: [
+          { insert: '{{id}}', label: '{{id}}' },
+          { insert: '{{title}}', label: '{{title}}' },
+          { insert: '{{location_label}}', label: '{{location_label}}' },
+          { insert: '{{description}}', label: '{{description}}' },
+          { insert: '{{creator_name}}', label: '{{creator_name}}' },
+          { insert: '{{created_at}}', label: '{{created_at}} (ISO)' },
+          { insert: '{{created_at_time}}', label: '{{created_at_time}} (HH:MM)' },
+          { insert: '{{status}}', label: '{{status}}' },
+          { insert: '{{detail_url}}', label: '{{detail_url}}' },
+          { insert: '{{序}}', label: '{{序}}' },
+        ],
+      },
+      {
+        label: 'existing_tickets 迴圈欄位',
+        prefix: '{{#each existing_tickets}}',
+        suffix: '{{/each}}',
+        items: [
+          { insert: '{{id}}', label: '{{id}}' },
+          { insert: '{{title}}', label: '{{title}}' },
+          { insert: '{{current_status}}', label: '{{current_status}}' },
+          { insert: '{{status_label}}', label: '{{status_label}}' },
+          { insert: '{{detail_url}}', label: '{{detail_url}}' },
+          { insert: '{{序}}', label: '{{序}}' },
+        ],
+      },
+      {
+        label: 'updates_today 巢狀迴圈',
+        prefix: '{{#each updates_today}}',
+        suffix: '{{/each}}',
+        items: [
+          { insert: '{{kind}}', label: '{{kind}}' },
+          { insert: '{{status}}', label: '{{status}}' },
+          { insert: '{{time}}', label: '{{time}} (HH:MM)' },
+          { insert: '{{actor_name}}', label: '{{actor_name}}' },
+          { insert: '{{note}}', label: '{{note}}' },
+          { insert: '{{amount}}', label: '{{amount}}' },
+          { insert: '{{note_or_status}}', label: '{{note_or_status}} (自動組字)' },
+          { insert: '{{amount_text}}', label: '{{amount_text}} (自動組字)' },
+        ],
+      },
+      {
+        label: '控制語法',
+        items: [
+          { insert: '{{#each new_tickets}}\n\n{{/each}}', label: '{{#each new_tickets}} 區段（游標在中）' },
+          { insert: '{{#each existing_tickets}}\n\n{{/each}}', label: '{{#each existing_tickets}} 區段' },
+          { insert: '{{#each updates_today}}\n\n{{/each}}', label: '{{#each updates_today}} 區段' },
+        ],
+      },
+    ]
+
+    // ===== F7 第一層：兩 select 連動 + Enter 插入 =====
+    const groupSelect = el('select', { class: 'select' })
+    for (const g of VARIABLE_GROUPS) groupSelect.appendChild(el('option', { value: String(VARIABLE_GROUPS.indexOf(g)), text: g.label }))
+    const varSelect = el('select', { class: 'select' })
+    function refreshVarSelect() {
+      const g = VARIABLE_GROUPS[Number(groupSelect.value)]
+      varSelect.innerHTML = ''
+      if (!g.items[0] || typeof g.items[0] === 'string') {
+        for (const v of g.items) varSelect.appendChild(el('option', { value: v, text: v }))
+      } else {
+        for (const v of g.items) varSelect.appendChild(el('option', { value: v.insert, text: v.label }))
+      }
+    }
+    refreshVarSelect()
+    groupSelect.addEventListener('change', refreshVarSelect)
+
+    function insertAtCursor(text) {
+      const start = bodyArea.selectionStart ?? bodyArea.value.length
+      const end = bodyArea.selectionEnd ?? bodyArea.value.length
+      // F7 spec：保留游標位置、不覆蓋選取範圍（已選取的文字不被變數字串取代）
+      // **修正為**：插在選取起點（清單 line 263）
+      const before = bodyArea.value.slice(0, start)
+      const after = bodyArea.value.slice(start) // 用 start 而非 end，保留選取區段
+      bodyArea.value = before + text + after
+      const newPos = start + text.length
+      bodyArea.setSelectionRange(newPos, newPos)
+      bodyArea.focus()
+      renderPreview()
+    }
+
+    const insertBtn = el('button', { class: 'btn', text: '插入游標位置' })
+    insertBtn.addEventListener('click', () => insertAtCursor(varSelect.value))
+    // Enter 鍵直接插入（varSelect focus 時）
+    varSelect.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); insertAtCursor(varSelect.value) } })
+
+    // ===== F7 第二層：右側點擊插入面板 =====
+    const insertPanel = el('div', { class: 'insert-panel' })
+    for (const g of VARIABLE_GROUPS) {
+      insertPanel.appendChild(el('div', { class: 'insert-panel-group' }, [
+        el('div', { class: 'insert-panel-label', text: g.label }),
+        ...g.items.map((it) => {
+          const insertText = typeof it === 'string' ? it : it.insert
+          const labelText = typeof it === 'string' ? it : it.label
+          return el('button', {
+            class: 'insert-chip',
+            type: 'button',
+            text: labelText,
+            onclick: () => insertAtCursor(insertText),
+          })
+        }),
+      ]))
+    }
+
+    // ===== F7 第三層：textarea IntelliSense（輸入 {{ 觸發彈出選單） =====
+    const suggestBox = el('div', { class: 'tmpl-suggest hidden' })
+    let suggestItems = []   // 當前群組的所有 insert 字串
+    let suggestIndex = 0
+    let suggestActive = false
+    function showSuggest() {
+      // 從游標往前找最近的「{{」或斷在 \n 或空白
+      const pos = bodyArea.selectionStart ?? 0
+      const before = bodyArea.value.slice(0, pos)
+      // 找最近的 {{（不跨換行）
+      const open = before.lastIndexOf('{{')
+      const close = before.lastIndexOf('}}')
+      if (open < 0 || open < close) { hideSuggest(); return }
+      const partial = before.slice(open + 2).toLowerCase()
+      suggestItems = []
+      for (const g of VARIABLE_GROUPS) {
+        for (const it of g.items) {
+          const ins = (typeof it === 'string' ? it : it.insert).toLowerCase()
+          if (ins.startsWith('{{') && ins.includes(partial)) {
+            suggestItems.push(typeof it === 'string' ? it : it.insert)
+          }
+        }
+      }
+      if (suggestItems.length === 0) { hideSuggest(); return }
+      suggestIndex = 0
+      suggestActive = true
+      renderSuggest()
+      suggestBox.classList.remove('hidden')
+    }
+    function renderSuggest() {
+      suggestBox.innerHTML = ''
+      suggestItems.forEach((it, i) => {
+        suggestBox.appendChild(el('div', {
+          class: 'tmpl-suggest-item' + (i === suggestIndex ? ' active' : ''),
+          text: it,
+          onmousedown: (e) => { e.preventDefault(); confirmSuggest(it, open); hideSuggest() },
+          onmouseenter: () => { suggestIndex = i; renderSuggest() },
+        }))
+      })
+    }
+    function confirmSuggest(text, openIdx) {
+      const pos = bodyArea.selectionStart ?? 0
+      const before = bodyArea.value.slice(0, openIdx)
+      const after = bodyArea.value.slice(pos)
+      bodyArea.value = before + text + after
+      const newPos = openIdx + text.length
+      bodyArea.setSelectionRange(newPos, newPos)
+      bodyArea.focus()
+      renderPreview()
+    }
+    function hideSuggest() {
+      suggestActive = false
+      suggestItems = []
+      suggestBox.classList.add('hidden')
+    }
+    bodyArea.addEventListener('keyup', (e) => {
+      if (e.key === 'Escape') { hideSuggest(); return }
+      // 不在按方向鍵或 Enter 時觸發
+      if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab'].includes(e.key)) return
+      showSuggest()
+    })
+    bodyArea.addEventListener('keydown', (e) => {
+      if (!suggestActive) return
+      if (e.key === 'ArrowDown') { e.preventDefault(); suggestIndex = (suggestIndex + 1) % suggestItems.length; renderSuggest() }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); suggestIndex = (suggestIndex - 1 + suggestItems.length) % suggestItems.length; renderSuggest() }
+      else if (e.key === 'Enter') {
+        e.preventDefault()
+        // 找最近的 {{ 位置
+        const pos = bodyArea.selectionStart ?? 0
+        const before = bodyArea.value.slice(0, pos)
+        const open = before.lastIndexOf('{{')
+        if (open >= 0) confirmSuggest(suggestItems[suggestIndex], open)
+        hideSuggest()
+      }
+      else if (e.key === 'Escape') { hideSuggest() }
+    })
+
+    // ===== 佈局：左 textarea + 右插入面板 + 上方下拉 =====
     content.appendChild(el('div', { class: 'form-row' }, [
       el('label', { text: '內容（body，可使用 {{變數}} 與 {{#each}}...{{/each}}）' }),
-      bodyArea,
+      el('div', { class: 'tmpl-toolbar' }, [
+        el('label', { text: '插入：' }),
+        groupSelect,
+        varSelect,
+        insertBtn,
+      ]),
+    ]))
+    content.appendChild(el('div', { class: 'tmpl-editor-grid' }, [
+      el('div', { class: 'tmpl-editor-left' }, [
+        bodyArea,
+        suggestBox,
+      ]),
+      el('div', { class: 'tmpl-editor-right' }, [insertPanel]),
     ]))
     content.appendChild(el('div', { class: 'form-row' }, [
       el('label', { text: '即時預覽（用 fixture 資料渲染）' }),
@@ -1712,6 +2003,7 @@ pages.messageTemplates = async function () {
 
     function close() { modal.remove() }
     document.body.appendChild(modal)
+    setTimeout(() => bodyArea.focus(), 100)
   }
 
   // G7：重置為出廠預設
