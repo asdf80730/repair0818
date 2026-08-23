@@ -22,12 +22,16 @@ let mockTickets = [
   { id: 4, title: '其他－中庭 #0004', status: 'open', category_label: '其他', location_label: '中庭', description: '地磚破損', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: '2026-08-19T09:00:00.000Z', last_activity_at: '2026-08-19T09:00:00.000Z' },
   { id: 5, title: '水泵－頂樓 #0005', status: 'done', category_label: '水泵', location_label: '頂樓', description: '水泵漏水', vendor_name: null, amount: 8000, amount_at: '2026-08-20T08:00:00.000Z', created_at: '2026-08-19T14:00:00.000Z', last_activity_at: '2026-08-20T08:00:00.000Z' },
   { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', description: '頂樓水塔噪音', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
+  // F10 mock：當日 ticket（用 today UTC，避免 E2E 對時間耦合）
+  { id: 99, title: '電梯－停車場 #0099', status: 'in_progress', category_label: '電梯', location_label: '停車場', description: '門開關異常', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: new Date().toISOString(), last_activity_at: new Date().toISOString() },
 ]
 let mockNextId = 7
 let mockPhotosCount = 0 // A8：mock 照片上傳計數（產生唯一 id）
 // mock 時間軸（v1.1.12：測金額顯示；id=2 已發包含金額）
 let mockUpdates = [
   { id: 1, ticket_id: 2, kind: 'status', status: 'in_progress', note: '已發包施作', amount: 12000, display_name: '測試用戶', created_at: '2026-08-18T11:00:00.000Z', photo_urls: [] },
+  // F10 mock：當日 update（id=99 ticket）
+  { id: 99, ticket_id: 99, kind: 'status', status: 'in_progress', note: '已通知廠商', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] },
 ]
 // mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
 const mockAssoc = [

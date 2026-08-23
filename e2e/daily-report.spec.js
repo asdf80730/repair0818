@@ -44,10 +44,10 @@ test('mock 攔截：daily-report 回傳 template.body 渲染到 textarea', async
     return v.length > 0 && !v.includes('尚未設定啟用模板') && !v.includes('選擇日期')
   }, { timeout: 8000 }).toBe(true)
   const preview = await page.locator('.report-box textarea').inputValue()
-  // 預設模板會渲染成多行（empty 或 report body）
-  // mock fixture 條件：date 預設今日 → 對應 mockTickets 沒 last_activity_at 在今日 → empty template body
-  // empty body 範例：「今日 2026-08-23 電梯 無案件動態」
-  expect(preview).toMatch(/今日 \d{4}-\d{2}-\d{2} \S+ 無案件動態/)
+  // mock fixture 有當日 ticket id=99（電梯），預設類別=電梯 → total_count > 0 → 用 report template
+  // report body 開頭：「📅 YYYY-MM-DD 電梯案件動態...」
+  expect(preview).toMatch(/📅 \d{4}-\d{2}-\d{2} 電梯案件動態/)
+  expect(preview).toContain('0099') // ticket #0099
 })
 
 test('複製按鈕：textarea 內容被複製到 clipboard', async ({ page, context }) => {
