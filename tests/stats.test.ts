@@ -280,8 +280,8 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     ).bind(label).first<{ id: number }>()
     if (exist) return exist.id
     const r = await env.DB.prepare(
-      "INSERT INTO options (type, label, sort_order, active) VALUES ('category', ?, 999, 1)",
-    ).bind(label).run()
+      "INSERT INTO options (type, label, sort_order, active, created_at) VALUES ('category', ?, 999, 1, ?)",
+    ).bind(label, new Date().toISOString()).run()
     return Number(r.meta.last_row_id)
   }
 
@@ -292,8 +292,8 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     ).bind(label).first<{ id: number }>()
     if (exist) return exist.id
     const r = await env.DB.prepare(
-      "INSERT INTO options (type, label, sort_order, active) VALUES ('location', ?, 999, 1)",
-    ).bind(label).run()
+      "INSERT INTO options (type, label, sort_order, active, created_at) VALUES ('location', ?, 999, 1, ?)",
+    ).bind(label, new Date().toISOString()).run()
     return Number(r.meta.last_row_id)
   }
 

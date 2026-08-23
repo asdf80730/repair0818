@@ -43,8 +43,8 @@ describe('F6 GET /api/message-templates 行為鎖定（v1.1.15）', () => {
     ).bind(label).first<{ id: number }>()
     if (exist) return exist.id
     const r = await env.DB.prepare(
-      "INSERT INTO options (type, label, sort_order, active) VALUES ('category', ?, 999, 1)",
-    ).bind(label).run()
+      "INSERT INTO options (type, label, sort_order, active, created_at) VALUES ('category', ?, 999, 1, ?)",
+    ).bind(label, new Date().toISOString()).run()
     return Number(r.meta.last_row_id)
   }
 
