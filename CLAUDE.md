@@ -44,7 +44,20 @@
     share 照片端點必驗 target_type='ticket'。
 11. ticket_updates 只有 INSERT，禁止 UPDATE/DELETE。
 12. 不得自行新增資料表欄位或修改 API 回應格式；需要變更時輸出 diff 建議並停止，等待人工確認。
+12.1 **討論中的設計不等於拍板**（v1.1.15 起）：變更需求清單（`docs/vX.X.X-變更需求清單.md` 等）
+    是業主討論中的工作稿，**不得**將其中未明確拍板的設計細節寫入 SPEC.md / CLAUDE.md /
+    lib-spec.md / page-api-map.md / test-cases.md 等正式規格檔。只有當業主明確指示
+    「寫進規格」「這個定了」「這樣改」「動 SPEC」並點出具體內容時，才視為拍板；
+    其他情況一律先在清單中討論。
 13. 不確定的 LINE / Cloudflare API 一律留 // TODO: verify against official docs，禁止猜測。
+
+## 工作區與檔案結構（v1.1.15 起，硬性規則）
+14. **所有原始碼、規格、測試、開發工具**一律放在 `/var/minis/workspace/` 之下；
+    禁止使用 `/tmp` 或其他位置當正式施工目錄。`/tmp` 只允許當一次性搬遷/驗證的中繼站。
+15. **專案根目錄單層**：放在 `workspace/repair-system/`（單層），不要再加深層次
+    （不要 `workspace/repair-system/repo/`、`workspace/repair-system/src/myapp/`）。
+    例外：備援的 `.git` 可放他處；當下不適用的搬遷測試 `.gitlocktest`/`.gtest`/`.mvtest` 等
+    可放他處，事後必須清掉。
 
 ## 產品規則（不可自行更動）
 - 狀態流：open → in_progress → done；另有 void；done/void 僅 admin 可 reopen。

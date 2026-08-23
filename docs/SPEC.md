@@ -84,6 +84,31 @@
 允許依賴：`hono`、`@hono/zod-validator`、`jose`、`zod`、`browser-image-compression`。
 禁止：Node.js 專屬 API 或套件（jsonwebtoken、bcrypt、fs、multer、sharp、crypto.createHmac）。
 
+### 1.1.5 工作區與檔案結構慣例（v1.1.15 起）
+
+> 與 CLAUDE.md 規則 14/15 同源；本節說明「為什麼這樣規範」與實測依據，CLAUDE.md 是 AI 必讀的硬性規則摘要。
+
+**規則 14：所有檔案放在 `/var/minis/workspace/` 之下**
+
+- 正式施工目錄：`/var/minis/workspace/repair-system/`
+- 備援（如 git clone 過渡）：可放 `/tmp/`，**但 `/tmp/` 不算正式位置**，重開 session 易丟
+- `/tmp/` 僅允許當一次性搬遷/驗證的中繼站（CI log、單次 clone 測試、單次 git 實驗等）
+
+**實測依據（2026-08-23）**：早期施工放在 `/tmp/repo-work`，業主於 2026-08-23 明確指示「正式施工目錄統一在 workspace/repair-system/」，搬遷後驗證 `.git` 在 workspace 下能正常運作（git init、add、commit、mv、log 皆可），**唯一限制**是 `rm` 系列系統呼叫被 Minis l2s 同步層擋住（不能用 `git gc`、不能重 pack），但日常 commit/branch/merge/push/mv/rename 都不會觸發 rm，**無實務影響**。
+
+**規則 15：專案根目錄單層**
+
+- 正確：`workspace/repair-system/`（根目錄即專案）
+- 錯誤：`workspace/repair-system/repo/`、`workspace/repair-system/src/myapp/`（多層不必要）
+- **理由**：AI 與人閱讀時找檔案的成本隨深度增加；minis://workspace/repair-system/ 已是最短可達路徑
+
+**例外**（不違反 14/15）：
+
+- 備援的 `.git` 可放 `/tmp/gitdir/` 類位置（用 `--separate-git-dir`）
+- 一次性實驗目錄如 `.gitlocktest`、`.gtest`、`.mvtest` 可放他處，事後必須清掉
+
+**變更需求清單**：`docs/vX.X.X-變更需求清單.md` 是業主討論中的工作稿，未明確拍板的設計細節**不得**寫入本檔（SPEC）、CLAUDE.md、lib-spec.md、page-api-map.md、test-cases.md 等正式規格（見 CLAUDE.md 規則 12.1）。
+
 ### 1.2 目錄樹
 
 ```
