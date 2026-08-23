@@ -792,6 +792,9 @@ pages.new = function () {
     if (submitting) return
     if (!selectedCat || !selectedLoc) { toast('請選擇類別與地點'); return }
     submitting = true
+    // A6（v1.1.15）：送單前主動確保 catalog 最新（避免使用停用選項 400）。
+    // 重抓失敗用既有快取值頂著，不 throw 不擋送出（頂多選項非最新，後端會 400 再走 catch）。
+    try { await ensureCatalog(true) } catch (_) { /* 保持既有快取值 */ }
     try {
       const body = await api('/api/tickets', {
         method: 'POST',
