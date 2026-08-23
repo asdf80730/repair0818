@@ -706,8 +706,14 @@ pages.new = function () {
     selectedLoc = null
   }
   const renderLoc = (catId) => {
+    const items = filterByCat('locations', catId)
+    if (items.length === 0) {
+      resetLoc('此類別暫無地點')
+      locSelect.disabled = true
+      return
+    }
     resetLoc('請選擇地點')
-    for (const o of filterByCat('locations', catId)) {
+    for (const o of items) {
       locSelect.appendChild(el('option', { value: String(o.id), text: o.label }))
     }
     locSelect.disabled = false
