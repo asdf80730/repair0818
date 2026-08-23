@@ -21,7 +21,12 @@
 | | | `/api/photos`(上傳) | 附加照片時 |
 | **統計** | `#/stats` | `/api/stats/summary?month=` | 主查詢（v1.1.14 支援月份切換） |
 | | | `/api/stats/amount-by-category?month=` | 各類別金額（v1.1.12；v1.1.14 與 summary 同步 Promise.all） |
+| | | `/api/stats/daily-report?date=&category_id=` | **案件動態**（F1 v1.1.15；日期+類別必填） |
+| | | `/api/message-templates?label=empty` | 空態時撈 empty 模板（F4 v1.1.15） |
 | | | `/api/exports/sign` | 匯出 CSV 時 |
+| **訊息模板** | `#/message-templates` | `/api/message-templates?category_id=&label=` | 列表（F6 v1.1.15） |
+| | | `/api/message-templates/:id` | 編輯 modal 載入 |
+| | | `/api/message-templates/:id`(PUT) | 儲存 / G7 重置為出廠預設 |
 | **成員** | `#/users` | `/api/users` | 列表 |
 | | | `/api/users/:id`(PATCH) | 改權限/停用時 |
 | **管理** | `#/admin` | `/api/options` | 類別/地點/使用範本/回報範本 |
