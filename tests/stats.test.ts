@@ -210,8 +210,12 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
     if (!cat || !loc) throw new Error('seed 缺少 options')
 
     const monthStart = currentMonth() + '-01T00:00:00.000Z'
-    const lastMonth = new Date(Date.parse(monthStart) - 86400000).toISOString()
-    const lastMonthStr = lastMonth.slice(0, 7)
+    // 「上月最後一天」當時間軸 done 事件的標籤時間。
+    const lastMonthMid = new Date(Date.parse(monthStart) - 86400000).toISOString()
+    const lastMonthStr = lastMonthMid.slice(0, 7)
+    // 建單時間：必須在上月月初（SQL startIso = 上月 1 日 00:00 台灣 → UTC）之前。
+    // 用 monthStart - 40 天（≈上月月初前 24 天）確保遠小於上月月初 UTC。
+    const createdAt = new Date(Date.parse(monthStart) - 40 * 86400000).toISOString()
 
     // 抓上月基線
     const beforeRes = await worker.fetch(`http://example.com/api/stats/summary?month=${lastMonthStr}`, {
@@ -221,21 +225,23 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
       month_done: number; month_initial_open: number
     }
 
-    // 上月建單＋上月 done
+    // 建單時間遠早於上月月初 → SQL `created_at < 月初` 成立；
+    // 上月結案 → 時間軸 done 落在上月 → month_done +1；
+    // 現狀 done + closed_at 在上月 → 條件二 (closed_at >= 月初) 成立。
     const ticketIns = await env.DB.prepare(
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
                            status, share_token, created_by, created_at, last_activity_at)
        VALUES (?, ?, ?, ?, ?, 'done', ?, ?, ?, ?)`,
     ).bind(cat.id, cat.label, loc.id, loc.label, '上月結案',
-           crypto.randomUUID(), admin.userId, lastMonth, lastMonth).run()
+           crypto.randomUUID(), admin.userId, createdAt, createdAt).run()
     const ticketId = Number(ticketIns.meta.last_row_id)
 
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at) VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, lastMonth).run()
+    ).bind(ticketId, admin.userId, lastMonthMid).run()
     await env.DB.prepare(
       `UPDATE tickets SET closed_at=?, last_activity_at=? WHERE id=?`,
-    ).bind(lastMonth, lastMonth, ticketId).run()
+    ).bind(lastMonthMid, lastMonthMid, ticketId).run()
 
     // 抓上月 after、本月 after
     const afterLastRes = await worker.fetch(`http://example.com/api/stats/summary?month=${lastMonthStr}`, {
