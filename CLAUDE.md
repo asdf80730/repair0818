@@ -49,6 +49,14 @@
     lib-spec.md / page-api-map.md / test-cases.md 等正式規格檔。只有當業主明確指示
     「寫進規格」「這個定了」「這樣改」「動 SPEC」並點出具體內容時，才視為拍板；
     其他情況一律先在清單中討論。
+12.2 **每輪審查意見必附可達連結**（v1.1.15 起）：當使用者提供審查意見、要求「整合進變更
+    報告」「幫我加進去」「參考這份審查」等情境時，回覆**必須**在文末附上受影響變更文件的
+    `minis://workspace/repair-system/...` Markdown 連結，讓使用者可直接點選預覽。
+    不只給檔名、不只給 shell 路徑——給的是 Markdown 連結語法（App 會渲染為可點選）。
+    理由：使用者多在 App 內操作，純檔名路徑無法點選；強制給 Markdown 連結才是「對使用者友善」。
+    例：
+    - ✅ `📄 [v1.1.15-變更需求清單.md](minis://workspace/repair-system/docs/v1.1.15-變更需求清單.md)`
+    - ❌ `請查看 docs/v1.1.15-變更需求清單.md`（沒連結，使用者找不到）
 13. 不確定的 LINE / Cloudflare API 一律留 // TODO: verify against official docs，禁止猜測。
 
 ## 工作區與檔案結構（v1.1.15 起，硬性規則）
@@ -59,33 +67,25 @@
     例外：備援的 `.git` 可放他處；當下不適用的搬遷測試 `.gitlocktest`/`.gtest`/`.mvtest` 等
     可放他處，事後必須清掉。
 
-## 產品規則（不可自行更動）
-- 狀態流：open → in_progress → done；另有 void；done/void 僅 admin 可 reopen。
-- 回報（kind=status）限 manager/admin；留言（kind=comment）三角色皆可、不改狀態。
-- 編輯、void、reopen 都必須寫入時間軸；reopen 訊息須帶入實際前狀態（已完成／已作廢）。
-- month_done 從 ticket_updates 計算（見 §4.7），禁止用 tickets.closed_at。
-- 建單不接受 vendor_id；廠商僅在 PATCH 由 manager/admin 指派。
-- **廠商排序（v1.1.13）**：`vendors.sort_order` 排序用（與 options.sort_order 同模式），後台直接改資料庫、無前端排序介面；`GET /api/vendors` 依 `active DESC, sort_order, id`。**phone 欄位已移除（0008），勿再引用**。
-- **指派廠商只在編輯頁（pages.edit）提供**（v1.1.5），不要塞進列表卡片或詳情頁；權限 manager/admin（保全/秘書層級）。
-- **權限中文對照**：主管=admin、保全/秘書=manager、委員=committee（v1.1.5 定案，勿寫反）。
-- 編輯權限：committee 僅自己建的單；manager/admin 全部（D7）。
-- 統計頁三角色皆可（D6）；CSV 匯出限 manager/admin（D3）。
-- committee 看得到 vendor_name 但 GET /api/vendors 限 manager/admin——刻意設計，勿「順手修掉」。
+## 產品規則（見 SPEC §0.3 為主，本段僅補 §0.3 未列的 AI 動作相關細則）
+- **產品契約**（狀態流、回報/留言權限、時間軸 append-only、廠商不刪除只停用、權限中文對照、指派廠商只編輯頁、編輯權限等）→ **見 SPEC §0.3**，本檔不重複。
+- `month_done` 從 `ticket_updates` 計算（見 SPEC §4.7），**禁止用 `tickets.closed_at`**——這是計算「本月完成」的權威來源。
+- **廠商排序（v1.1.13）**：`GET /api/vendors` 依 `active DESC, sort_order, id`；後台直接改資料庫、無前端排序介面。**`vendors.phone` 欄位已移除（0008），勿再引用**。
+- **統計頁三角色皆可（D6）**；**CSV 匯出限 manager/admin（D3）**。
+- **vendor_name 刻意外露**：committee 在詳情頁/列表看得到 `vendor_name`，但 `GET /api/vendors` 限 manager/admin——刻意設計，**勿「順手」開放 list 端點**。
 
 ## 部署與 preview（v1.1.5 決策）
 - preview 自動部署已關閉（preview_deployment_setting: none）。單人開發直接 push main 走 production。
 - production 的 D1/R2/JWT_SECRET/LINE_CHANNEL_ID 已設定；preview 未設（也不需設）。
 
-## 類別關聯（v1.1.7，硬性規則）
-- **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。關聯一律寫新的 migration。
-- `option_categories` join 表：多對多，一個 option 可屬多個 category；**無關聯列 = 通用，所有類別可見**。
-- **P7 以類別為中心**：類別列表顯示 `location_count`/`description_count`＋「設定關聯」按鈕，點開 modal 才載入該類別的地點/說明（`?type=X&category_id=N&include_inactive=1` 附 `associated`）——避免 N+1。`category_id` 與 `include_inactive` 可併用；寫入走 `POST /api/options/:id/assoc`（以類別為中心全量覆寫）。
-- **回報範本（`comment_desc`，v1.1.9）不參與類別關聯**：建單的 `description`（使用範本，v1.1.11 正名）可綁類別；回報/留言的 `comment_desc`（回報範本）是通用追蹤說明，**一律全部顯示、不綁類別、不進 `option_categories`**。P7 類別的 `description_count` 只算 `type='description'`。兩者 label 不同，catalog 用 `comment_descs` 與 `descriptions` 分開回傳。
-- **P2 catalog 分層快取**（v1.1.7，v1.1.8 優化）：`ensureCatalog()` 全域快取，依後端是否驗證分層——**建單/編輯頁 `ensureCatalog(true)` 用短 TTL（30 秒）**（category/location 後端驗證，避免 400）；**留言/列表頁 `ensureCatalog()` 用 10 分鐘 TTL 快取**（純 UI 不驗證）。無關聯類別 → alert 提示並 `ensureCatalog(true)` 強制重讀。**建單 submit 400 後 alert 並強制重讀更新下拉，不重整頁面保留已輸入資料**。
-- 建單驗證 `location_id` 屬於 `category_id` **或為通用**；PATCH 僅當 category/location 有變動時才驗（歷史資料不鎖死）。
-- `GET /api/options` 三模式：`?type`（僅 active）、`?type&category_id`（關聯+通用）、`?type&include_inactive=1`（附 category_ids，**限 manager/admin，handler 內判**）。
-- `category_ids` 三態：**未帶=不動關聯、[]=清空、有值=全量覆寫**。zod 用 `.optional()` 不用 `.default([])`。
-- `include_inactive` 用 `z.enum(['0','1']).transform()`，**不可用 `z.coerce.boolean()`**（`"false"` 也是 true）。
+## 類別關聯（v1.1.7 起，AI 動作約束；設計契約見 SPEC §P7 與 §4.x API）
+- **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。任何關聯變更一律寫新的 migration。
+- **`option_categories` 的 INSERT/DELETE 只允許出現在 `POST` / `PATCH /api/options` 兩處**（兩階段 batch：先 RETURNING id 再寫關聯）；DELETE WHERE 只能是 `option_id = ?`。**禁止**在其他端點動關聯。
+- **`category_ids` 三態**：未帶 = 不動關聯、`[]` = 清空、有值 = 全量覆寫。zod schema 用 `.optional()` 不用 `.default([])`。
+- **`include_inactive`** 用 `z.enum(['0','1']).transform()`，**不可用 `z.coerce.boolean()`**（`"false"` 也是 true）。
+- **join 表 `type` 由應用層強制**（`assertValidAssoc` / `assertCategoryIds`）：SQLite CHECK 不能跨表。
+- **類別停用 → 僅下拉消失**，`option_categories` 列**保留**（不 DELETE），停用類別重啟仍保留關聯。
+- **回報範本（`comment_desc`）不參與類別關聯**：建單的 `description`（使用範本，v1.1.11 正名）可綁類別；`comment_desc`（回報範本）是通用追蹤說明，**一律全部顯示、不綁類別、不進 `option_categories`**。
 
 ## 登入（硬性規則，勿再犯）
 - **`cleanUrlParams()` 只能在登入成功（取 me）之後呼叫**，絕不可放 boot 開頭或 `liff.init()` 之前——LIFF 的 OAuth 授權需要 URL 上的 `code`/`state`，提前清掉會讓一般瀏覽器無法跳 LINE 登入頁（時好時壞的 bug）。
