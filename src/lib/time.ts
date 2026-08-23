@@ -111,6 +111,7 @@ export function toTaipeiDisplay(iso: string): string {
  */
 export function taipeiDayRangeUtc(date: string): { startMs: number; endMs: number } {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { startMs: 0, endMs: 0 }
+  if (!isValidDate(date)) return { startMs: 0, endMs: 0 }
   const [y, m, d] = date.split('-').map(Number)
   // 台灣時區 = UTC+8。台灣該日 00:00 = UTC 前一日 16:00
   // 用 Date.UTC 算「該日台灣 00:00 的 UTC 毫秒」= Date.UTC(y, m-1, d-1, 16)
