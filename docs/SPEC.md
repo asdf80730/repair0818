@@ -1153,6 +1153,17 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **單元測試**：`@cloudflare/vitest-pool-workers` 在本地 workerd runtime 跑真實 D1/R2（miniflare），不碰正式資料。
 
+**本地單元測試快速迴圈 `npm run test:local`（v1.1.15 新增，不用 workerd）**：
+
+- **用途**：本機立即驗證單元測試（12 檔 170 tests，約 50 秒），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
+- **原理**：`vitest.node.config.ts` 以 `resolve.alias` 把 `cloudflare:test` 指向 `tests/node/cloudflare-test-shim.ts`，**測試檔零改動**：
+  - `SELF.fetch()` → Hono `app.request()`（不起 HTTP server）
+  - `env.DB` → `tests/node/d1.ts`：以 Node 內建 `node:sqlite` 實作的 D1 shim（prepare/bind/run/all/first/raw/batch/exec；batch 經 `__execForBatch` 保留 INSERT 的 `meta.last_row_id`）
+  - `env.PHOTOS` → `tests/node/r2.ts`：Map-based R2 stub
+  - shim 於 module load 建立 fresh in-memory DB＋套用 `migrations/` 全套 SQL，並以 `beforeEach` 重置——等價 workers pool 的 isolatedStorage
+  - `tests/node/_icu-polyfill.ts`：精簡 ICU 的 Node 上補 en-CA 的 `format`／`formatToParts`（full-ICU 環境自動 no-op），避免日期格式假失敗
+- **語意警告**：shim 是近似而非真 D1——錯誤訊息格式、meta 欄位細節與真 D1 有差。**`npm test`（workers pool / CI）仍是唯一真相**；`test:local` 全綠不代表可略過 CI。
+
 **CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。
 
 **E2E 效能（v1.1.14 優化）**：

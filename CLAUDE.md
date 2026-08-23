@@ -14,10 +14,19 @@
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~50 秒 170 tests）。
+  - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
+    `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
+    `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
+    shim 在 module load 建 fresh DB＋全套 migrations，並 beforeEach 重置＝等價 workers pool 的 isolatedStorage。
+  - `_icu-polyfill.ts` 只在精簡 ICU 的 Node 生效（full-ICU 自動 no-op），避免 en-CA 格式假失敗。
+  - **語意警告**：shim 是近似而非真 D1（錯誤訊息格式、meta 細節有差）。
+    `npm test`（workers pool / CI）仍是唯一真相；test:local 全綠不代表可跳過 CI。
 - **CI 工作流（本專案硬性）**：`.github/workflows/test.yml` 在 **push 後由 GitHub Actions 自動執行**
-  `npm ci → typecheck → npm test（單元）→ E2E`。因此**本機不需、也不宜自行跑測試**——程式碼改好後
-  commit + push 到 GitHub，等 CI 綠燈即可（見 SPEC §8.7）。沙箱內本機可做的驗證只有
-  `npm run typecheck`（tsc）與 `node --check <file>`（JS 語法）；**單元測試/E2E 一律靠 push 後的 CI**。
+  `npm ci → typecheck → npm test（單元）→ E2E`。本地驗證優先順序：
+  `npm run typecheck` → `npm run test:local`（單元快速迴圈，見上節）→ commit + push 等 CI 綠燈。
+  E2E（Playwright，對 production `?mock=true`）一律靠 CI；沙箱內本機可做的語法檢查另有
+  `node --check <file>`。
   部署由 Cloudflare 整合自動處理（push main 走 production，preview 已關閉，見 §0.3）。
 
 ## 硬性規則

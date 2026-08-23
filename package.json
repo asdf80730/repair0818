@@ -10,6 +10,7 @@
     "db:migrate:local": "wrangler d1 migrations apply repair-db0818 --local",
     "db:migrate:remote": "wrangler d1 migrations apply repair-db0818 --remote",
     "test": "vitest run",
+    "test:local": "vitest run --config vitest.node.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
