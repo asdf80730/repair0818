@@ -594,6 +594,18 @@ pages.pending = function () {
     el('p', { text: '請通知管理公司審核' }),
     el('button', { class: 'btn', text: '重新整理', onclick: () => boot() }),
   ]))
+  // D8（v1.1.15）：每 5 秒輪詢 /api/auth/me，被開通自動進系統
+  if (root._pendingTimer) clearInterval(root._pendingTimer)
+  root._pendingTimer = setInterval(async () => {
+    try {
+      const body = await api('/api/auth/me')
+      if (body.data && body.data.role !== 'pending') {
+        clearInterval(root._pendingTimer); root._pendingTimer = null
+        me = body.data
+        router()
+      }
+    } catch (_) { /* 401/網路錯誤忽略，繼續輪 */ }
+  }, 5000)
 }
 
 // P1 案件列表（§5.1）
@@ -1646,6 +1658,8 @@ function router() {
   const path = parts[0] || ''
   const param = parts[1]
   const root = document.getElementById('page')
+  // D8（v1.1.15）：切頁時清掉 pending 輪詢計時器，避免切走仍持續打 /api/auth/me
+  if (root._pendingTimer) { clearInterval(root._pendingTimer); root._pendingTimer = null }
   root.innerHTML = ''
 
   // 未登入 → 先 boot
