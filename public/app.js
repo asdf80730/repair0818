@@ -1041,7 +1041,8 @@ pages.ticket = async function (id) {
         } else {
           await api(`/api/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ note: commentInput.value.trim(), photo_ids: commentPhotos.length ? commentPhotos : undefined }) })
         }
-        location.reload()
+        // A5（v1.1.15）：不再 location.reload()，改用 router() 局部刷新時間軸
+        router()
       } catch (e) { commentSubmitting = false; toast(e.message) }
     } }),
   ]))
