@@ -555,13 +555,22 @@ async function ensureCatalog(force) {
   return catalogLoading
 }
 
-// 共用載入指示（v1.1.9：各頁面 await API 時避免白屏）
+// 共用載入指示（v1.1.9：各頁面 await API 時避免白屏；v1.1.15 D9 加 200ms 防抖）
+const LOADING_DELAY_MS = 200
 function renderLoading(root, text) {
   root.innerHTML = ''
-  root.appendChild(el('div', { class: 'loading-wrap' }, [
-    el('div', { class: 'spinner' }),
-    el('div', { class: 'loading-text', text: text || '載入中…' }),
-  ]))
+  // D9：200ms 內完成的請求不顯示 spinner，避免快速切換 Tab 時的視覺閃爍
+  root._loadingTimer = setTimeout(() => {
+    root._loadingTimer = null
+    root.appendChild(el('div', { class: 'loading-wrap' }, [
+      el('div', { class: 'spinner' }),
+      el('div', { class: 'loading-text', text: text || '載入中…' }),
+    ]))
+  }, LOADING_DELAY_MS)
+}
+function clearLoading(root) {
+  if (root._loadingTimer) { clearTimeout(root._loadingTimer); root._loadingTimer = null }
+  root.querySelector('.loading-wrap')?.remove()
 }
 
 // 空狀態（Empty State）：列表無資料時統一提示，避免白畫面
@@ -849,7 +858,7 @@ pages.new = function () {
     }
   }
 
-  root.querySelector('.loading-wrap')?.remove()
+  clearLoading(root)
 
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
@@ -870,7 +879,7 @@ pages.ticket = async function (id) {
   try {
     body = await api('/api/tickets/' + id)
   } catch (e) {
-    root.querySelector('.loading-wrap')?.remove()
+    clearLoading(root)
     root.appendChild(el('p', { class: 'error', text: e.message }))
     return
   }
@@ -957,7 +966,7 @@ pages.ticket = async function (id) {
     })
     topbar.appendChild(menuBtn)
   }
-  root.querySelector('.loading-wrap')?.remove()
+  clearLoading(root)
   root.appendChild(topbar)
 
   // ---- 案件資訊（緊湊）----
@@ -1119,7 +1128,7 @@ pages.edit = async function (id) {
     t = body.data
   } catch (e) {
     // E4（v1.1.14）：錯誤時清 loading，避免「載入案件」與錯誤訊息並存
-    root.querySelector('.loading-wrap')?.remove()
+    clearLoading(root)
     root.appendChild(el('p', { class: 'error', text: e.message }))
     return
   }
@@ -1206,7 +1215,7 @@ pages.edit = async function (id) {
     } catch (e) { toast(e.message) }
   }
 
-  root.querySelector('.loading-wrap')?.remove()
+  clearLoading(root)
 
   root.appendChild(el('div', { class: 'form' }, [
     el('label', { text: '類別' }), catSelect,
@@ -1254,7 +1263,7 @@ pages.stats = function () {
   root.appendChild(amountBox)
 
   async function load(month) {
-    root.querySelector('.loading-wrap')?.remove()
+    clearLoading(root)
     grid.innerHTML = ''
     amountBox.innerHTML = ''
     try {
@@ -1407,11 +1416,11 @@ pages.users = function () {
       }
     }
     filterSelect.addEventListener('change', render)
-    root.querySelector('.loading-wrap')?.remove()
+    clearLoading(root)
     root.appendChild(el('div', { class: 'filter-row' }, [el('label', { text: '篩選：' }), filterSelect]))
     root.appendChild(list)
     render()
-  }).catch((e) => { root.querySelector('.loading-wrap')?.remove(); root.appendChild(el('p', { class: 'error', text: e.message })) })
+  }).catch((e) => { clearLoading(root); root.appendChild(el('p', { class: 'error', text: e.message })) })
 }
 
 // P7 管理（manager/admin，§5.7）
