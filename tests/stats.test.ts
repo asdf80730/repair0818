@@ -491,6 +491,72 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(ex.updates_today[0].time).toMatch(/^\d{2}:\d{2}$/)
   })
 
+  // F12-1（v1.1.15）：updates_today 排序 = 時間正序（舊的在上、新的在下）
+  // 邊界：當日 5 筆 update，F12-1 要「最新 3 筆、由舊到新」
+  it('F12-1 updates_today 排序 = 時間正序（SQL DESC LIMIT 3 + 應用層 reverse）', async () => {
+    const admin = await loginAs('U-f1-sort', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-sort')
+    const loc = await ensureLocation('F1-test-loc-sort')
+
+    const today = todayTaipei()
+    // 上個月建單（避免被「當日新建」條件排除）
+    const prevMonth = (() => {
+      const d = new Date(); d.setMonth(d.getMonth() - 1)
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+    })()
+    const prevCreatedAt = new Date(Date.UTC(
+      Number(prevMonth.slice(0, 4)),
+      Number(prevMonth.slice(5, 7)) - 1,
+      Number(prevMonth.slice(8, 10)),
+      2, 0, 0,
+    )).toISOString()
+
+    const todayBase = new Date(Date.UTC(
+      Number(today.slice(0, 4)),
+      Number(today.slice(5, 7)) - 1,
+      Number(today.slice(8, 10)),
+      2, 0, 0,
+    )).getTime()
+
+    const tid = await makeTicket({
+      adminUserId: admin.userId,
+      catId: cat, catLabel: 'F1-test-cat-sort',
+      locId: loc, locLabel: 'F1-test-loc-sort',
+      desc: 'F12-1 排序測試',
+      createdAt: prevCreatedAt, lastActivityAt: new Date(todayBase + 5000).toISOString(),
+    })
+
+    // 5 筆 update（時間從早到晚，間隔 1 秒）—— F12-1 應該只取最新 3 筆（4、5、3 → 反轉 → 3、4、5）
+    // 原始 ISO 時間：今天 02:00:00, 02:00:01, 02:00:02, 02:00:03, 02:00:04
+    const updateTimes = [
+      new Date(todayBase + 0).toISOString(),     // t1 最早
+      new Date(todayBase + 1000).toISOString(),  // t2
+      new Date(todayBase + 2000).toISOString(),  // t3
+      new Date(todayBase + 3000).toISOString(),  // t4
+      new Date(todayBase + 4000).toISOString(),  // t5 最新
+    ]
+    for (let i = 0; i < updateTimes.length; i++) {
+      await addUpdate({
+        ticketId: tid, userId: admin.userId, kind: 'comment',
+        note: `update ${i + 1} (t${i + 1})`, createdAt: updateTimes[i],
+      })
+    }
+
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
+      { headers: { Cookie: admin.cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    const ex = body.data.existing_tickets.find((t: { id: number }) => t.id === tid)
+    expect(ex).toBeTruthy()
+    expect(ex.updates_today).toHaveLength(3)
+    // F12-1：時間正序 → t3、t4、t5（最新 3 筆，由舊到新）
+    expect(ex.updates_today[0].note).toBe('update 3 (t3)')
+    expect(ex.updates_today[1].note).toBe('update 4 (t4)')
+    expect(ex.updates_today[2].note).toBe('update 5 (t5)')
+  })
+
   it('當日無任何案件 → new_count + existing_count = 0、total_count = 0', async () => {
     const { cookie } = await loginAs('U-f1-empty', '管', 'admin')
     const cat = await ensureCategory('F1-test-cat-empty')

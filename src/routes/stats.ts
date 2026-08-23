@@ -197,6 +197,8 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   if (existingTicketsRaw.results.length > 0) {
     const existingIds = existingTicketsRaw.results.map((t) => t.id)
     const placeholders = existingIds.map(() => '?').join(',')
+    // F12-1：每張 ticket 取**最新 3 筆**（DESC LIMIT 3），應用層再 .reverse() 回時間正序輸出
+    // （DESC 是撈最新用，輸出按 F12-1 時間正序——避免雙重排序出錯）
     const updatesRaw = await c.env.DB.prepare(
       `SELECT u.ticket_id, u.kind, u.status, u.note, u.amount, u.created_at,
               usr.display_name AS actor_name
@@ -204,23 +206,23 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
        JOIN users usr ON usr.id = u.user_id
        WHERE u.ticket_id IN (${placeholders})
          AND u.created_at >= ? AND u.created_at < ?
-       ORDER BY u.created_at ASC`,
+       ORDER BY u.ticket_id ASC, u.created_at DESC`,
     ).bind(...existingIds, startIso, endIso).all<{
       ticket_id: number; kind: string; status: string | null;
       note: string | null; amount: number | null;
       created_at: string; actor_name: string
     }>()
 
-    // 按 ticket_id 分組（slice 0..3）
+    // 按 ticket_id 分組（DESC 順序 = 每組第一筆是最新），slice 0..3、reverse 回 ASC 輸出
     const byTicket = new Map<number, typeof updatesRaw.results>()
     for (const u of updatesRaw.results) {
       const arr = byTicket.get(u.ticket_id) ?? []
-      arr.push(u)
+      if (arr.length < UPDATES_PER_TICKET_LIMIT) arr.push(u)
       byTicket.set(u.ticket_id, arr)
     }
 
     existingTickets = existingTicketsRaw.results.map((t) => {
-      const updates = (byTicket.get(t.id) ?? []).slice(0, UPDATES_PER_TICKET_LIMIT)
+      const updates = (byTicket.get(t.id) ?? []).slice(0, UPDATES_PER_TICKET_LIMIT).reverse()
       return {
         id: t.id,
         title: buildTitle(t),
