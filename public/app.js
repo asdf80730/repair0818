@@ -406,8 +406,10 @@ function attachPhotoPicker(photos, initialPhotos = []) {
         photos.push(b.data.id)
         addThumb(b.data.id, b.data.url)
       } catch (e) {
-        if (e && e.code !== 'NETWORK') continue
-        toast(e.message)
+        // A3（v1.1.15）：只有 NETWORK 類錯誤允許吞掉（單張失敗不擋其他張），
+        // 其他錯誤（壓縮失敗、上傳 400 等）一律 toast，避免使用者無感卡住。
+        if (e && e.code === 'NETWORK') continue
+        toast(e?.message || '照片處理失敗')
       }
     }
     input.value = ''
