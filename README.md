@@ -61,4 +61,4 @@ npm run db:migrate:remote  # 套用 D1 migration 到 production
 - **LIFF 進入點健化**：C1 loggingIn flag、C2 openWindow fallback、C3 boot 兜底
 - **A4 el() 白名單**：dev-only 拼錯警告（production 靜默）
 - **A5 留言/回報/作廢/重開**：局部刷新時間軸（不再整頁 reload）
-- 詳細變更與決策紀錄：[docs/v1.1.15-變更需求清單.md](docs/v1.1.15-變更需求清單.md)、[docs/SPEC.md](docs/SPEC.md) §0.1 版本歷程
+- 詳細變更與決策紀錄：[docs/archive/v1.1.15-變更需求報告.md](docs/archive/v1.1.15-變更需求報告.md)（2026-08-23 已封存）、[docs/SPEC.md](docs/SPEC.md) §0.1 版本歷程
