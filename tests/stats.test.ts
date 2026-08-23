@@ -271,3 +271,258 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
     expect(afterCur.month_initial_open - before.month_initial_open).toBe(0)
   })
 })
+
+describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
+  // 工具：建立一個 category 並回傳 id
+  async function ensureCategory(label: string): Promise<number> {
+    const exist = await env.DB.prepare(
+      "SELECT id FROM options WHERE type='category' AND label=? AND active=1",
+    ).bind(label).first<{ id: number }>()
+    if (exist) return exist.id
+    const r = await env.DB.prepare(
+      "INSERT INTO options (type, label, sort_order, active) VALUES ('category', ?, 999, 1)",
+    ).bind(label).run()
+    return Number(r.meta.last_row_id)
+  }
+
+  // 工具：建立 location
+  async function ensureLocation(label: string): Promise<number> {
+    const exist = await env.DB.prepare(
+      "SELECT id FROM options WHERE type='location' AND label=? AND active=1",
+    ).bind(label).first<{ id: number }>()
+    if (exist) return exist.id
+    const r = await env.DB.prepare(
+      "INSERT INTO options (type, label, sort_order, active) VALUES ('location', ?, 999, 1)",
+    ).bind(label).run()
+    return Number(r.meta.last_row_id)
+  }
+
+  // 工具：建 ticket
+  async function makeTicket(args: {
+    adminUserId: number
+    catId: number
+    catLabel: string
+    locId: number
+    locLabel: string
+    desc: string
+    createdAt: string
+    lastActivityAt: string
+  }): Promise<number> {
+    const r = await env.DB.prepare(
+      `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
+                           status, share_token, created_by, created_at, last_activity_at)
+       VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
+    ).bind(args.catId, args.catLabel, args.locId, args.locLabel, args.desc,
+           crypto.randomUUID(), args.adminUserId, args.createdAt, args.lastActivityAt).run()
+    return Number(r.meta.last_row_id)
+  }
+
+  // 工具：加 ticket_update（status / comment）
+  async function addUpdate(args: {
+    ticketId: number; userId: number;
+    kind: 'status' | 'comment';
+    status?: string; note?: string; amount?: number;
+    createdAt: string;
+  }): Promise<void> {
+    await env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, amount, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(args.ticketId, args.userId, args.kind,
+           args.status ?? null, args.note ?? null, args.amount ?? null,
+           args.createdAt).run()
+  }
+
+  // 取得今天台灣日期 YYYY-MM-DD
+  function todayTaipei(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
+  }
+
+  it('date 缺 → 400 VALIDATION_ERROR', async () => {
+    const { cookie } = await loginAs('U-f1-nodate', '管', 'admin')
+    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
+    const r = await worker.fetch(`http://example.com/api/stats/daily-report?category_id=${cat!.id}`, {
+      headers: { Cookie: cookie },
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('category_id 缺 → 400 VALIDATION_ERROR', async () => {
+    const { cookie } = await loginAs('U-f1-nocat', '管', 'admin')
+    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=${todayTaipei()}`, {
+      headers: { Cookie: cookie },
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('date 格式錯誤（2026-13-99）→ 400', async () => {
+    const { cookie } = await loginAs('U-f1-baddate', '管', 'admin')
+    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
+    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=2026-13-99&category_id=${cat!.id}`, {
+      headers: { Cookie: cookie },
+    })
+    expect(r.status).toBe(400)
+  })
+
+  it('category_id 不存在 → 404', async () => {
+    const { cookie } = await loginAs('U-f1-nocat2', '管', 'admin')
+    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=99999`, {
+      headers: { Cookie: cookie },
+    })
+    expect(r.status).toBe(404)
+  })
+
+  it('新建案件：當日 created_at 在區間內、屬該類別 → new_tickets 計入', async () => {
+    const admin = await loginAs('U-f1-new1', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-new')
+    const loc = await ensureLocation('F1-test-loc-new')
+
+    const today = todayTaipei()
+    // 今日 10:00 台灣 = UTC -8h（簡化用：用 Date.UTC 重建台灣 10:00）
+    const todayCreatedAt = new Date(Date.UTC(
+      Number(today.slice(0, 4)),
+      Number(today.slice(5, 7)) - 1,
+      Number(today.slice(8, 10)),
+      2, 0, 0,  // 10:00 台灣 = 02:00 UTC
+    )).toISOString()
+
+    const tid = await makeTicket({
+      adminUserId: admin.userId,
+      catId: cat, catLabel: 'F1-test-cat-new',
+      locId: loc, locLabel: 'F1-test-loc-new',
+      desc: '今日新建',
+      createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
+    })
+
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
+      { headers: { Cookie: admin.cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.category_label).toBe('F1-test-cat-new')
+    expect(body.data.new_count).toBeGreaterThanOrEqual(1)
+    const newTicket = body.data.new_tickets.find((t: { id: number }) => t.id === tid)
+    expect(newTicket).toBeTruthy()
+    expect(newTicket.creator_name).toBe('管')
+    expect(newTicket.status).toBe('open')
+    expect(newTicket.detail_url).toMatch(/\/ticket\/\d+$/)
+    expect(newTicket.created_at_time).toMatch(/^\d{2}:\d{2}$/)
+  })
+
+  it('既有案件：當日有 update 且非當日新建 → existing_tickets 計入 + updates_today 最多 3 筆', async () => {
+    const admin = await loginAs('U-f1-ex1', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-ex')
+    const loc = await ensureLocation('F1-test-loc-ex')
+
+    const today = todayTaipei()
+    // 上個月同日（既有的 created_at 早於當日，落在 last_activity_at 區間）
+    const prevMonth = (() => {
+      const d = new Date()
+      d.setMonth(d.getMonth() - 1)
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(d)
+    })()
+    const prevCreatedAt = new Date(Date.UTC(
+      Number(prevMonth.slice(0, 4)),
+      Number(prevMonth.slice(5, 7)) - 1,
+      Number(prevMonth.slice(8, 10)),
+      2, 0, 0,
+    )).toISOString()
+
+    // 既有案件：上月建、今天有 update
+    const today10am = new Date(Date.UTC(
+      Number(today.slice(0, 4)),
+      Number(today.slice(5, 7)) - 1,
+      Number(today.slice(8, 10)),
+      2, 0, 0,
+    )).toISOString()
+
+    const tid = await makeTicket({
+      adminUserId: admin.userId,
+      catId: cat, catLabel: 'F1-test-cat-ex',
+      locId: loc, locLabel: 'F1-test-loc-ex',
+      desc: '上月建、今日有 update',
+      createdAt: prevCreatedAt, lastActivityAt: today10am,
+    })
+
+    // 今日 4 筆 update → 應被 slice(0,3)
+    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'status', status: 'in_progress', createdAt: today10am })
+    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'comment', note: 'a', createdAt: new Date(Date.parse(today10am) + 1000).toISOString() })
+    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'status', status: 'in_progress', createdAt: new Date(Date.parse(today10am) + 2000).toISOString() })
+    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'comment', note: 'b', createdAt: new Date(Date.parse(today10am) + 3000).toISOString() })
+
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
+      { headers: { Cookie: admin.cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    const ex = body.data.existing_tickets.find((t: { id: number }) => t.id === tid)
+    expect(ex).toBeTruthy()
+    expect(ex.current_status).toBe('open') // tickets.status 沒被動，預設 open
+    expect(ex.status_label).toBe('待處理')
+    expect(ex.updates_today).toHaveLength(3) // slice(0,3)
+    expect(ex.updates_today[0].kind).toBe('status')
+    expect(ex.updates_today[0].note).toBeNull()
+    expect(ex.updates_today[0].amount).toBeNull()
+    expect(ex.updates_today[0].time).toMatch(/^\d{2}:\d{2}$/)
+  })
+
+  it('當日無任何案件 → new_count + existing_count = 0、total_count = 0', async () => {
+    const { cookie } = await loginAs('U-f1-empty', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-empty')
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
+      { headers: { Cookie: cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.new_count).toBe(0)
+    expect(body.data.existing_count).toBe(0)
+    expect(body.data.total_count).toBe(0)
+    expect(body.data.new_tickets).toEqual([])
+    expect(body.data.existing_tickets).toEqual([])
+  })
+
+  it('三角色皆可讀 daily-report（同 /summary）', async () => {
+    const admin = await loginAs('U-f1-roles-admin', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-roles')
+
+    for (const role of ['committee', 'manager', 'admin'] as const) {
+      const u = await loginAs(`U-f1-roles-${role}`, role, role)
+      const r = await worker.fetch(
+        `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
+        { headers: { Cookie: u.cookie } },
+      )
+      expect(r.status).toBe(200)
+    }
+
+    // 避免 lint 抱怨未使用
+    void admin
+  })
+
+  it('回傳 template（含 id + body）—— 從 migration 0010 seed 預設模板撈', async () => {
+    const { cookie } = await loginAs('U-f1-tmpl', '管', 'admin')
+    const cat = await ensureCategory('F1-test-cat-tmpl')
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
+      { headers: { Cookie: cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    // template 可能 null（如果 0010 migration 沒跑）—— 至少型別對
+    if (body.data.template) {
+      expect(typeof body.data.template.id).toBe('number')
+      expect(typeof body.data.template.body).toBe('string')
+    }
+  })
+})

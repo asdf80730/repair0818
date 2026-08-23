@@ -16,6 +16,8 @@ export type Env = {
     JWT_SECRET: string
     // A7（v1.1.14）：Cloudflare Pages 建置自動注入部署 commit SHA（可能缺，選填）
     CF_PAGES_COMMIT_SHA?: string
+    // F1（v1.1.15）：daily-report 用 — 沒設 fallback 為正式網域
+    BASE_URL?: string
   }
   Variables: {
     user: User

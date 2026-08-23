@@ -94,3 +94,33 @@ export function toTaipeiDisplay(iso: string): string {
   const get = (t: string) => parts.find((p) => p.type === t)!.value
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`
 }
+
+/**
+ * 台灣指定日期邊界（UTC 毫秒秒數），供 SQL 帶入（F2 v1.1.15）。
+ * 回傳 { startMs, endMs }：startMs 為該日 00:00（台灣）的 UTC 值，
+ * endMs 為**明日** 00:00（台灣）的 UTC 值（半開區間，不含 endIso）。
+ * 例：date='2026-08-23' → startMs = 該日 00:00 台灣的 UTC 毫秒
+ *                    → endMs   = 2026-08-24 00:00 台灣的 UTC 毫秒
+ *
+ * **呼叫前請先用 isValidDate() 驗證**——本函式只校驗 regex，不驗證真實日期。
+ */
+export function taipeiDayRangeUtc(date: string): { startMs: number; endMs: number } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { startMs: 0, endMs: 0 }
+  const [y, m, d] = date.split('-').map(Number)
+  const start = toUtcMs(y, m, d)
+  // 明日：日 + 1，Date.UTC 自然跨月進位（例：2026-08-31 + 1 → 2026-09-01）
+  const tmrw = new Date(Date.UTC(y, m - 1, d + 1))
+  const end = toUtcMs(tmrw.getUTCFullYear(), tmrw.getUTCMonth() + 1, tmrw.getUTCDate())
+  return { startMs: start, endMs: end }
+}
+
+/** 驗證 YYYY-MM-DD 格式且為真實日期（F2 v1.1.15） */
+export function isValidDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  const probe = Date.parse(`${date}T00:00:00Z`)
+  if (isNaN(probe)) return false
+  // Date.parse 容忍溢位日期（2026-02-30 → 2026-03-02），需反向驗證
+  const d = new Date(probe)
+  const [y, m, day] = date.split('-').map(Number)
+  return d.getUTCFullYear() === y && d.getUTCMonth() === m - 1 && d.getUTCDate() === day
+}

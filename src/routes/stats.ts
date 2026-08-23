@@ -4,8 +4,24 @@
 import { Hono } from 'hono'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { taipeiMonthRangeUtc } from '../lib/time'
+import { taipeiMonthRangeUtc, taipeiDayRangeUtc, isValidDate, toTaipeiDisplay } from '../lib/time'
+import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
+
+// F1（v1.1.15）：status 字串 → 顯示用 label
+// 與前端 app.js:480 的 STATUS_COLOR_MAP 對齊
+const STATUS_LABEL: Record<string, string> = {
+  open: '待處理',
+  in_progress: '已發包',
+  done: '已完成',
+  void: '已作廢',
+}
+
+// F1（v1.1.15）：detail_url base，env 未設 fallback 為正式網域
+const DEFAULT_BASE_URL = 'https://repair-system-4re.pages.dev'
+
+// F1（v1.1.15）：每筆 existing_ticket 的 updates_today 上限
+const UPDATES_PER_TICKET_LIMIT = 3
 
 export const statsRoutes = new Hono<Env>()
 
@@ -92,4 +108,156 @@ statsRoutes.get('/amount-by-category', requireAuth(), async (c) => {
   ).bind(startIso, endIso).all<{ category_label: string; total_amount: number; count: number }>()
 
   return ok(c, { month: month || undefined, items: rows.results })
+})
+
+// GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15）
+// Query 必填：date=YYYY-MM-DD、category_id=N
+// 回傳純資料 + 啟用模板 body（前端用 templateEngine 渲染）
+// 用途：保全每天對委員發 LINE 群組報告該類別當日案件動態
+statsRoutes.get('/daily-report', requireAuth(), async (c) => {
+  const date = c.req.query('date')
+  const categoryIdStr = c.req.query('category_id')
+
+  if (!date) return fail(c, 400, 'VALIDATION_ERROR', 'date 必填（YYYY-MM-DD）')
+  if (!isValidDate(date)) return fail(c, 400, 'VALIDATION_ERROR', 'date 格式需為 YYYY-MM-DD 且為真實日期')
+  if (!categoryIdStr) return fail(c, 400, 'VALIDATION_ERROR', 'category_id 必填')
+  const categoryId = Number(categoryIdStr)
+  if (!Number.isInteger(categoryId) || categoryId <= 0) {
+    return fail(c, 400, 'VALIDATION_ERROR', 'category_id 需為正整數')
+  }
+
+  const { startMs, endMs } = taipeiDayRangeUtc(date)
+  if (startMs === 0) return fail(c, 400, 'VALIDATION_ERROR', 'date 格式需為 YYYY-MM-DD')
+  const startIso = new Date(startMs).toISOString()
+  const endIso = new Date(endMs).toISOString()
+
+  // 撈類別 label
+  const cat = await c.env.DB.prepare(
+    'SELECT label FROM categories WHERE id = ? AND active = 1',
+  ).bind(categoryId).first<{ label: string }>()
+  if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在或已停用')
+
+  const baseUrl = c.env.BASE_URL || DEFAULT_BASE_URL
+
+  // 1. 新建：當日 created_at 在區間內、屬該類別的 tickets
+  const newTicketsRaw = await c.env.DB.prepare(
+    `SELECT t.id, t.title, t.location_label, t.description, t.status,
+            t.created_at, u.display_name AS creator_name
+     FROM tickets t
+     JOIN users u ON u.id = t.created_by
+     WHERE t.category_id = ? AND t.created_at >= ? AND t.created_at < ?
+     ORDER BY t.id ASC`,
+  ).bind(categoryId, startIso, endIso).all<{
+    id: number; title: string; location_label: string; description: string | null;
+    status: string; created_at: string; creator_name: string
+  }>()
+
+  const newTickets = newTicketsRaw.results.map((t) => ({
+    id: t.id,
+    title: t.title,
+    location_label: t.location_label,
+    description: t.description ?? '',
+    creator_name: t.creator_name,
+    created_at: t.created_at,
+    created_at_time: toTaipeiDisplay(t.created_at).slice(11), // HH:MM
+    status: t.status,
+    detail_url: `${baseUrl}/#/ticket/${t.id}`,
+  }))
+
+  // 2. 既有：last_activity_at 落在當日、屬該類別、且**非當日新建**
+  const existingTicketsRaw = await c.env.DB.prepare(
+    `SELECT t.id, t.title, t.location_label, t.status
+     FROM tickets t
+     WHERE t.category_id = ?
+       AND t.last_activity_at >= ? AND t.last_activity_at < ?
+       AND t.created_at < ?
+     ORDER BY t.id ASC`,
+  ).bind(categoryId, startIso, endIso, startIso).all<{
+    id: number; title: string; location_label: string; status: string
+  }>()
+
+  // 3. updates_today：撈上述既有案件的當日所有 update（按時間正序）
+  let existingTickets: Array<{
+    id: number; title: string; location_label: string;
+    current_status: string; status_label: string;
+    detail_url: string;
+    updates_today: Array<{
+      kind: string; status: string | null;
+      actor_name: string; time: string;
+      note: string | null; amount: number | null;
+    }>;
+  }> = []
+
+  if (existingTicketsRaw.results.length > 0) {
+    const existingIds = existingTicketsRaw.results.map((t) => t.id)
+    const placeholders = existingIds.map(() => '?').join(',')
+    const updatesRaw = await c.env.DB.prepare(
+      `SELECT u.ticket_id, u.kind, u.status, u.note, u.amount, u.created_at,
+              usr.display_name AS actor_name
+       FROM ticket_updates u
+       JOIN users usr ON usr.id = u.user_id
+       WHERE u.ticket_id IN (${placeholders})
+         AND u.created_at >= ? AND u.created_at < ?
+       ORDER BY u.created_at ASC`,
+    ).bind(...existingIds, startIso, endIso).all<{
+      ticket_id: number; kind: string; status: string | null;
+      note: string | null; amount: number | null;
+      created_at: string; actor_name: string
+    }>()
+
+    // 按 ticket_id 分組（slice 0..3）
+    const byTicket = new Map<number, typeof updatesRaw.results>()
+    for (const u of updatesRaw.results) {
+      const arr = byTicket.get(u.ticket_id) ?? []
+      arr.push(u)
+      byTicket.set(u.ticket_id, arr)
+    }
+
+    existingTickets = existingTicketsRaw.results.map((t) => {
+      const updates = (byTicket.get(t.id) ?? []).slice(0, UPDATES_PER_TICKET_LIMIT)
+      return {
+        id: t.id,
+        title: t.title,
+        location_label: t.location_label,
+        current_status: t.status,
+        status_label: STATUS_LABEL[t.status] ?? t.status,
+        detail_url: `${baseUrl}/#/ticket/${t.id}`,
+        updates_today: updates.map((u) => ({
+          kind: u.kind,
+          status: u.status,
+          actor_name: u.actor_name,
+          time: toTaipeiDisplay(u.created_at).slice(11), // HH:MM
+          note: u.note,
+          amount: u.amount,
+        })),
+      }
+    })
+  }
+
+  // 4. 抓啟用模板（F12-2 決策：daily-report 回傳模板 body，前端用 templateEngine 渲染）
+  // 優先該類別關聯的 template，沒有則用全域預設（active=1, type='message_template', 無 option_categories）
+  const tmplRow = await c.env.DB.prepare(
+    `SELECT o.id, o.body
+     FROM options o
+     WHERE o.type = 'message_template' AND o.label = 'report' AND o.active = 1
+       AND (
+         o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
+         OR o.id NOT IN (SELECT option_id FROM option_categories)
+       )
+     ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
+              o.sort_order ASC
+     LIMIT 1`,
+  ).bind(categoryId, categoryId).first<{ id: number; body: string }>()
+
+  return ok(c, {
+    date,
+    category_id: categoryId,
+    category_label: cat.label,
+    new_count: newTickets.length,
+    existing_count: existingTickets.length,
+    total_count: newTickets.length + existingTickets.length,
+    new_tickets: newTickets,
+    existing_tickets: existingTickets,
+    template: tmplRow ? { id: tmplRow.id, body: tmplRow.body } : null,
+  })
 })
