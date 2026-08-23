@@ -308,13 +308,17 @@ async function api(path, options = {}) {
 
 // F3：全域 session 刷新單例，避免平行 401 各自重登（雷鳴群）
 let sessionRefreshPromise = null
+let loggingIn = false // C1（v1.1.15）：liff.login() 防重複觸發 + 防 silentRelogin 迴圈標記
+
 async function refreshSession() {
   if (sessionRefreshPromise) return sessionRefreshPromise
+  if (loggingIn) return false // C1：正在跳轉登入中，直接回 false 不重入
   sessionRefreshPromise = (async () => {
     if (!liffReady || !window.liff) return false
     if (!liff.isLoggedIn()) {
       // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL（避免部署網域變動造成不符）
-      liff.login()
+      loggingIn = true
+      try { liff.login() } finally { /* login 會整頁重載，到不了 finally */ }
       return false
     }
     const idToken = liff.getIDToken()
@@ -327,7 +331,8 @@ async function refreshSession() {
     if (sessionRes.ok) return true
     // v1.1.13：後端 session 重建失敗（idToken 過期等）→ 強制重新授權取得新 token
     // LINE 內已授權過會無感回新 token；外部瀏覽器會跳 LINE 登入頁
-    liff.login()
+    loggingIn = true
+    try { liff.login() } finally { /* login 會整頁重載，到不了 finally */ }
     return false
   })().finally(() => { sessionRefreshPromise = null })
   return sessionRefreshPromise
@@ -335,6 +340,8 @@ async function refreshSession() {
 
 // §3.4 靜默重登：刷新 session → 重送原請求一次
 async function silentRelogin(path, options, headers) {
+  // C1（v1.1.15）：若正在跳轉登入中（loggingIn）→ 不重入 refreshSession 避免迴圈
+  if (loggingIn) return null
   try {
     const ok = await refreshSession()
     if (!ok) return null
