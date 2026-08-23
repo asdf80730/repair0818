@@ -141,20 +141,25 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 1. 新建：當日 created_at 在區間內、屬該類別的 tickets
   const newTicketsRaw = await c.env.DB.prepare(
-    `SELECT t.id, t.title, t.location_label, t.description, t.status,
+    `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
             t.created_at, u.display_name AS creator_name
      FROM tickets t
      JOIN users u ON u.id = t.created_by
      WHERE t.category_id = ? AND t.created_at >= ? AND t.created_at < ?
      ORDER BY t.id ASC`,
   ).bind(categoryId, startIso, endIso).all<{
-    id: number; title: string; location_label: string; description: string | null;
+    id: number; category_label: string; location_label: string; description: string | null;
     status: string; created_at: string; creator_name: string
   }>()
 
+  // tickets 表無 title 欄位（migration 0001: 無 ticket_no 註解）—— 用 category_label+location_label+id 組標題
+  const pad4 = (n: number) => String(n).padStart(4, '0')
+  const buildTitle = (t: { category_label: string; location_label: string; id: number }) =>
+    `${t.category_label}-${t.location_label} #${pad4(t.id)}`
+
   const newTickets = newTicketsRaw.results.map((t) => ({
     id: t.id,
-    title: t.title,
+    title: buildTitle(t),
     location_label: t.location_label,
     description: t.description ?? '',
     creator_name: t.creator_name,
@@ -166,14 +171,14 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 2. 既有：last_activity_at 落在當日、屬該類別、且**非當日新建**
   const existingTicketsRaw = await c.env.DB.prepare(
-    `SELECT t.id, t.title, t.location_label, t.status
+    `SELECT t.id, t.category_label, t.location_label, t.status
      FROM tickets t
      WHERE t.category_id = ?
        AND t.last_activity_at >= ? AND t.last_activity_at < ?
        AND t.created_at < ?
      ORDER BY t.id ASC`,
   ).bind(categoryId, startIso, endIso, startIso).all<{
-    id: number; title: string; location_label: string; status: string
+    id: number; category_label: string; location_label: string; status: string
   }>()
 
   // 3. updates_today：撈上述既有案件的當日所有 update（按時間正序）
@@ -217,7 +222,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
       const updates = (byTicket.get(t.id) ?? []).slice(0, UPDATES_PER_TICKET_LIMIT)
       return {
         id: t.id,
-        title: t.title,
+        title: buildTitle(t),
         location_label: t.location_label,
         current_status: t.status,
         status_label: STATUS_LABEL[t.status] ?? t.status,
