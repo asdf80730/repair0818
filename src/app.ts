@@ -19,6 +19,7 @@ import { optionRoutes } from './routes/options'
 import { vendorRoutes } from './routes/vendors'
 import { userRoutes } from './routes/users'
 import { statsRoutes } from './routes/stats'
+import { messageTemplateRoutes } from './routes/messageTemplates'
 import { exportRoutes } from './routes/exports'
 import type { Env } from './lib/env'
 
@@ -49,4 +50,5 @@ app.route('/options', optionRoutes)
 app.route('/vendors', vendorRoutes)
 app.route('/users', userRoutes)
 app.route('/stats', statsRoutes)
+app.route('/message-templates', messageTemplateRoutes)  // F6（v1.1.15）
 app.route('/exports', exportRoutes)  // 僅 POST /sign（走標準 Cookie＋CSRF 流程）
