@@ -424,6 +424,22 @@ function hasSegment(cur, label) {
   return cur.split('、').some((s) => s.trim() === label)
 }
 
+// A4（v1.1.15）：el() 事件名白名單——拼錯事件名（如 onfoo）開發期 console.warn 提示
+// 白名單取 Web 常見 DOM 事件；onXxx 用 slice(2) 取事件名比對。
+// 命中才 addEventListener，未命中 console.warn 但仍照舊 setAttribute（不破壞既有呼叫，
+// 但確保開發者會看到拼錯警告）。若事件已存在於 setAttribute 路徑，不會被誤判為拼錯。
+const EL_VALID_EVENTS = new Set([
+  'click','dblclick','mousedown','mouseup','mouseover','mouseout','mousemove','mouseenter','mouseleave',
+  'keydown','keyup','keypress','input','change','submit','reset','focus','blur','focusin','focusout',
+  'load','unload','beforeunload','resize','scroll','wheel',
+  'touchstart','touchend','touchmove','touchcancel',
+  'drag','dragstart','dragend','dragover','dragenter','dragleave','drop',
+  'animationstart','animationend','animationiteration',
+  'transitionend','transitionstart','transitionrun','transitioncancel',
+  'pointerdown','pointerup','pointermove','pointerover','pointerout','pointerenter','pointerleave','pointercancel',
+  'contextmenu','auxclick','paste','copy','cut',
+])
+
 function el(tag, attrs = {}, children = []) {  const node = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined) continue // 跳過 null/undefined
@@ -431,7 +447,13 @@ function el(tag, attrs = {}, children = []) {  const node = document.createEleme
     else if (k === 'text') node.textContent = v
     else if (k === 'selected') node.selected = !!v
     else if (k === 'value') node.value = v // textarea/select 用 property（setAttribute 對 textarea 無效）
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
+    else if (k.startsWith('on')) {
+      const ev = k.slice(2)
+      if (!EL_VALID_EVENTS.has(ev)) {
+        console.warn(`[el] 未知事件名「${k}」（slice 後「${ev}」不在白名單）。常見拼錯：onclick/onchange/oninput/onkeydown/onmouseover 等。請檢查拼字。`)
+      }
+      node.addEventListener(ev, v)
+    }
     else node.setAttribute(k, v)
   }
   for (const c of [].concat(children)) {
