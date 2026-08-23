@@ -145,6 +145,8 @@ button { cursor: pointer; }
   min-height: 44px;
 }
 .select { padding-right: 32px; } /* v1.1.13：預留 iOS 原生箭頭空間 */
+/* D6（v1.1.15）：select 長文字 ellipsis + 避免撐開版面 */
+.select { text-overflow: ellipsis; }
 .textarea { min-height: 80px; resize: vertical; }
 /* 送出/主操作按鈕滿寬，方便手指點擊 */
 .form .btn-primary { width: 100%; margin-top: 16px; }
