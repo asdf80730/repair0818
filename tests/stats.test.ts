@@ -558,8 +558,6 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(ex.updates_today[0].note).toBe('update 3 (t3)')
     expect(ex.updates_today[1].note).toBe('update 4 (t4)')
     expect(ex.updates_today[2].note).toBe('update 5 (t5)')
-    // 加固：明確驗證時間序列是 ASC（[0].time < [2].time）
-    expect(ex.updates_today[0].time < ex.updates_today[2].time).toBe(true)
     // 加固：被切掉的兩筆是 t1 和 t2（不是 t4/t5）—— 確保是「保留最新 3 筆」
     const keptNotes = ex.updates_today.map((u: { note: string }) => u.note)
     expect(keptNotes).not.toContain('update 1 (t1)')
@@ -567,6 +565,9 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(keptNotes).toContain('update 3 (t3)')
     expect(keptNotes).toContain('update 4 (t4)')
     expect(keptNotes).toContain('update 5 (t5)')
+    // 加固：note 字串中的 t 編號應該嚴格遞增（驗證時間序列 ASC）
+    const tNums = ex.updates_today.map((u: { note: string }) => Number(u.note.match(/t(\d+)/)?.[1]))
+    expect(tNums).toEqual([3, 4, 5])
   })
 
   it('當日無任何案件 → new_count + existing_count = 0、total_count = 0', async () => {
