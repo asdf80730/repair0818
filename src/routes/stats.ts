@@ -133,7 +133,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 撈類別 label
   const cat = await c.env.DB.prepare(
-    'SELECT label FROM categories WHERE id = ? AND active = 1',
+    "SELECT label FROM options WHERE type='category' AND id = ? AND active = 1",
   ).bind(categoryId).first<{ label: string }>()
   if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在或已停用')
 

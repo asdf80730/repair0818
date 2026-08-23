@@ -37,7 +37,7 @@ messageTemplateRoutes.get('/', requireAuth(), async (c) => {
 
   // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）
   const rows = await c.env.DB.prepare(
-    `SELECT o.id, o.label, o.body, o.active, o.sort_order, o.updated_at,
+    `SELECT o.id, o.label, o.body, o.active, o.sort_order,
        CASE WHEN EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?)
          THEN 1 ELSE 0 END AS is_category_specific
      FROM options o
@@ -45,7 +45,7 @@ messageTemplateRoutes.get('/', requireAuth(), async (c) => {
      ORDER BY is_category_specific DESC, o.sort_order ASC, o.id ASC`,
   ).bind(categoryId, label).all<{
     id: number; label: string; body: string; active: number;
-    sort_order: number; updated_at: string | null;
+    sort_order: number;
     is_category_specific: number;
   }>()
 
@@ -59,9 +59,9 @@ messageTemplateRoutes.get('/:id', requireAuth(), async (c) => {
     return fail(c, 400, 'VALIDATION_ERROR', '無效的模板 id')
   }
   const row = await c.env.DB.prepare(
-    `SELECT id, label, body, active, sort_order, updated_at
+    `SELECT id, label, body, active, sort_order
      FROM options WHERE id = ? AND type = 'message_template'`,
-  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number; updated_at: string | null }>()
+  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number }>()
   if (!row) return fail(c, 404, 'NOT_FOUND', '模板不存在')
   return ok(c, row)
 })
@@ -88,7 +88,7 @@ messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), 
   if (!existing) return fail(c, 404, 'NOT_FOUND', '模板不存在')
 
   // 動態組 UPDATE
-  const sets: string[] = ['updated_at = ?']
+  const sets: string[] = []
   const binds: unknown[] = [nowIso()]
   if (body.body !== undefined) { sets.push('body = ?'); binds.push(body.body) }
   if (body.label !== undefined && body.label !== existing.label) {
@@ -103,8 +103,8 @@ messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), 
   await c.env.DB.prepare(`UPDATE options SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
 
   const after = await c.env.DB.prepare(
-    `SELECT id, label, body, active, sort_order, updated_at
+    `SELECT id, label, body, active, sort_order
      FROM options WHERE id = ?`,
-  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number; updated_at: string }>()
+  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number }>()
   return ok(c, after)
 })
