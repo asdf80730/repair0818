@@ -52,6 +52,13 @@
 6. 建單不需填標題：類別＋地點必填、說明選填，標題由系統產生
 7. 公開派工頁不顯示廠商名稱、不顯示時間軸、不顯示內部人員
 8. 結案（done）後不可再回報，但可留言（留言不會重開案件）；作廢（void）案件不可留言
+9. **廠商不進建單**：建單的 POST 不收 `vendor_id`；廠商僅在編輯頁 PATCH 由 manager/admin 指派
+10. **廠商排序（v1.1.13）**：`vendors.sort_order` 排序用（與 options.sort_order 同模式），後台直接改資料庫、無前端排序介面；`GET /api/vendors` 依 `active DESC, sort_order, id`。**`vendors.phone` 欄位已移除（0008），勿再引用**
+11. **指派廠商只在編輯頁（pages.edit）**（v1.1.5）：不塞進列表卡片或詳情頁
+12. **編輯權限**：committee 僅自己建的單；manager/admin 全部（D7）
+13. **統計頁三角色皆可**（D6）；**CSV 匯出限 manager/admin**（D3）
+14. **vendor_name 刻意外露**：committee 在詳情頁/列表看得到 `vendor_name`，但 `GET /api/vendors` 限 manager/admin——刻意設計
+15. **`month_done` 從 `ticket_updates` 計算**（v1.1.14 修正）：完成率方案②的分母用 `ticket_updates.kind='status' AND status='done'` 計算，**禁止用 `tickets.closed_at`**——reopen 改 `closed_at` 會污染完成率
 
 **明確不做（v1.1.13 確認，勿擅自加入）**：
 - **不上 React/Vue 等框架**：維持純原生 JS + vendored，避免建置與依賴。
