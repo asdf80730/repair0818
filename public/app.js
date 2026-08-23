@@ -1322,7 +1322,13 @@ async function exportCsv() {  try {
     const b = await api('/api/exports/sign', { method: 'POST', body: JSON.stringify({}) })
     const url = location.origin + b.data.url
     if (window.liff && liffReady) {
-      liff.openWindow({ url, external: true })
+      // C2（v1.1.15）：await openWindow 並 catch；失敗 fallback location.href
+      try {
+        await liff.openWindow({ url, external: true })
+      } catch (openErr) {
+        toast('外部瀏覽器開啟失敗，改用當前頁導向')
+        location.href = url
+      }
     } else {
       // D6：await 後 window.open 失去手勢信任（iOS Safari 攔截），改用 location.href 導向
       location.href = url
