@@ -1328,6 +1328,140 @@ pages.stats = function () {
     }
   }
 
+  // ────────────────────────────────────────────────────────────
+  // F2/F3/F4/F5（v1.1.15）：案件動態訊息框
+  // - 日期選擇器（<input type="date">，max=今天）
+  // - 類別下拉（localStorage 記住上次選擇）
+  // - 複製按鈕（navigator.clipboard + execCommand fallback）
+  // - textarea 即時預覽（F8 templateEngine.render）
+  // ────────────────────────────────────────────────────────────
+  const reportTitle = el('h3', { class: 'section-title', text: '案件動態' })
+  root.appendChild(reportTitle)
+  const reportBox = el('div', { class: 'report-box' })
+  root.appendChild(reportBox)
+
+  // 工具：今天台灣日期 YYYY-MM-DD
+  function todayTaipeiStr() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
+  }
+
+  // 日期選擇器
+  const dateInput = el('input', {
+    type: 'date',
+    class: 'select',
+    max: todayTaipeiStr(),
+    value: todayTaipeiStr(),
+  })
+
+  // 類別下拉（從 ensureCatalog() 拿 categories）
+  const catSel = el('select', { class: 'select' })
+  let allCategories = []
+  ensureCatalog().then((cat) => {
+    allCategories = (cat.categories || []).filter((c) => c.active !== false)
+    // localStorage 記住上次選擇（F3 業主決策 2026-08-23）
+    const savedCatId = Number(localStorage.getItem('dailyReportCatId') || 0)
+    for (const c of allCategories) {
+      catSel.appendChild(el('option', {
+        value: String(c.id),
+        text: c.label,
+        selected: (savedCatId ? c.id === savedCatId : c === allCategories[0]) ? 'selected' : null,
+      }))
+    }
+    if (allCategories.length > 0) loadReport()
+  })
+  catSel.addEventListener('change', () => {
+    if (catSel.value) localStorage.setItem('dailyReportCatId', catSel.value)
+    loadReport()
+  })
+  dateInput.addEventListener('change', loadReport)
+
+  const preview = el('textarea', {
+    class: 'report-preview',
+    readonly: 'readonly',
+    rows: 8,
+    placeholder: '選擇日期與類別後顯示訊息預覽',
+  })
+
+  const copyBtn = el('button', { class: 'btn', text: '📋 複製' })
+  copyBtn.addEventListener('click', async () => {
+    const text = preview.value
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('已複製')
+    } catch (_) {
+      // fallback：execCommand for LIFF WebView / iOS Safari
+      try {
+        preview.select()
+        document.execCommand('copy')
+        toast('已複製')
+      } catch (e2) {
+        toast('複製失敗：' + (e2?.message || '請手動選取'))
+      }
+    }
+  })
+
+  reportBox.appendChild(el('div', { class: 'report-controls' }, [
+    el('label', { text: '日期' }), dateInput,
+    el('label', { text: '類別' }), catSel,
+    copyBtn,
+  ]))
+  reportBox.appendChild(preview)
+
+  // F4：載入並渲染
+  async function loadReport() {
+    const date = dateInput.value
+    const categoryId = Number(catSel.value)
+    if (!date || !categoryId) {
+      preview.value = ''
+      return
+    }
+    try {
+      const r = await api(`/api/stats/daily-report?date=${date}&category_id=${categoryId}`)
+      const data = r.data
+      // F4：total_count === 0 → 顯示「無更新訊息」模板（empty）
+      if (data.total_count === 0) {
+        // 抓 empty 模板
+        const emptyRes = await api('/api/message-templates?label=empty')
+        const emptyTmpl = (emptyRes.data?.templates || []).find((t) => t.active) || emptyRes.data?.templates?.[0]
+        if (emptyTmpl) {
+          preview.value = globalThis.templateEngine.render(emptyTmpl.body, {
+            date: data.date,
+            category_label: data.category_label,
+            total_count: data.total_count,
+            new_count: data.new_count,
+            existing_count: data.existing_count,
+            new_tickets: data.new_tickets,
+            existing_tickets: data.existing_tickets,
+          })
+        } else {
+          preview.value = `今日 ${data.date} ${data.category_label} 無案件動態`
+        }
+        return
+      }
+      // F5：用 daily-report 回傳的 template.render
+      if (data.template && data.template.body) {
+        preview.value = globalThis.templateEngine.render(data.template.body, {
+          date: data.date,
+          category_label: data.category_label,
+          total_count: data.total_count,
+          new_count: data.new_count,
+          existing_count: data.existing_count,
+          new_tickets: data.new_tickets,
+          existing_tickets: data.existing_tickets,
+        })
+      } else {
+        preview.value = '（尚未設定啟用模板）'
+      }
+    } catch (e) {
+      preview.value = ''
+      reportBox.appendChild(el('p', { class: 'error', text: 'daily-report 載入失敗：' + e.message }))
+    }
+  }
+
   monthSel.addEventListener('change', () => load(monthSel.value))
   load(curMonth)
 
