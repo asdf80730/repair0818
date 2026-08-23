@@ -49,6 +49,32 @@ describe('F8 模板渲染引擎', () => {
     expect(out).toContain('2. B: [1/z]')
   })
 
+  it('F11-3 巢狀向上一層查變數（內層取外層 item 的 title）', () => {
+    // seed body 場景：existing_tickets 內層 updates_today 要用到外層的 title
+    const tpl = '{{#each tickets}}{{#each updates}}[{{title}}/{{kind}}]{{/each}}\n{{/each}}'
+    const out = render(tpl, {
+      tickets: [
+        {
+          title: '水電-大廳 #0003',
+          updates: [{ kind: 'status' }, { kind: 'comment' }],
+        },
+      ],
+    } as any)
+    expect(out).toContain('[水電-大廳 #0003/status]')
+    expect(out).toContain('[水電-大廳 #0003/comment]')
+    // 不應殘留 {{title}} 字面
+    expect(out).not.toContain('{{title}}')
+  })
+
+  it('F11-3 內層變數優先於外層（遮蔽測試）', () => {
+    // 內層若有同名變數，優先用內層
+    const tpl = '{{#each outer}}{{name}} > {{#each inner}}{{name}} {{/each}}\n{{/each}}'
+    const out = render(tpl, {
+      outer: [{ name: 'OUTER', inner: [{ name: 'INNER' }] }],
+    } as any)
+    expect(out).toContain('OUTER > INNER')
+  })
+
   it('自動變數 created_at_time（ISO → HH:MM 台灣時區）', () => {
     const tpl = '{{#each rows}}{{序}} {{created_at_time}}{{/each}}'
     const out = render(tpl, { rows: [{ created_at: '2026-08-23T10:30:00.000Z' }] })
