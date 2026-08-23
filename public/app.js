@@ -1569,6 +1569,193 @@ pages.users = function () {
   }).catch((e) => { clearLoading(root); root.appendChild(el('p', { class: 'error', text: e.message })) })
 }
 
+// F7（v1.1.15）訊息模板管理頁（manager/admin）
+// 結構：tab 切換 report / empty → 列表 → modal 編輯 body → 即時預覽 → 儲存
+// 簡化版：不做下拉變數插入、自動完成；用 textarea + 提示文字「可用變數清單」
+// 含 G7 重置為出廠預設按鈕（hardcode seed body 在前端）
+const SEED_TEMPLATE_BODY = {
+  report: '📅 {{date}} {{category_label}}案件動態（共 {{total_count}} 件）\n\n{{#each new_tickets}}\n{{序}}. {{title}}\n   {{description}}{{creator_name}} {{created_at_time}}\n   詳情：{{detail_url}}\n{{/each}}\n\n{{#each existing_tickets}}\n{{序}}. {{title}} → {{status_label}}\n{{#each updates_today}}\n   {{time}} {{actor_name}}：{{note_or_status}}{{amount_text}}\n{{/each}}\n{{/each}}',
+  empty: '今日 {{date}} {{category_label}} 無案件動態',
+}
+
+// 預設抓哪個 category 的模板（這頁只需要一個類別的模板列表）
+const TEMPLATE_PAGE_DEFAULT_CAT = (() => {
+  // 從 catalog 拿第一個 active category
+  return null
+})()
+
+async function getFirstCategoryId() {
+  const cat = await ensureCatalog()
+  const first = (cat.categories || [])[0]
+  return first ? first.id : null
+}
+
+pages.messageTemplates = async function () {
+  if (!me || (me.role !== 'manager' && me.role !== 'admin')) {
+    location.hash = '#/'
+    return
+  }
+
+  const root = document.getElementById('page')
+  root.innerHTML = ''
+  root.appendChild(el('header', { class: 'topbar' }, [
+    el('button', { class: 'btn btn-ghost', text: '← 返回', onclick: () => { location.hash = '#/' } }),
+    el('h1', { text: '訊息模板' }),
+  ]))
+
+  const catId = await getFirstCategoryId()
+  if (!catId) {
+    root.appendChild(el('p', { class: 'error', text: '尚未建立類別，無法管理模板' }))
+    return
+  }
+
+  // tab 切換（report / empty）
+  let currentLabel = 'report'
+  const tabBar = el('div', { class: 'tab-bar' })
+  function renderTabs() {
+    tabBar.innerHTML = ''
+    for (const lbl of ['report', 'empty']) {
+      tabBar.appendChild(el('button', {
+        class: 'tab' + (lbl === currentLabel ? ' active' : ''),
+        text: lbl === 'report' ? '報告模板' : '無更新訊息',
+        onclick: () => { currentLabel = lbl; renderTabs(); loadList() },
+      }))
+    }
+  }
+  renderTabs()
+  root.appendChild(tabBar)
+
+  const listBox = el('div', { class: 'tmpl-list' })
+  root.appendChild(listBox)
+
+  async function loadList() {
+    listBox.innerHTML = ''
+    listBox.appendChild(el('div', { class: 'loading-text', text: '載入中…' }))
+    try {
+      const r = await api(`/api/message-templates?category_id=${catId}&label=${currentLabel}`)
+      const tmpls = r.data.templates || []
+      listBox.innerHTML = ''
+      if (tmpls.length === 0) {
+        listBox.appendChild(el('p', { class: 'empty', text: '目前無啟用模板（請至後台 migration 跑 0010）' }))
+        return
+      }
+      for (const t of tmpls) {
+        listBox.appendChild(el('div', { class: 'tmpl-row' }, [
+          el('div', { class: 'tmpl-name', text: t.label === 'report' ? '報告模板' : '無更新訊息模板' }),
+          el('div', { class: 'tmpl-meta', text: t.is_category_specific ? '此類別專用' : '全域預設' }),
+          el('button', { class: 'btn', text: '編輯', onclick: () => openEdit(t) }),
+          // G7：重置為出廠預設
+          el('button', { class: 'btn btn-ghost', text: '重置出廠預設', onclick: () => resetToFactory(t) }),
+        ]))
+      }
+    } catch (e) {
+      listBox.innerHTML = ''
+      listBox.appendChild(el('p', { class: 'error', text: e.message }))
+    }
+  }
+
+  // 編輯 modal
+  async function openEdit(t) {
+    let cur = t
+    const modal = el('div', { class: 'modal-bg', onclick: (e) => { if (e.target === modal) close() } })
+    const content = el('div', { class: 'modal' })
+    modal.appendChild(content)
+    content.appendChild(el('h2', { text: '編輯模板' }))
+
+    const nameInput = el('input', { class: 'select', type: 'text', value: cur.label })
+    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 14, value: cur.body ?? '' })
+    const previewBox = el('pre', { class: 'tmpl-preview', text: '(預覽將顯示於此)' })
+
+    content.appendChild(el('div', { class: 'form-row' }, [
+      el('label', { text: '標籤（label）' }), nameInput,
+    ]))
+    content.appendChild(el('div', { class: 'form-row' }, [
+      el('label', { text: '內容（body，可使用 {{變數}} 與 {{#each}}...{{/each}}）' }),
+      bodyArea,
+    ]))
+    content.appendChild(el('div', { class: 'form-row' }, [
+      el('label', { text: '即時預覽（用 fixture 資料渲染）' }),
+      previewBox,
+    ]))
+
+    // 即時預覽
+    function renderPreview() {
+      try {
+        const ctx = makeFixtureContext()
+        previewBox.textContent = globalThis.templateEngine.render(bodyArea.value, ctx)
+      } catch (e) {
+        previewBox.textContent = '預覽失敗：' + e.message
+      }
+    }
+    bodyArea.addEventListener('input', renderPreview)
+    nameInput.addEventListener('input', renderPreview)
+    setTimeout(renderPreview, 0)
+
+    content.appendChild(el('div', { class: 'modal-actions' }, [
+      el('button', { class: 'btn btn-ghost', text: '取消', onclick: close }),
+      el('button', { class: 'btn', text: '儲存', onclick: async () => {
+        try {
+          await api(`/api/message-templates/${cur.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ body: bodyArea.value, label: nameInput.value }),
+          })
+          toast('已儲存')
+          close()
+          loadList()
+        } catch (e) {
+          toast('儲存失敗：' + e.message)
+        }
+      } }),
+    ]))
+
+    function close() { modal.remove() }
+    document.body.appendChild(modal)
+  }
+
+  // G7：重置為出廠預設
+  async function resetToFactory(t) {
+    if (!confirm(`確定將「${t.label === 'report' ? '報告模板' : '無更新訊息'}」重置為出廠預設？\n目前的 body 將被覆寫。`)) return
+    try {
+      const seed = SEED_TEMPLATE_BODY[t.label]
+      if (!seed) { toast('找不到出廠預設 body'); return }
+      await api(`/api/message-templates/${t.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ body: seed }),
+      })
+      toast('已重置為出廠預設')
+      loadList()
+    } catch (e) {
+      toast('重置失敗：' + e.message)
+    }
+  }
+
+  loadList()
+}
+
+// F7：模板預覽用 fixture 資料（hardcoded，與 SPEC §F5 一致）
+function makeFixtureContext() {
+  return {
+    date: '2026-08-23',
+    category_label: '水電',
+    total_count: 3,
+    new_count: 1,
+    existing_count: 2,
+    new_tickets: [
+      { id: 7, title: '水電－頂樓 #0007', location_label: '頂樓', description: '水泵故障 ', creator_name: '王小明', created_at: '2026-08-23T02:00:00.000Z', status: 'open', detail_url: 'https://repair-system-4re.pages.dev/#/ticket/7' },
+    ],
+    existing_tickets: [
+      {
+        id: 3, title: '水電－大廳 #0003', current_status: 'in_progress', status_label: '已發包',
+        detail_url: 'https://repair-system-4re.pages.dev/#/ticket/3',
+        updates_today: [
+          { kind: 'status', status: 'in_progress', actor_name: '王小明', time: '10:23', note: null, amount: 5000 },
+          { kind: 'comment', status: null, actor_name: '王小明', time: '11:00', note: '已通知廠商', amount: null },
+        ],
+      },
+    ],
+  }
+}
+
 // P7 管理（manager/admin，§5.7）
 pages.admin = function () {
   const root = document.getElementById('page')
@@ -1777,6 +1964,7 @@ function renderNav() {
     ['#/stats', '📊 統計'],
   ]
   if (me && (me.role === 'manager' || me.role === 'admin')) items.push(['#/admin', '⚙ 管理'])
+  if (me && (me.role === 'manager' || me.role === 'admin')) items.push(['#/message-templates', '📝 訊息模板'])
   if (me && me.role === 'admin') items.push(['#/users', '👥 成員'])
   for (const [href, label] of items) {
     nav.appendChild(el('a', { href, class: 'nav-item', text: label }))
@@ -1806,6 +1994,7 @@ function router() {
     case 'edit': pages.edit(param); break
     case 'stats': pages.stats(); break
     case 'users': pages.users(); break
+    case 'message-templates': pages.messageTemplates(); break
     case 'admin': pages.admin(); break
     default: pages.list()
   }
