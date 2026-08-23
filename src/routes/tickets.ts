@@ -75,7 +75,11 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
         'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL',
       ).bind('ticket', ticketId, pid),
     )
-    await c.env.DB.batch(photoStmts)
+    const photoResults = await c.env.DB.batch(photoStmts)
+    // D1（v1.1.15）：逐筆檢查 meta.changes，不足回 400（防止 race 被搶走綁定）
+    if (photoResults.some((r) => r.meta.changes === 0)) {
+      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+    }
   }
 
   const title = makeTitle(categoryLabel, locationLabel, ticketId)
@@ -362,7 +366,7 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
   }
 
   const now = nowIso()
-  await c.env.DB.batch([
+  const batchRes = await c.env.DB.batch([
     c.env.DB.prepare(
       `UPDATE tickets SET category_id = ?, category_label = ?, location_id = ?,
          location_label = ?, description = ?, vendor_id = ?, last_activity_at = ?
@@ -378,6 +382,12 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
     ).bind(id, user.id, `已修改：${changes.join('；')}`, now),
     ...photoStmts,
   ])
+  // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+  // batch 順序：[ticketUpdate, systemInsert, ...photoStmts]，photo 在 index 2 起
+  const photoBatchResults = batchRes.slice(2)
+  if (photoBatchResults.some((r) => r.meta.changes === 0)) {
+    return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+  }
 
   return ok(c, { id, updated: true, changes })
 })
@@ -442,10 +452,14 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
   const batchRes = await c.env.DB.batch(stmts)
   const inserted = batchRes[1].meta.last_row_id as number | undefined
   if (photoIds.length > 0 && inserted) {
-    await c.env.DB.batch(photoIds.map((pid) =>
+    const photoRes = await c.env.DB.batch(photoIds.map((pid) =>
       c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
         .bind('update', inserted, pid),
     ))
+    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+    if (photoRes.some((r) => r.meta.changes === 0)) {
+      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+    }
   }
 
   return ok(c, { updated: true, status: body.status })
@@ -491,10 +505,14 @@ ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createComme
 
   // 留言照片一律 target_type='update' + target_id=留言 id
   if (photoIds.length > 0) {
-    await c.env.DB.batch(photoIds.map((pid) =>
+    const photoRes = await c.env.DB.batch(photoIds.map((pid) =>
       c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
         .bind('update', updateId, pid),
     ))
+    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+    if (photoRes.some((r) => r.meta.changes === 0)) {
+      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+    }
   }
 
   return ok(c, { id: updateId, kind: 'comment' }, 201)
