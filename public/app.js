@@ -238,7 +238,8 @@ function mockApi(path, options = {}) {
     const categoryId = Number(url.searchParams.get('category_id'))
     if (!date) return { ok: false, error: { code: 'MISSING_DATE', message: 'date 必填' } }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: { code: 'INVALID_DATE', message: 'date 格式錯' } }
-    const today = new Date().toISOString().slice(0, 10)
+    // 用台灣時區當天（與前端 dateInput 的 todayTaipeiStr() 一致），避免 UTC 前一天 16:00~24:00 誤判為未來日期
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
     if (date > today) return { ok: false, error: { code: 'DATE_FUTURE', message: 'date 不可晚於今天' } }
     if (!categoryId) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
     const cat = mockOptions.category.find(c => c.id === categoryId)
