@@ -244,9 +244,13 @@ function mockApi(path, options = {}) {
     if (!categoryId) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
     const cat = mockOptions.category.find(c => c.id === categoryId)
     if (!cat) return { ok: false, error: { code: 'NOT_FOUND', message: '類別不存在' } }
-    // 撈今天屬於該類別的 tickets（created_at 是今天 ISO 日期開頭）
-    const start = `${date}T00:00:00.000Z`
-    const end = `${date}T23:59:59.999Z`
+    // 撈台灣當天屬於該類別的 tickets（start/end = 台灣當天 00:00 的 UTC 對應，與後端 taipeiDayRangeUtc 一致）
+    // 台灣當天 00:00 = UTC 前一日 16:00；end = 台灣隔天 00:00 = 當天 16:00 UTC（半開區間）
+    const [yy, mm, dd] = date.split('-').map(Number)
+    const startMs = Date.UTC(yy, mm - 1, dd) - 8 * 3600 * 1000
+    const endMs = startMs + 24 * 3600 * 1000
+    const start = new Date(startMs).toISOString()
+    const end = new Date(endMs).toISOString()
     const inCat = mockTickets.filter(t => t.category_label === cat.label)
     const newTs = inCat.filter(t => t.created_at >= start && t.created_at <= end)
     const existingTs = inCat.filter(t => t.last_activity_at >= start && t.last_activity_at <= end && t.created_at < start)
