@@ -405,15 +405,49 @@ async function api(path, options = {}) {
 let sessionRefreshPromise = null
 let loggingIn = false // C1（v1.1.15）：liff.login() 防重複觸發 + 防 silentRelogin 迴圈標記
 
+// C1（v1.1.15）：死循環防護——同一 tab 會話內限制「重新授權」次數。
+// 背景：真機 LIFF 在外部瀏覽器 liff.init() 失敗，拿不到新 idToken，只用過期 id_token
+// 換 session → 401 → 又 liff.login() → 無限重導。用 sessionStorage 跨頁面記數，
+// 超過上限即停止重登並顯示錯誤卡（否則每次 redirect 回來都是新頁、記數歸零，防不了）。
+const RELOGIN_KEY = 'loginReloginCount'
+const RELOGIN_MAX = 3
+function getReloginCount() {
+  try { return Number(sessionStorage.getItem(RELOGIN_KEY) || 0) } catch { return 0 }
+}
+function resetRelogin() {
+  try { sessionStorage.removeItem(RELOGIN_KEY) } catch { /* ignore */ }
+}
+// 嘗試再進行一次重新授權。達上限 → 顯示錯誤卡並回 false（不再跳 OAuth）。
+function reloginStart() {
+  try {
+    const c = getReloginCount()
+    if (c >= RELOGIN_MAX) {
+      const root = document.getElementById('page')
+      if (root) {
+        root.innerHTML = ''
+        root.appendChild(el('div', { class: 'pending' }, [
+          el('h1', { text: '🏘️ 社區修繕系統' }),
+          el('p', { text: '登入連線失敗次數過多，請重新整理後再試。' }),
+          el('button', { class: 'btn', text: '重新整理', onclick: () => location.reload() }),
+        ]))
+      }
+      return false
+    }
+    sessionStorage.setItem(RELOGIN_KEY, String(c + 1))
+  } catch { /* sessionStorage 不可用 → 放行，避免誤鎖 */ }
+  return true
+}
+
 async function refreshSession() {
   if (sessionRefreshPromise) return sessionRefreshPromise
   if (loggingIn) return false // C1：正在跳轉登入中，直接回 false 不重入
+  loggingIn = true // C1：進函式最前即鎖定，避免平行二次 POST
   sessionRefreshPromise = (async () => {
     if (!liffReady || !window.liff) return false
     if (!liff.isLoggedIn()) {
       // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL（避免部署網域變動造成不符）
-      loggingIn = true
-      try { liff.login() } finally { /* login 會整頁重載，到不了 finally */ }
+      if (!reloginStart()) return false // 達上限 → 顯示錯誤卡，不再跳 OAuth
+      try { liff.login() } catch { /* login 會整頁導走 */ }
       return false
     }
     const idToken = liff.getIDToken()
@@ -423,13 +457,13 @@ async function refreshSession() {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
       body: JSON.stringify({ id_token: idToken }),
     })
-    if (sessionRes.ok) return true
+    if (sessionRes.ok) { resetRelogin(); return true }
     // v1.1.13：後端 session 重建失敗（idToken 過期等）→ 強制重新授權取得新 token
     // LINE 內已授權過會無感回新 token；外部瀏覽器會跳 LINE 登入頁
-    loggingIn = true
-    try { liff.login() } finally { /* login 會整頁重載，到不了 finally */ }
+    if (!reloginStart()) return false // 達上限 → 停
+    try { liff.login() } catch { /* login 會整頁導走 */ }
     return false
-  })().finally(() => { sessionRefreshPromise = null })
+  })().finally(() => { sessionRefreshPromise = null; loggingIn = false })
   return sessionRefreshPromise
 }
 
@@ -2388,6 +2422,7 @@ async function boot() {
         }
       } else if (liffReady) {
         // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL
+        if (!reloginStart()) return // 達上限 → 顯示錯誤卡，不再跳 OAuth
         liff.login()
         return
       } else if (window.liff) {
@@ -2398,17 +2433,21 @@ async function boot() {
           if (liff.isLoggedIn()) {
             const idToken = liff.getIDToken()
             if (idToken) {
-              await fetch('/api/auth/session', {
+              const sessionRes = await fetch('/api/auth/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
                 body: JSON.stringify({ id_token: idToken }),
               })
+              if (!sessionRes.ok) throw new Error('session failed') // 不吞錯：401 時走下方錯誤卡，不無限重導
               const b = await api('/api/auth/me')
               me = b.data
+              resetRelogin()
               router()
               return
             }
           }
+          // OAuth 回跳後拿不到有效 id_token（init 失敗）→ 受次數上限保護，避免無限重導
+          if (!reloginStart()) return // 達上限 → 錯誤卡已顯示
           liff.login()
           return
         } catch (e2) {
@@ -2450,6 +2489,9 @@ async function boot() {
     pages.pending()
     return
   }
+
+  // 登入成功：清掉重登計數，避免下次 session 重建誤觸上限
+  resetRelogin()
 
   // 登入成功：清掉 URL 上的 OAuth 殘留參數（code/state/liff*），保留 hash 路由
   if (!isMock) cleanUrlParams()
