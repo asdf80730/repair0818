@@ -171,7 +171,7 @@ repair-system/
 
 **語言邊界（硬性）**：`functions/` 與 `src/` 使用 TypeScript（Wrangler 以 esbuild 自動編譯，零設定）；`public/` 一律純 JS，禁止 `import` npm 套件。
 
-**前端套件規則（硬性）**：一律 vendored——從 npm 套件 dist 取 UMD build 放 `public/vendor/`，鎖定版本、檔頭註明版本號與來源，以 `<script src="/vendor/...">` 載入（browser-image-compression 掛 `window.imageCompression`）。禁止 CDN。
+**前端套件規則（硬性）**：一律 vendored——從 npm 套件 dist 取 UMD build 放 `public/vendor/`，鎖定版本、檔頭註明版本號與來源，以 `<script src="/vendor/...">` 載入（browser-image-compression 掛 `window.imageCompression`）。禁止 CDN。**唯一例外：LINE LIFF 官方 SDK**（`https://static.line-scdn.net/liff/edge/2/sdk.js`）——屬 LINE 平台必要元件、非第三方套件，且 LINE 官方不提供可 vendored 的離線 build，故允許直接以官方 CDN 載入（`public/index.html` 註解標明「LINE 官方 CDN，平台 SDK」）。其餘第三方套件一律不得走 CDN。
 
 ### 1.3 唯一入口與 app 組裝
 
@@ -1005,7 +1005,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
   （export const onRequest = handle(app)）；路由在 src/routes/，共用層在 src/lib/。
 - 語言分界：functions/、src/ 用 TypeScript；public/ 一律純 JS，禁止 import npm 套件。
-- 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN。
+- 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN（唯一例外：LINE LIFF 官方 SDK，見 §1.2 前端套件規則）。
 - 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression。
 - 禁止：Node.js 專屬 API 或套件（jsonwebtoken, bcrypt, fs, multer, sharp, crypto.createHmac）。
 
