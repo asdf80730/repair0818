@@ -502,7 +502,9 @@ async function compressPhoto(file) {
     })
     return compressed
   } catch (e) {
+    // 已在此 toast（照片格式無法處理），掛標記避免上層 attachPhotoPicker 重複 toast
     toast('此照片格式無法處理，請改用相機拍攝或先在相簿轉存')
+    if (e && typeof e === 'object') e.toasted = true
     throw e
   }
 }
@@ -544,7 +546,9 @@ function attachPhotoPicker(photos, initialPhotos = []) {
       } catch (e) {
         // A3（v1.1.15）：只有 NETWORK 類錯誤允許吞掉（單張失敗不擋其他張），
         // 其他錯誤（壓縮失敗、上傳 400 等）一律 toast，避免使用者無感卡住。
+        // 壓縮失敗已在 compressPhoto 內 toast 過（e.toasted），不重複顯示。
         if (e && e.code === 'NETWORK') continue
+        if (e && e.toasted) continue
         toast(e?.message || '照片處理失敗')
       }
     }
