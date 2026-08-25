@@ -156,7 +156,7 @@ describe('F6 PUT /api/message-templates/:id 行為鎖定（v1.1.15）', () => {
     expect(r.status).toBe(200)
     const body = await r.json()
     expect(body.data.body).toBe(newBody)
-    expect(body.data.updated_at).toBeTruthy()
+    // options 無 updated_at 欄（0001 刻意不設），PUT 覆寫即生效，不回時間戳
   })
 
   it('空 body + 空 label → 400 VALIDATION_ERROR', async () => {

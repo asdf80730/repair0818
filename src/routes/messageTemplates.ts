@@ -9,7 +9,6 @@ import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { ok, fail } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
 
 export const messageTemplateRoutes = new Hono<Env>()
@@ -87,9 +86,9 @@ messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), 
   ).bind(id).first<{ id: number; label: string }>()
   if (!existing) return fail(c, 404, 'NOT_FOUND', '模板不存在')
 
-  // 動態組 UPDATE
+  // 動態組 UPDATE（options 無 updated_at 欄，0001 刻意不設；覆寫即生效）
   const sets: string[] = []
-  const binds: unknown[] = [nowIso()]
+  const binds: unknown[] = []
   if (body.body !== undefined) { sets.push('body = ?'); binds.push(body.body) }
   if (body.label !== undefined && body.label !== existing.label) {
     // 檢查新 label 是否被同 type 占用（UNIQUE(type,label) 約束）
