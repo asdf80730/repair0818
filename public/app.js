@@ -1557,27 +1557,7 @@ pages.stats = function () {
     try {
       const r = await api(`/api/stats/daily-report?date=${date}&category_id=${categoryId}`)
       const data = r.data
-      // F4：total_count === 0 → 顯示「無更新訊息」模板（empty）
-      if (data.total_count === 0) {
-        // 抓 empty 模板
-        const emptyRes = await api('/api/message-templates?label=empty')
-        const emptyTmpl = (emptyRes.data?.templates || []).find((t) => t.active) || emptyRes.data?.templates?.[0]
-        if (emptyTmpl) {
-          preview.value = globalThis.templateEngine.render(emptyTmpl.body, {
-            date: data.date,
-            category_label: data.category_label,
-            total_count: data.total_count,
-            new_count: data.new_count,
-            existing_count: data.existing_count,
-            new_tickets: data.new_tickets,
-            existing_tickets: data.existing_tickets,
-          })
-        } else {
-          preview.value = `今日 ${data.date} ${data.category_label} 無案件動態`
-        }
-        return
-      }
-      // F5：用 daily-report 回傳的 template.render
+      // F4：total_count=0 時後端已回 empty 模板（SPEC §4.7.1），前端統一 render data.template
       if (data.template && data.template.body) {
         preview.value = globalThis.templateEngine.render(data.template.body, {
           date: data.date,
@@ -1589,7 +1569,9 @@ pages.stats = function () {
           existing_tickets: data.existing_tickets,
         })
       } else {
-        preview.value = '（尚未設定啟用模板）'
+        preview.value = data.total_count === 0
+          ? `今日 ${data.date} ${data.category_label} 無案件動態`
+          : '（尚未設定啟用模板）'
       }
     } catch (e) {
       preview.value = ''

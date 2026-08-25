@@ -584,6 +584,9 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(body.data.total_count).toBe(0)
     expect(body.data.new_tickets).toEqual([])
     expect(body.data.existing_tickets).toEqual([])
+    // SPEC §4.7.1：total_count=0 時應回 empty 模板 body（不是 report 模板）
+    expect(body.data.template).not.toBeNull()
+    expect(body.data.template.body).toContain('無案件動態')
   })
 
   it('三角色皆可讀 daily-report（同 /summary）', async () => {

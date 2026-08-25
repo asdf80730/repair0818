@@ -244,10 +244,13 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 4. 抓啟用模板（F12-2 決策：daily-report 回傳模板 body，前端用 templateEngine 渲染）
   // 優先該類別關聯的 template，沒有則用全域預設（active=1, type='message_template', 無 option_categories）
+  // SPEC §4.7.1：total_count=0 時回 empty 模板（不是 report）；否則回 report 模板
+  const totalCount = newTickets.length + existingTickets.length
+  const tmplLabel = totalCount === 0 ? 'empty' : 'report'
   const tmplRow = await c.env.DB.prepare(
     `SELECT o.id, o.body
      FROM options o
-     WHERE o.type = 'message_template' AND o.label = 'report' AND o.active = 1
+     WHERE o.type = 'message_template' AND o.label = ? AND o.active = 1
        AND (
          o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
          OR o.id NOT IN (SELECT option_id FROM option_categories)
@@ -255,7 +258,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
      ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
               o.sort_order ASC
      LIMIT 1`,
-  ).bind(categoryId, categoryId).first<{ id: number; body: string }>()
+  ).bind(tmplLabel, categoryId, tmplLabel).first<{ id: number; body: string }>()
 
   return ok(c, {
     date,
@@ -263,7 +266,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
     category_label: cat.label,
     new_count: newTickets.length,
     existing_count: existingTickets.length,
-    total_count: newTickets.length + existingTickets.length,
+    total_count: totalCount,
     new_tickets: newTickets,
     existing_tickets: existingTickets,
     template: tmplRow ? { id: tmplRow.id, body: tmplRow.body } : null,
