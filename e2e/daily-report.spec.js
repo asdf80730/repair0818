@@ -1,8 +1,9 @@
-// e2e/daily-report.spec.js — F10 v1.1.15 案件動態訊息框 E2E（Playwright，mock 模式）
+// e2e/daily-report.spec.js — F10 案件動態訊息框 E2E（Playwright，mock 模式 v1.1.16）
 // 跑正式網域 ?mock=true（與其他 e2e 同步）
 //
-// F10 對齊：本版有 mock 攔截（mockOptions.message_template + mockApi daily-report handler）
-// 可驗：UI 結構、日期預設、mock 渲染訊息、複製按鈕
+// v1.1.16 對齊：daily-render 改「前端拼裝成品」——後端只回 new_cases / timeline_updates
+// + templates.{new_case,timeline} body，前端用 templateEngine.render 渲染後疊上硬編
+// header「修繕系統簡報：{X月Y日}」、空案文案與（僅有內容時）總系統連結。
 import { test, expect } from '@playwright/test'
 
 const BASE = process.env.E2E_BASE_URL || 'https://repair-system-4re.pages.dev'
@@ -37,17 +38,26 @@ test('日期選擇器預設值 = 今日台灣', async ({ page }) => {
   await expect(dateInput).toHaveValue(todayTaipei)
 })
 
-test('mock 攔截：daily-report 回傳 template.body 渲染到 textarea', async ({ page }) => {
-  // 等 mock fetch 完成 + 渲染
+test('mock 攔截：daily-render 前端拼裝成品（header + 新案件 + 連結，v1.1.16）', async ({ page }) => {
+  // 明確選電梯，確保 mock 當日新建案件 id=99（电梯－停車場）進入 new_cases
+  await page.locator('.report-box select').selectOption({ label: '電梯' })
+  // 等 mock fetch 完成 + 前端 render（不再回 template.body，改前端自行拼裝）
   await expect.poll(async () => {
     const v = await page.locator('.report-box textarea').inputValue()
-    return v.length > 0 && !v.includes('尚未設定啟用模板') && !v.includes('選擇日期')
+    return v.length > 0
   }, { timeout: 8000 }).toBe(true)
   const preview = await page.locator('.report-box textarea').inputValue()
-  // mock fixture 有當日 ticket id=99（電梯），預設類別=電梯 → total_count > 0 → 用 report template
-  // report body 開頭：「📅 YYYY-MM-DD 電梯案件動態...」
-  expect(preview).toMatch(/📅 \d{4}-\d{2}-\d{2} 電梯案件動態/)
-  expect(preview).toContain('0099') // ticket #0099
+  // header「修繕系統簡報：{X月Y日}」（R-3：只有月／日、無年份、無星期）
+  expect(preview).toContain('修繕系統簡報：')
+  expect(preview).toMatch(/：\d+月\d+日/)
+  expect(preview).not.toContain('📅')
+  // mock fixture 有當日 ticket id=99（电梯－停車場，description=門開關異常）→ new_cases → s1
+  expect(preview).toContain('99.')
+  expect(preview).toContain('停車場')
+  expect(preview).toContain('詢價中') // v1.1.16：新案件狀態固定為「詢价中」（前端文案）
+  expect(preview).toContain('門開關異常')
+  // R-2：僅在實際有內容時才把總系統連結放在訊息末尾
+  expect(preview).toContain('https://liff.line.me/2008484338-AvdMWQQg')
 })
 
 test('複製按鈕：textarea 內容被複製到 clipboard', async ({ page, context }) => {

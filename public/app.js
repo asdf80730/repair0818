@@ -1709,6 +1709,12 @@ const SEED_TEMPLATE_BODY = {
 {{/each}}`,
 }
 
+// v1.1.16：可編輯模板的變數提示（僅兩支）
+const VARIABLE_HINT = {
+  new_case: '可用變數：{{id}} {{location_label}} {{status}} {{description}}',
+  timeline: '可用變數：{{id}} {{location_label}} {{status}} {{note}}',
+}
+
 // 預設抓哪個 category 的模板（這頁只需要一個類別的模板列表）
 const TEMPLATE_PAGE_DEFAULT_CAT = (() => {
   // 從 catalog 拿第一個 active category
