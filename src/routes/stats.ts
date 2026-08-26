@@ -110,9 +110,9 @@ statsRoutes.get('/amount-by-category', requireAuth(), async (c) => {
   return ok(c, { month: month || undefined, items: rows.results })
 })
 
-// GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15）
+// GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15；v1.1.16 簡化回應格式）
 // Query 必填：date=YYYY-MM-DD、category_id=N
-// 回傳純資料 + 啟用模板 body（前端用 templateEngine 渲染）
+// 回傳純資料 + new_case / timeline 兩模板 body（v1.1.16：前端自行渲染並拼成成品）
 // 用途：保全每天對委員發 LINE 群組報告該類別當日案件動態
 statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   const date = c.req.query('date')
@@ -242,33 +242,51 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
     })
   }
 
-  // 4. 抓啟用模板（F12-2 決策：daily-report 回傳模板 body，前端用 templateEngine 渲染）
-  // 優先該類別關聯的 template，沒有則用全域預設（active=1, type='message_template', 無 option_categories）
-  // SPEC §4.7.1：total_count=0 時回 empty 模板（不是 report）；否則回 report 模板
-  const totalCount = newTickets.length + existingTickets.length
-  const tmplLabel = totalCount === 0 ? 'empty' : 'report'
-  const tmplRow = await c.env.DB.prepare(
-    `SELECT o.id, o.body
-     FROM options o
-     WHERE o.type = 'message_template' AND o.label = ? AND o.active = 1
-       AND (
-         o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
-         OR o.id NOT IN (SELECT option_id FROM option_categories)
-       )
-     ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
-              o.sort_order ASC
-     LIMIT 1`,
-  ).bind(tmplLabel, categoryId, tmplLabel).first<{ id: number; body: string }>()
+  // 5. timeline_updates：把既有案件的今日 update 拉平（v1.1.16：時間軸模板用 flat list）
+  //    每筆 { id(案件編號), location_label, status(顯示 label), note }；note 空值轉 ''
+  const timeline_updates = existingTickets.flatMap((t) =>
+    t.updates_today.map((u) => ({
+      id: t.id,
+      location_label: t.location_label,
+      status: t.status_label,
+      note: u.note ?? '',
+    })),
+  )
+
+  // 6. 抓兩種模板 body（v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
+  const fetchTmpl = async (label: 'new_case' | 'timeline') => {
+    const row = await c.env.DB.prepare(
+      `SELECT o.id, o.body
+       FROM options o
+       WHERE o.type = 'message_template' AND o.label = ? AND o.active = 1
+         AND (
+           o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
+           OR o.id NOT IN (SELECT option_id FROM option_categories)
+         )
+       ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
+                o.sort_order ASC
+       LIMIT 1`,
+    ).bind(label, categoryId, label).first<{ id: number; body: string }>()
+    return row ? { id: row.id, body: row.body } : null
+  }
+  const [new_case_tpl, timeline_tpl] = await Promise.all([
+    fetchTmpl('new_case'),
+    fetchTmpl('timeline'),
+  ])
 
   return ok(c, {
     date,
     category_id: categoryId,
     category_label: cat.label,
-    new_count: newTickets.length,
-    existing_count: existingTickets.length,
-    total_count: totalCount,
-    new_tickets: newTickets,
-    existing_tickets: existingTickets,
-    template: tmplRow ? { id: tmplRow.id, body: tmplRow.body } : null,
+    // v1.1.16：前端自行渲染兩種模板並拼成成品（砍後端 templateEngine）
+    new_cases: newTickets.map((t) => ({
+      id: t.id,
+      location_label: t.location_label,
+      status: '詢價中', // v1.1.16：新案件預設狀態
+      description: t.description ?? '',
+    })),
+    timeline_updates,
+    has_content: newTickets.length > 0 || timeline_updates.length > 0, // v1.1.16：前端據此決定是否放總系統連結
+    templates: { new_case: new_case_tpl, timeline: timeline_tpl },
   })
 })

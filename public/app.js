@@ -43,20 +43,28 @@ const mockOptions = {
   location: [{ id: 1, label: '停車場' }, { id: 2, label: '大廳' }, { id: 3, label: '頂樓' }],
   description: [{ id: 1, label: '水泵浦異音' }, { id: 2, label: '照明故障' }],
   comment_desc: [{ id: 1, label: '已通知廠商處理' }, { id: 2, label: '已到場勘查' }],
-  // F6（v1.1.15）：訊息模板 mock fixture — 兩套預設（簡潔、詳細）+ empty
+  // v1.1.16：訊息模板 mock fixture — new_case / timeline 兩種（案件動態簡化）
   message_template: [
     {
-      id: 1, type: 'message_template', label: 'report', sort_order: 0, active: 1, body: '📅 {{date}} {{category_label}}案件動態（共 {{total_count}} 件）\n\n{{#each new_tickets}}\n{{序}}. {{title}}\n   {{description}}{{creator_name}} {{created_at_time}}\n   詳情：{{detail_url}}\n{{/each}}\n\n{{#each existing_tickets}}\n{{序}}. {{title}} → {{status_label}}\n{{#each updates_today}}\n   {{time}} {{actor_name}}：{{note_or_status}}{{amount_text}}\n{{/each}}{{/each}}',
+      id: 1, type: 'message_template', label: 'new_case', sort_order: 0, active: 1,
+      body: '{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}',
       is_category_specific: false,
     },
     {
-      id: 2, type: 'message_template', label: 'empty', sort_order: 1, active: 1, body: '今日 {{date}} {{category_label}} 無案件動態',
+      id: 2, type: 'message_template', label: 'timeline', sort_order: 1, active: 1,
+      body: '{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}',
       is_category_specific: false,
     },
   ],
 }
 // mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
 const mockTplAssoc = [] // 訊息模板無類別關聯（全域預設）
+
+// v1.1.16：案件動態簡化 — 硬編固定文案與總系統連結（R-4）
+const DAILY_REPORT_HEADER = '修繕系統簡報'
+const EMPTY_NEW_CASES_TEXT = '今天無新案件'
+const EMPTY_TIMELINE_TEXT = '今天沒有案件狀態更新'
+const SYSTEM_LINK = 'https://liff.line.me/2008484338-AvdMWQQg'
 const mockUsers = [
   { id: 1, display_name: '測試用戶', role: 'admin', active: 1 },
   { id: 2, display_name: '王任鋒', role: 'admin', active: 1 },
@@ -254,31 +262,34 @@ function mockApi(path, options = {}) {
     const inCat = mockTickets.filter(t => t.category_label === cat.label)
     const newTs = inCat.filter(t => t.created_at >= start && t.created_at <= end)
     const existingTs = inCat.filter(t => t.last_activity_at >= start && t.last_activity_at <= end && t.created_at < start)
-    const newTickets = newTs.map(t => ({
-      id: t.id, title: `${t.category_label}-${t.location_label} #${String(t.id).padStart(4, '0')}`,
-      location_label: t.location_label, description: t.description ?? '', creator_name: '測試用戶',
-      created_at: t.created_at, created_at_time: t.created_at.slice(11, 16), status: t.status,
-      detail_url: `https://repair-system-4re.pages.dev/#/ticket/${t.id}`,
+    // v1.1.16：新案件（預設狀態詢價中）+ 時間軸拉平清單
+    const new_cases = newTs.map(t => ({
+      id: t.id,
+      location_label: t.location_label,
+      status: '詢價中',
+      description: t.description ?? '',
     }))
-    const existingTickets = existingTs.map(t => ({
-      id: t.id, title: `${t.category_label}-${t.location_label} #${String(t.id).padStart(4, '0')}`,
-      current_status: t.status, status_label: ({ open: '待處理', in_progress: '已發包', done: '已完成', void: '已作廢' }[t.status] || t.status),
-      detail_url: `https://repair-system-4re.pages.dev/#/ticket/${t.id}`,
-      updates_today: mockUpdates.filter(u => u.ticket_id === t.id && u.created_at >= start && u.created_at <= end).slice(0, 3).map(u => ({
-        kind: u.kind, status: u.status, actor_name: u.display_name, time: u.created_at.slice(11, 16), note: u.note, amount: u.amount,
-      })),
-    }))
-    const total = newTickets.length + existingTickets.length
-    // 選模板：total=0 用 empty；否則用 report
-    const tmplId = total === 0 ? 2 : 1
-    const tmpl = mockOptions.message_template.find(t => t.id === tmplId)
+    const timeline_updates = []
+    for (const t of existingTs) {
+      for (const u of mockUpdates.filter(u => u.ticket_id === t.id && u.created_at >= start && u.created_at <= end).slice(0, 3)) {
+        timeline_updates.push({
+          id: t.id,
+          location_label: t.location_label,
+          status: ({ open: '待處理', in_progress: '已發包', done: '已完成', void: '已作廢' }[t.status] || t.status),
+          note: u.note ?? '',
+        })
+      }
+    }
+    const tpl = (label) => {
+      const f = mockOptions.message_template.find(x => x.label === label)
+      return f ? { id: f.id, body: f.body } : null
+    }
     return {
       ok: true,
       data: {
         date, category_id: categoryId, category_label: cat.label,
-        new_count: newTickets.length, existing_count: existingTickets.length, total_count: total,
-        new_tickets: newTickets, existing_tickets: existingTickets,
-        template: tmpl ? { id: tmpl.id, body: tmpl.body } : null,
+        new_cases, timeline_updates,
+        templates: { new_case: tpl('new_case'), timeline: tpl('timeline') },
       },
     }
   }
@@ -1546,7 +1557,11 @@ pages.stats = function () {
   ]))
   reportBox.appendChild(preview)
 
-  // F4：載入並渲染
+  // F4（v1.1.16 簡化）：載入並渲染 — 前端拼 header + 兩段模板內容 + 空文案 + 總系統連結
+  function monthDayOf(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return `${m}月${d}日` // R-3：月/日、無年份、無星期
+  }
   async function loadReport() {
     const date = dateInput.value
     const categoryId = Number(catSel.value)
@@ -1557,22 +1572,17 @@ pages.stats = function () {
     try {
       const r = await api(`/api/stats/daily-report?date=${date}&category_id=${categoryId}`)
       const data = r.data
-      // F4：total_count=0 時後端已回 empty 模板（SPEC §4.7.1），前端統一 render data.template
-      if (data.template && data.template.body) {
-        preview.value = globalThis.templateEngine.render(data.template.body, {
-          date: data.date,
-          category_label: data.category_label,
-          total_count: data.total_count,
-          new_count: data.new_count,
-          existing_count: data.existing_count,
-          new_tickets: data.new_tickets,
-          existing_tickets: data.existing_tickets,
-        })
-      } else {
-        preview.value = data.total_count === 0
-          ? `今日 ${data.date} ${data.category_label} 無案件動態`
-          : '（尚未設定啟用模板）'
-      }
+      const ncBody = (data.templates && data.templates.new_case && data.templates.new_case.body) || ''
+      const tlBody = (data.templates && data.templates.timeline && data.templates.timeline.body) || ''
+      let s1 = globalThis.templateEngine.render(ncBody, { new_cases: data.new_cases || [] })
+      if (!s1.trim()) s1 = EMPTY_NEW_CASES_TEXT
+      let s2 = globalThis.templateEngine.render(tlBody, { timeline_updates: data.timeline_updates || [] })
+      if (!s2.trim()) s2 = EMPTY_TIMELINE_TEXT
+      const hasContent = (data.new_cases?.length || 0) > 0 || (data.timeline_updates?.length || 0) > 0
+      // R-3：date 用選取的 YYYY-MM-DD（dateInput.value），避免 unix seconds 解析問題
+      let msg = `${DAILY_REPORT_HEADER}：${monthDayOf(date)}\n${s1}\n\n${s2}`
+      if (hasContent) msg += `\n\n${SYSTEM_LINK}` // R-2：僅有實際內容時放總系統連結
+      preview.value = msg
     } catch (e) {
       preview.value = ''
       reportBox.appendChild(el('p', { class: 'error', text: 'daily-report 載入失敗：' + e.message }))
@@ -1691,8 +1701,12 @@ pages.users = function () {
 // 簡化版：不做下拉變數插入、自動完成；用 textarea + 提示文字「可用變數清單」
 // 含 G7 重置為出廠預設按鈕（hardcode seed body 在前端）
 const SEED_TEMPLATE_BODY = {
-  report: '📅 {{date}} {{category_label}}案件動態（共 {{total_count}} 件）\n\n{{#each new_tickets}}\n{{序}}. {{title}}\n   {{description}}{{creator_name}} {{created_at_time}}\n   詳情：{{detail_url}}\n{{/each}}\n\n{{#each existing_tickets}}\n{{序}}. {{title}} → {{status_label}}\n{{#each updates_today}}\n   {{time}} {{actor_name}}：{{note_or_status}}{{amount_text}}\n{{/each}}\n{{/each}}',
-  empty: '今日 {{date}} {{category_label}} 無案件動態',
+  new_case: `{{#each new_cases}}
+{{id}}. {{location_label}}　{{status}}　{{description}}
+{{/each}}`,
+  timeline: `{{#each timeline_updates}}
+{{id}}. {{location_label}}　{{status}}　{{note}}
+{{/each}}`,
 }
 
 // 預設抓哪個 category 的模板（這頁只需要一個類別的模板列表）
@@ -1726,21 +1740,8 @@ pages.messageTemplates = async function () {
     return
   }
 
-  // tab 切換（report / empty）
-  let currentLabel = 'report'
-  const tabBar = el('div', { class: 'tab-bar' })
-  function renderTabs() {
-    tabBar.innerHTML = ''
-    for (const lbl of ['report', 'empty']) {
-      tabBar.appendChild(el('button', {
-        class: 'tab' + (lbl === currentLabel ? ' active' : ''),
-        text: lbl === 'report' ? '報告模板' : '無更新訊息',
-        onclick: () => { currentLabel = lbl; renderTabs(); loadList() },
-      }))
-    }
-  }
-  renderTabs()
-  root.appendChild(tabBar)
+  // v1.1.16：單 tab「訊息模板」，兩行（新案件 / 時間軸）各自可編輯 body + 即時預覽
+  const LABEL_META = { new_case: '新案件', timeline: '時間軸' }
 
   const listBox = el('div', { class: 'tmpl-list' })
   root.appendChild(listBox)
@@ -1749,19 +1750,21 @@ pages.messageTemplates = async function () {
     listBox.innerHTML = ''
     listBox.appendChild(el('div', { class: 'loading-text', text: '載入中…' }))
     try {
-      const r = await api(`/api/message-templates?category_id=${catId}&label=${currentLabel}`)
-      const tmpls = r.data.templates || []
+      const rows = []
+      for (const label of ['new_case', 'timeline']) {
+        const r = await api(`/api/message-templates?category_id=${catId}&label=${label}`)
+        for (const t of (r.data.templates || [])) rows.push(t)
+      }
       listBox.innerHTML = ''
-      if (tmpls.length === 0) {
-        listBox.appendChild(el('p', { class: 'empty', text: '目前無啟用模板（請至後台 migration 跑 0010）' }))
+      if (rows.length === 0) {
+        listBox.appendChild(el('p', { class: 'empty', text: '目前無啟用模板（請至後台 migration 跑 0012）' }))
         return
       }
-      for (const t of tmpls) {
+      for (const t of rows) {
         listBox.appendChild(el('div', { class: 'tmpl-row' }, [
-          el('div', { class: 'tmpl-name', text: t.label === 'report' ? '報告模板' : '無更新訊息模板' }),
+          el('div', { class: 'tmpl-name', text: LABEL_META[t.label] || t.label }),
           el('div', { class: 'tmpl-meta', text: t.is_category_specific ? '此類別專用' : '全域預設' }),
           el('button', { class: 'btn', text: '編輯', onclick: () => openEdit(t) }),
-          // G7：重置為出廠預設
           el('button', { class: 'btn btn-ghost', text: '重置出廠預設', onclick: () => resetToFactory(t) }),
         ]))
       }
@@ -1771,256 +1774,36 @@ pages.messageTemplates = async function () {
     }
   }
 
-  // 編輯 modal（F7 v1.1.15：變數下拉插入 + 點擊面板 + IntelliSense）
   async function openEdit(t) {
-    let cur = t
+    const cur = t
     const modal = el('div', { class: 'modal-bg', onclick: (e) => { if (e.target === modal) close() } })
     const content = el('div', { class: 'modal modal-wide' })
     modal.appendChild(content)
-    content.appendChild(el('h2', { text: '編輯模板' }))
+    content.appendChild(el('h2', { text: '編輯模板：' + (LABEL_META[cur.label] || cur.label) }))
 
-    const nameInput = el('input', { class: 'select', type: 'text', value: cur.label })
-    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 16, value: cur.body ?? '' })
+    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 10, value: cur.body ?? '' })
     const previewBox = el('pre', { class: 'tmpl-preview', text: '(預覽將顯示於此)' })
+    const hint = el('div', { class: 'hint', text: VARIABLE_HINT[cur.label] || '' })
 
-    content.appendChild(el('div', { class: 'form-row' }, [
-      el('label', { text: '標籤（label）' }), nameInput,
-    ]))
+    content.appendChild(el('div', { class: 'form-row' }, [el('label', { text: '內容（body，可使用 {{變數}} 與 {{#each}}...{{/each}}）' }), bodyArea]))
+    content.appendChild(hint)
+    content.appendChild(el('div', { class: 'form-row' }, [el('label', { text: '即時預覽（用範例資料渲染）' }), previewBox]))
 
-    // ===== F7：變數定義（頂層 / 迴圈欄位 / 巢狀迴圈 / 自動變數 / 控制語法） =====
-    const VARIABLE_GROUPS = [
-      {
-        label: '頂層變數',
-        items: ['{{date}}', '{{category_label}}', '{{total_count}}', '{{new_count}}', '{{existing_count}}'],
-      },
-      {
-        label: 'new_tickets 迴圈欄位',
-        prefix: '{{#each new_tickets}}',
-        suffix: '{{/each}}',
-        items: [
-          { insert: '{{id}}', label: '{{id}}' },
-          { insert: '{{title}}', label: '{{title}}' },
-          { insert: '{{location_label}}', label: '{{location_label}}' },
-          { insert: '{{description}}', label: '{{description}}' },
-          { insert: '{{creator_name}}', label: '{{creator_name}}' },
-          { insert: '{{created_at}}', label: '{{created_at}} (ISO)' },
-          { insert: '{{created_at_time}}', label: '{{created_at_time}} (HH:MM)' },
-          { insert: '{{status}}', label: '{{status}}' },
-          { insert: '{{detail_url}}', label: '{{detail_url}}' },
-          { insert: '{{序}}', label: '{{序}}' },
-        ],
-      },
-      {
-        label: 'existing_tickets 迴圈欄位',
-        prefix: '{{#each existing_tickets}}',
-        suffix: '{{/each}}',
-        items: [
-          { insert: '{{id}}', label: '{{id}}' },
-          { insert: '{{title}}', label: '{{title}}' },
-          { insert: '{{current_status}}', label: '{{current_status}}' },
-          { insert: '{{status_label}}', label: '{{status_label}}' },
-          { insert: '{{detail_url}}', label: '{{detail_url}}' },
-          { insert: '{{序}}', label: '{{序}}' },
-        ],
-      },
-      {
-        label: 'updates_today 巢狀迴圈',
-        prefix: '{{#each updates_today}}',
-        suffix: '{{/each}}',
-        items: [
-          { insert: '{{kind}}', label: '{{kind}}' },
-          { insert: '{{status}}', label: '{{status}}' },
-          { insert: '{{time}}', label: '{{time}} (HH:MM)' },
-          { insert: '{{actor_name}}', label: '{{actor_name}}' },
-          { insert: '{{note}}', label: '{{note}}' },
-          { insert: '{{amount}}', label: '{{amount}}' },
-          { insert: '{{note_or_status}}', label: '{{note_or_status}} (自動組字)' },
-          { insert: '{{amount_text}}', label: '{{amount_text}} (自動組字)' },
-        ],
-      },
-      {
-        label: '控制語法',
-        items: [
-          { insert: '{{#each new_tickets}}\n\n{{/each}}', label: '{{#each new_tickets}} 區段（游標在中）' },
-          { insert: '{{#each existing_tickets}}\n\n{{/each}}', label: '{{#each existing_tickets}} 區段' },
-          { insert: '{{#each updates_today}}\n\n{{/each}}', label: '{{#each updates_today}} 區段' },
-        ],
-      },
-    ]
-
-    // ===== F7 第一層：兩 select 連動 + Enter 插入 =====
-    const groupSelect = el('select', { class: 'select' })
-    for (const g of VARIABLE_GROUPS) groupSelect.appendChild(el('option', { value: String(VARIABLE_GROUPS.indexOf(g)), text: g.label }))
-    const varSelect = el('select', { class: 'select' })
-    function refreshVarSelect() {
-      const g = VARIABLE_GROUPS[Number(groupSelect.value)]
-      varSelect.innerHTML = ''
-      if (!g.items[0] || typeof g.items[0] === 'string') {
-        for (const v of g.items) varSelect.appendChild(el('option', { value: v, text: v }))
-      } else {
-        for (const v of g.items) varSelect.appendChild(el('option', { value: v.insert, text: v.label }))
-      }
-    }
-    refreshVarSelect()
-    groupSelect.addEventListener('change', refreshVarSelect)
-
-    function insertAtCursor(text) {
-      const start = bodyArea.selectionStart ?? bodyArea.value.length
-      const end = bodyArea.selectionEnd ?? bodyArea.value.length
-      // F7 spec：保留游標位置、不覆蓋選取範圍（已選取的文字不被變數字串取代）
-      // **修正為**：插在選取起點（清單 line 263）
-      const before = bodyArea.value.slice(0, start)
-      const after = bodyArea.value.slice(start) // 用 start 而非 end，保留選取區段
-      bodyArea.value = before + text + after
-      const newPos = start + text.length
-      bodyArea.setSelectionRange(newPos, newPos)
-      bodyArea.focus()
-      renderPreview()
-    }
-
-    const insertBtn = el('button', { class: 'btn', text: '插入游標位置' })
-    insertBtn.addEventListener('click', () => insertAtCursor(varSelect.value))
-    // Enter 鍵直接插入（varSelect focus 時）
-    varSelect.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); insertAtCursor(varSelect.value) } })
-
-    // ===== F7 第二層：右側點擊插入面板 =====
-    const insertPanel = el('div', { class: 'insert-panel' })
-    for (const g of VARIABLE_GROUPS) {
-      insertPanel.appendChild(el('div', { class: 'insert-panel-group' }, [
-        el('div', { class: 'insert-panel-label', text: g.label }),
-        ...g.items.map((it) => {
-          const insertText = typeof it === 'string' ? it : it.insert
-          const labelText = typeof it === 'string' ? it : it.label
-          return el('button', {
-            class: 'insert-chip',
-            type: 'button',
-            text: labelText,
-            onclick: () => insertAtCursor(insertText),
-          })
-        }),
-      ]))
-    }
-
-    // ===== F7 第三層：textarea IntelliSense（輸入 {{ 觸發彈出選單） =====
-    const suggestBox = el('div', { class: 'tmpl-suggest hidden' })
-    let suggestItems = []   // 當前群組的所有 insert 字串
-    let suggestIndex = 0
-    let suggestActive = false
-    function showSuggest() {
-      // 從游標往前找最近的「{{」或斷在 \n 或空白
-      const pos = bodyArea.selectionStart ?? 0
-      const before = bodyArea.value.slice(0, pos)
-      // 找最近的 {{（不跨換行）
-      const open = before.lastIndexOf('{{')
-      const close = before.lastIndexOf('}}')
-      if (open < 0 || open < close) { hideSuggest(); return }
-      const partial = before.slice(open + 2).toLowerCase()
-      suggestItems = []
-      for (const g of VARIABLE_GROUPS) {
-        for (const it of g.items) {
-          const ins = (typeof it === 'string' ? it : it.insert).toLowerCase()
-          if (ins.startsWith('{{') && ins.includes(partial)) {
-            suggestItems.push(typeof it === 'string' ? it : it.insert)
-          }
-        }
-      }
-      if (suggestItems.length === 0) { hideSuggest(); return }
-      suggestIndex = 0
-      suggestActive = true
-      renderSuggest()
-      suggestBox.classList.remove('hidden')
-    }
-    function renderSuggest() {
-      suggestBox.innerHTML = ''
-      suggestItems.forEach((it, i) => {
-        suggestBox.appendChild(el('div', {
-          class: 'tmpl-suggest-item' + (i === suggestIndex ? ' active' : ''),
-          text: it,
-          onmousedown: (e) => { e.preventDefault(); confirmSuggest(it, open); hideSuggest() },
-          onmouseenter: () => { suggestIndex = i; renderSuggest() },
-        }))
-      })
-    }
-    function confirmSuggest(text, openIdx) {
-      const pos = bodyArea.selectionStart ?? 0
-      const before = bodyArea.value.slice(0, openIdx)
-      const after = bodyArea.value.slice(pos)
-      bodyArea.value = before + text + after
-      const newPos = openIdx + text.length
-      bodyArea.setSelectionRange(newPos, newPos)
-      bodyArea.focus()
-      renderPreview()
-    }
-    function hideSuggest() {
-      suggestActive = false
-      suggestItems = []
-      suggestBox.classList.add('hidden')
-    }
-    bodyArea.addEventListener('keyup', (e) => {
-      if (e.key === 'Escape') { hideSuggest(); return }
-      // 不在按方向鍵或 Enter 時觸發
-      if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab'].includes(e.key)) return
-      showSuggest()
-    })
-    bodyArea.addEventListener('keydown', (e) => {
-      if (!suggestActive) return
-      if (e.key === 'ArrowDown') { e.preventDefault(); suggestIndex = (suggestIndex + 1) % suggestItems.length; renderSuggest() }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); suggestIndex = (suggestIndex - 1 + suggestItems.length) % suggestItems.length; renderSuggest() }
-      else if (e.key === 'Enter') {
-        e.preventDefault()
-        // 找最近的 {{ 位置
-        const pos = bodyArea.selectionStart ?? 0
-        const before = bodyArea.value.slice(0, pos)
-        const open = before.lastIndexOf('{{')
-        if (open >= 0) confirmSuggest(suggestItems[suggestIndex], open)
-        hideSuggest()
-      }
-      else if (e.key === 'Escape') { hideSuggest() }
-    })
-
-    // ===== 佈局：左 textarea + 右插入面板 + 上方下拉 =====
-    content.appendChild(el('div', { class: 'form-row' }, [
-      el('label', { text: '內容（body，可使用 {{變數}} 與 {{#each}}...{{/each}}）' }),
-      el('div', { class: 'tmpl-toolbar' }, [
-        el('label', { text: '插入：' }),
-        groupSelect,
-        varSelect,
-        insertBtn,
-      ]),
-    ]))
-    content.appendChild(el('div', { class: 'tmpl-editor-grid' }, [
-      el('div', { class: 'tmpl-editor-left' }, [
-        bodyArea,
-        suggestBox,
-      ]),
-      el('div', { class: 'tmpl-editor-right' }, [insertPanel]),
-    ]))
-    content.appendChild(el('div', { class: 'form-row' }, [
-      el('label', { text: '即時預覽（用 fixture 資料渲染）' }),
-      previewBox,
-    ]))
-
-    // 即時預覽
     function renderPreview() {
       try {
-        const ctx = makeFixtureContext()
-        previewBox.textContent = globalThis.templateEngine.render(bodyArea.value, ctx)
+        previewBox.textContent = globalThis.templateEngine.render(bodyArea.value, makeFixtureContext(cur.label))
       } catch (e) {
         previewBox.textContent = '預覽失敗：' + e.message
       }
     }
     bodyArea.addEventListener('input', renderPreview)
-    nameInput.addEventListener('input', renderPreview)
     setTimeout(renderPreview, 0)
 
     content.appendChild(el('div', { class: 'modal-actions' }, [
       el('button', { class: 'btn btn-ghost', text: '取消', onclick: close }),
       el('button', { class: 'btn', text: '儲存', onclick: async () => {
         try {
-          await api(`/api/message-templates/${cur.id}`, {
-            method: 'PUT',
-            body: JSON.stringify({ body: bodyArea.value, label: nameInput.value }),
-          })
+          await api(`/api/message-templates/${cur.id}`, { method: 'PUT', body: JSON.stringify({ body: bodyArea.value }) })
           toast('已儲存')
           close()
           loadList()
@@ -2035,16 +1818,12 @@ pages.messageTemplates = async function () {
     setTimeout(() => bodyArea.focus(), 100)
   }
 
-  // G7：重置為出廠預設
   async function resetToFactory(t) {
-    if (!confirm(`確定將「${t.label === 'report' ? '報告模板' : '無更新訊息'}」重置為出廠預設？\n目前的 body 將被覆寫。`)) return
+    if (!confirm(`確定將「${LABEL_META[t.label] || t.label}」重置為出廠預設？\n目前的 body 將被覆寫。`)) return
+    const seed = SEED_TEMPLATE_BODY[t.label]
+    if (!seed) { toast('找不到出廠預設 body'); return }
     try {
-      const seed = SEED_TEMPLATE_BODY[t.label]
-      if (!seed) { toast('找不到出廠預設 body'); return }
-      await api(`/api/message-templates/${t.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ body: seed }),
-      })
+      await api(`/api/message-templates/${t.id}`, { method: 'PUT', body: JSON.stringify({ body: seed }) })
       toast('已重置為出廠預設')
       loadList()
     } catch (e) {
@@ -2056,25 +1835,20 @@ pages.messageTemplates = async function () {
 }
 
 // F7：模板預覽用 fixture 資料（hardcoded，與 SPEC §F5 一致）
-function makeFixtureContext() {
+// v1.1.16：模板管理頁即時預覽用範例資料（依 label 回傳對應陣列）
+function makeFixtureContext(label) {
+  if (label === 'timeline') {
+    return {
+      timeline_updates: [
+        { id: 3, location_label: '大廳', status: '已發包', note: '已通知廠商' },
+        { id: 7, location_label: '頂樓', status: '待處理', note: '到場勘查，待報價' },
+      ],
+    }
+  }
   return {
-    date: '2026-08-23',
-    category_label: '水電',
-    total_count: 3,
-    new_count: 1,
-    existing_count: 2,
-    new_tickets: [
-      { id: 7, title: '水電－頂樓 #0007', location_label: '頂樓', description: '水泵故障 ', creator_name: '王小明', created_at: '2026-08-23T02:00:00.000Z', status: 'open', detail_url: 'https://repair-system-4re.pages.dev/#/ticket/7' },
-    ],
-    existing_tickets: [
-      {
-        id: 3, title: '水電－大廳 #0003', current_status: 'in_progress', status_label: '已發包',
-        detail_url: 'https://repair-system-4re.pages.dev/#/ticket/3',
-        updates_today: [
-          { kind: 'status', status: 'in_progress', actor_name: '王小明', time: '10:23', note: null, amount: 5000 },
-          { kind: 'comment', status: null, actor_name: '王小明', time: '11:00', note: '已通知廠商', amount: null },
-        ],
-      },
+    new_cases: [
+      { id: 12, location_label: '大廳', status: '詢價中', description: '水泵故障，需要維修' },
+      { id: 13, location_label: '停車場', status: '詢價中', description: '照明故障' },
     ],
   }
 }

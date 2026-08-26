@@ -1,8 +1,9 @@
-// src/routes/messageTemplates.ts — 訊息模板 CRUD（F6 v1.1.15）
+// src/routes/messageTemplates.ts — 訊息模板 CRUD（v1.1.15 F6；v1.1.16 簡化為 new_case / timeline）
 // 註冊於全域 requireAuth() 之下
 //
-// 沿用既有 options 字典表（type='message_template'），類別關聯走 option_categories（F12-2 業主決策）
-// F12-2 決策：唯一改模板方式 = PUT /:id 編輯 body（無新增、無啟用切換、無刪除——F7 業主決策 2026-08-23）
+// 沿用既有 options 字典表（type='message_template'），類別關聯走 option_categories。
+// v1.1.16：模板從 report/empty 改爲「新案件(new_case)／時間軸(timeline)」兩種，供案件動態訊息框使用；
+// PUT /:id 就地覆寫 body（UNIQUE(type,label) 下同 label 唯一列，故為更新非新增——v1.1.16 業主決策）。
 
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -13,13 +14,13 @@ import type { Env } from '../lib/env'
 
 export const messageTemplateRoutes = new Hono<Env>()
 
-// 標籤限定：v1.1.15 只支援 report / empty 兩種（F4 業主決策 2026-08-23）
-const ALLOWED_LABELS = ['report', 'empty'] as const
+// 標籤限定：v1.1.16 支援 new_case / timeline 兩種（取代 v1.1.15 的 report/empty）
+const ALLOWED_LABELS = ['new_case', 'timeline'] as const
 
-// GET /api/message-templates?category_id=N&label=report|empty
+// GET /api/message-templates?category_id=N&label=new_case|timeline
 // - 三角色可讀
 // - category_id 必填（沿用 F1 決策：不做「全部」，避免訊息過長）
-// - label 預設 'report'
+// - label 預設 'new_case'（v1.1.16；原 v1.1.15 為 'report'）
 // - 回該類別關聯的模板優先，無則用全域預設（active=1 + 無 option_categories）
 messageTemplateRoutes.get('/', requireAuth(), async (c) => {
   const categoryIdStr = c.req.query('category_id')
@@ -29,7 +30,7 @@ messageTemplateRoutes.get('/', requireAuth(), async (c) => {
     return fail(c, 400, 'VALIDATION_ERROR', 'category_id 需為正整數')
   }
 
-  const label = c.req.query('label') || 'report'
+  const label = c.req.query('label') || 'new_case'
   if (!ALLOWED_LABELS.includes(label as typeof ALLOWED_LABELS[number])) {
     return fail(c, 400, 'VALIDATION_ERROR', `label 必須為 ${ALLOWED_LABELS.join('|')}`)
   }

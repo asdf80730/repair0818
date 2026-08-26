@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.14（定稿，可施工）** ｜ 日期：2026-08-22
+**版本：v1.1.16（定稿，可施工）** ｜ 日期：2026-08-23
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -16,6 +16,7 @@
 |---|---|
 | v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
 | v1.1.15 | **案件動態訊息框＋訊息模板系統**（業主 2026-08-23 拍板全部照做）：① **F1 新增** `GET /api/stats/daily-report?date=YYYY-MM-DD&category_id=N`（三角色可讀；當日新建 + last_activity_at 當日既有各算一組，updates_today 最多 3 筆、含 amount）；② **F6 新增** `/api/message-templates` CRUD（沿用既有 options 字典表，type='message_template'）；③ **F8** 純函式模板引擎 `{{var}}` 替換 + `{{#each}}...{{/each}}` 迴圈（含巢狀、缺值容錯、`created_at_time`/`note_or_status`/`amount_text` 自動變數）；④ **F2/F3** 統計頁新增「案件動態」區塊——日期選擇器（max=今天）+ 類別下拉（localStorage 記住）+ 複製按鈕（clipboard+execCommand fallback）+ textarea 即時預覽；⑤ **F7** 訊息模板管理頁（從 `pages.admin` tab 進入，F11-1），含雙層下拉變數插入 + 點擊插入面板 + textarea IntelliSense + 即時預覽 + G7 重置為出廠預設按鈕；⑥ **LIFF 進入點健化**：C1 `loggingIn` flag 防 `liff.login()` 迴圈、C2 `openWindow` fallback、C3 外部瀏覽器 boot 兜底錯誤提示、C4 topbar 顯式回列表按鈕；⑦ **A3** NETWORK 錯誤不再靜默吞掉；⑧ **A5** 留言/作廢/重開後 `router()` 局部刷新（不再 `location.reload()`）；⑨ **A6** catalog 失敗提示訊息改用具體錯誤；⑩ **D6/D7** 下拉省略號 + 列表 max-height；⑪ **D8/D9** 統計頁 5s polling + 切頁 200ms 防抖；⑫ **D1** 照片綁定 race 防護（先驗 photos.status='linked' 後再 INSERT binding）、**D5** 索引、**D3** 預計 page 切換時取消舊請求；⑬ **A4** el() 事件名白名單 dev-only（IS_DEV 判斷 localhost / ?dev / ?mock，production 靜默）。**業主決策**：D2 CHECK 約束先不做（用途不明 + 風險過高）；A1 採補測試方案（b）append-only 重建留 v1.1.16+；A7 `app.js` module 封裝留 v1.1.16+（結構重構不混進本版）。**F11 第三輪整合**（2026-08-23）：F11-1 訊息模板入口放 admin 內不從 nav / F11-2 daily-report `date` 驗證錯誤碼 `MISSING_DATE/INVALID_DATE/DATE_FUTURE` + `taipeiToday()` helper / F11-3 seed body 不含 `{{#if}}` / F11-4 `note_or_status` 加 `kind='system'` 第三態分支 / F11-5 daily-report 回應加 `template.body` / F11-6 既有 ticket 加 `last_activity_at` 時間過濾 / F11-7 半開區間 `[startMs, endMs)`（毫秒數字）取代 `BETWEEN`（caller 自轉 ISO）。**F12 簡化決策**：F12-1 `updates_today` 時間正序（ASC）/ F12-2 模板管理用既有 `options` 字典表（不新開表）+ `option_categories` 關聯表。CI 158/160 unit + 25 E2E 全綠、production 已部署 v1.1.15 |
+| v1.1.16 | **案件動態訊息簡化**（業主 2026-08-23 拍板）：① **砍後端 templateEngine**——刪除 `src/lib/templateEngine.ts`，模板渲染全移到前端（`public/templateEngine.js` 負責管理頁即時預覽＋統計頁成品拼裝）；② **daily-report（F1）改回應純資料 + 兩種模板 body**：回傳 `new_cases[]`（案件編號.地點.詢價中.描述）、`timeline_updates[]`（既有案件當日 update 拉平，案件編號.地點.狀態.留言）、`templates:{new_case,timeline}`（可編輯 body，seed 於 migration 0012）＋`has_content` 布林、`date`(unix seconds)；前端自行拼 `修繕系統簡報：{X月Y日}` + s1/s2 + （僅有內容時追加總系統連結），空案時分別顯示「今天無新案件 / 今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板）；③ **訊息模板管理頁（F7）簡化**：從 admin 雙 tab(report/empty)＋雙層下拉變數插入＋IntelliSense → **單 tab「訊息模板」+ 兩個編輯區塊(new_case/timeline)**，body 可用 `{{id}} {{location_label}} {{status}} {{description/note}}` + `{{#each}}...{{/each}}`，含即時預覽 + G7 重置出廠預設；④ **messageTemplates（F6）**：`ALLOWED_LABELS = [new_case, timeline]`（default label='new_case'）、PUT body in-place overwrite（`UNIQUE(type,label)` 下同一 label 覆寫 body，不新增 column、不新 migration）。**業主決策**：R-1 編號=案件真編號 / R-2 僅有實際內容才放系統連結 / R-3 日期「X月Y日」無年份無星期 / R-4 header+empty 文案硬編碼。CI 155/155 unit + E2E 同步更新（規格變更） |
 | v1.0 | 初版：技術棧、schema、API、畫面、部署、里程碑 |
 | v1.1 | 外部評審修訂（20 項）：Cookie session 取代 Bearer、時間格式統一 ISO8601、label 快照、刪除 ticket_no、void/編輯留痕、業主決策 D1–D4 等 |
 | v1.1.1 | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等 |
@@ -748,43 +749,30 @@ GROUP BY category_label ORDER BY total_amount DESC
   - `endMs`   = **明日台灣 00:00** 的 UTC 對應 = 該日 16:00:00.000Z
   - **半開區間 `[startMs, endMs)`**（F11-7）
   - 台灣時區 UTC+8，**不是** UTC 當天 00:00 — 見 `tests/time.test.ts` F2 統計語意 case
-- **回應結構**（純資料 + template.body，前端負責渲染）：
+- **回應結構**（v1.1.16：純資料 + new_case/timeline 兩種模板 body，前端負責渲染成品）：
   ```jsonc
   {
-    "date": "2026-08-23",
+    "date": 1755892800,                 // unix seconds（當日台灣 00:00），前端取 M月D日
     "category_id": 1,
     "category_label": "水電",
-    "new_count": 1,
-    "existing_count": 2,
-    "total_count": 3,
-    "new_tickets": [{
-      "id": 7, "title": "水電－頂樓 #0007",
-      "location_label": "頂樓",
-      "description": "水泵故障",
-      "creator_name": "王小明",
-      "created_at": "2026-08-23T02:00:00.000Z",
-      "created_at_time": "10:00",
-      "status": "open",
-      "detail_url": "https://repair-system-4re.pages.dev/#/ticket/7"
-    }],
-    "existing_tickets": [{
-      "id": 3, "title": "水電－大廳 #0003",
-      "current_status": "in_progress",
-      "status_label": "已發包",
-      "detail_url": "...",
-      "updates_today": [{
-        "kind": "status", "status": "in_progress",
-        "actor_name": "王小明", "time": "10:23",
-        "note": null, "amount": 5000
-      }]
-    }],
-    "template": { "id": 7, "body": "..." }  // 該類別關聯優先，無則用全域預設
+    "new_cases": [
+      { "id": 7, "location_label": "頂樓", "status": "詢價中", "description": "水泵故障" }
+    ],
+    "timeline_updates": [
+      { "id": 3, "location_label": "大廳", "status": "已發包", "note": "已通知廠商" }
+    ],
+    "has_content": true,                 // new_cases / timeline_updates 任一非空
+    "templates": {
+      "new_case": { "id": 12, "body": "{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}" },
+      "timeline": { "id": 13, "body": "{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}" }
+    }
   }
   ```
-- **total_count = 0 時**：回 `template.body` 為 active 的 `empty` 模板 body（不是 report 模板）
-- **既有 tickets 條件**：`last_activity_at` 在區間內**且** `created_at < startIso`（非當日新建）
-- **業主決策（2026-08-23）**：當日新建 + 當日又有 update 的案件，**只出現在 `new_tickets`，不在 `existing_tickets` 重複**。**新建披露不帶當日 update**（以「新建詳細披露」為主）。語意上承認：報告後續若該案再有 update，要到**下一輪 daily-report 才會進既有清單**（因為 last_activity_at 仍在當日，但 id 已被當日 daily-report 排除）。
-- **updates_today 上限**：每張既有 tickets 最多 3 筆（依 `created_at` 正序，slice(0,3)）
+- **new_cases**：當日（`created_at` 在區間內）、屬該類別之新建案件；`status` 固定為「詢價中」（前端文案，非 tickets.status）
+- **timeline_updates**：既有案件（`last_activity_at` 在區間內且 `created_at < startIso`，非當日新建）於當日 update **拉平成一維清單**，每筆含 `id`(案件編號)、`location_label`、`status`(原 status_label)、`note`(留言；null→空字串)。上限：每張既有案件當日 update 最多 3 筆，依 `created_at` 反序取最新 3 再 reverse 為時間正序（由舊到新）
+- **業主決策（2026-08-23）**：當日新建 + 當日又有 update 的案件只進 `new_cases`，不進 `timeline_updates`
+- **templates.new_case / timeline**：可編輯 body（seed 於 migration 0012，active=1、全域）。即使無案件也回傳（前端空案時以硬編文案取代渲染結果）
+- **has_content**：`new_cases` 與 `timeline_updates` 任一非空 → true。前端依此決定成品末尾是否追加總系統連結（R-2）
 
 ### 4.8 CSV 匯出（D3）
 
@@ -836,7 +824,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 > 不新開表，沿用既有 `options` 字典表（type='message_template'）。F12-2 業主決策。
 
-**GET `/api/message-templates?category_id=N&label=report|empty`**
+**GET `/api/message-templates?category_id=N&label=new_case|timeline`（`label` 選填，預設 `new_case`）；`ALLOWED_LABELS = [new_case, timeline]`，其它值 → `400 VALIDATION_ERROR`**
 
 - 三角色皆可讀
 - 回 `{ templates: [{ id, type, label, body, active, is_category_specific }] }`
@@ -849,16 +837,17 @@ GROUP BY category_label ORDER BY total_amount DESC
 **PUT `/api/message-templates/:id`**
 
 - **manager/admin** 限定；committee → `403`
-- body 接受 `{ body?: string, label?: string }`；空 body → `400 VALIDATION_ERROR`
-- label 與同類別其他 active=1 模板重複 → `400 VALIDATION_ERROR`
+- body 接受 `{ body?: string }`；空 body → `400 VALIDATION_ERROR`（v1.1.16：不再接受 label）
+- in-place overwrite：同 `type=label`（如 `message_template,new_case`）本就唯一，直接 `UPDATE ... SET body=? WHERE type=? AND label=`
 - **不做**新增/刪除/啟用切換：編輯就是修改該筆 active=1 模板，存檔後直接覆寫生效
 
 **模板語法（F8）**：
 
 - `{{key}}` 替換；缺值 → 空字串
-- `{{#each array}}...{{/each}}` 迴圈；支援巢狀（如 existing_tickets[].updates_today[]）
+- `{{#each array}}...{{/each}}` 迴圈；支援巢狀
 - `{{序}}` 為迴圈計數器（1-based）
-- 渲染為**純函式** `templateEngine.render(body, ctx)`（src/lib/templateEngine.ts + public/templateEngine.js）
+- v1.1.16：模板渲染**全在前端**（`public/templateEngine.js`）。後端 `src/lib/templateEngine.ts` **已刪除**，API 不回傳渲染結果，只回純資料 + 兩種模板 body
+- v1.1.16 可編輯模板僅兩支：**new_case**（變數：`{{id}} {{location_label}} {{status}} {{description}}`）與 **timeline**（變數：`{{id}} {{location_label}} {{status}} {{note}}`），皆用 `{{#each new_cases}}` / `{{#each timeline_updates}}` 迴圈
 - **變數解析順序**（F8 v1.1.15）：巢狀 each 內變數查找 = 當前 item → 外層 each item（遞迴向上）→ ctx 頂層。內層有同名變數時遮蔽外層。
 
 ---
@@ -956,8 +945,8 @@ GROUP BY category_label ORDER BY total_amount DESC
   - 日期選擇器：`<input type="date">`，**max=今天**（不允許選未來），onchange 重抓
   - 類別下拉：從 `ensureCatalog()` 拿 categories，**預設第一個類別**，**不做「全部類別」選項**（訊息會過長），**不存 hash**，**用 `localStorage` 記住上次選擇**（業主 2026-08-23 決策）
   - 複製按鈕：`navigator.clipboard.writeText`；LIFF WebView / iOS Safari 權限問題 fallback `document.execCommand('copy')` + toast「已複製」
-  - 訊息預覽：依 daily-report 回傳的資料 + 啟用模板 → 用 templateEngine.render 即時渲染
-  - **空態（F4）**：當 `total_count=0` → 改用 `empty` 模板渲染（API 自動選好，前端只負責 render）
+  - 訊息預覽（v1.1.16）：讀 daily-report 回傳的 `new_cases` / `timeline_updates` + `templates.new_case/timeline` body → 前端 templateEngine.render 渲染成兩段文案，再拼上硬編 header「修繕系統簡報：{X月Y日}」、空案文案（今天無新案件／今天沒有案件狀態更新），僅有實際內容時末尾追加總系統連結（R-2）
+  - **空態**：`new_cases`、`timeline_updates` 皆空 → 兩段分別顯示「今天無新案件」「今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板渲染）
   - **不做**今日/昨日/本週三選一，**單純日期選擇**就夠業主用了
 
 ### 5.6 P6 成員管理（admin）
@@ -969,13 +958,13 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ### 5.6.1 P6.1 訊息模板管理（F7 + G7，v1.1.15，manager/admin）
 
-- 入口：top nav 加「📝 訊息模板」（manager/admin）；獨立頁 `pages.messageTemplates()`
-- 雙 tab：**報告模板**（label='report'）／**無更新訊息**（label='empty'）
-- 列表顯示：模板名 + 類別專用/全域預設 + 編輯 + **重置出廠預設** （G7）
-- 編輯 modal：textarea + 即時預覽（用 fixture 資料渲染，無需 roundtrip）
-- 儲存：PUT /api/message-templates/:id（manager/admin 限定）
-- **不做**：下拉式變數插入、IntelliSense 自動完成、版本歷史（清單已註明）
-- **重置為出廠預設（G7）**：seed body hardcode 在前端（與 migration 0010 對齊），確認後 PUT 覆寫
+- 入口：**top nav「📝 訊息模板」**（manager/admin）；獨立頁 `pages.messageTemplates()`
+- v1.1.16 **簡化為單 tab「訊息模板」**：固定兩個編輯區塊 — **「新案件」(new_case)** 與 **「時間軸」(timeline)**，各一行顯示名稱 + 類別專用/全域預設 + 「編輯」「重置出廠預設」（G7）
+- 每個區塊點「編輯」→ modal：`<textarea>`（可拖曳調整大小）+ **即時預覽**（用前端 fixture 資料渲染，无需 roundtrip）＋變數提示
+- body 可用變數：**new_case**＝`{{id}} {{location_label}} {{status}} {{description}}` + `{{#each new_cases}}...{{/each}}`；**timeline**＝`{{id}} {{location_label}} {{status}} {{note}}` + `{{#each timeline_updates}}...{{/each}}`
+- 儲存：PUT /api/message-templates/:id（manager/admin 限定，body in-place overwrite）
+- **不做**：下拉式變數插入、IntelliSense 自動完成、版本歷史（v1.1.16 簡化砍除）
+- **重置為出廠預設（G7）**：seed body hardcode 在前端（與 migration 0012 對齊），確認後 PUT 覆寫
 
 ### 5.7 P7 管理（manager/admin，D5）
 
@@ -1035,9 +1024,9 @@ GROUP BY category_label ORDER BY total_amount DESC
 11. ticket_updates 只有 INSERT，禁止 UPDATE/DELETE。
 12. 不得自行新增資料表欄位或修改 API 回應格式；需要變更時輸出 diff 建議並停止，等待人工確認。
 13. 不確定的 LINE / Cloudflare API 一律留 // TODO: verify against official docs，禁止猜測。
-14. 訊息預覽（daily-report / templateEngine）顯示時間一律台灣時區（與 §8.5 一致）：用 `toTaipeiDisplay().slice(11)` 取出 HH:MM。
+14. daily-report 簡化後（v1.1.16）訊息預覽不再逐項輸出時間欄位（`new_cases`/`timeline_updates` 皆為案件編號.地點.狀態.描述/留言的純文字），故無 HH:MM 時區問題；其余頁面的時間顯示仍一律台灣時區（與 §8.5 一致）。
 15. 詳情連結走登入後路由 `/#/ticket/{id}`，**不走 share_token**（避免把公開連結用於內部通訊）。
-16. 模板變數語法（F8）：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**不渲染模板**（回傳純資料 + template.body），前端 templateEngine.render() 負責渲染。
+16. 模板變數語法（F8）：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**完全不渲染**，API 只回純資料 + new_case/timeline 兩種模板 body，前端 templateEngine.render() 負責管理頁預覽與統計頁成品拼裝（v1.1.16）
 
 ## 產品規則（不可自行更動）
 - 狀態流：open → in_progress → done；另有 void；done/void 僅 admin 可 reopen。

@@ -69,7 +69,7 @@ describe('F6 GET /api/message-templates 行為鎖定（v1.1.15）', () => {
     const cat = await ensureCat('F6-test-roles')
     for (const role of ['committee', 'manager', 'admin'] as const) {
       const u = await loginAs(`U-f6-roles-${role}`, role, role)
-      const r = await worker.fetch(`http://example.com/api/message-templates?category_id=${cat}&label=report`, {
+      const r = await worker.fetch(`http://example.com/api/message-templates?category_id=${cat}&label=new_case`, {
         headers: { Cookie: u.cookie },
       })
       expect(r.status).toBe(200)
@@ -78,7 +78,7 @@ describe('F6 GET /api/message-templates 行為鎖定（v1.1.15）', () => {
     }
   })
 
-  it('label 預設為 report', async () => {
+  it('label 預設為 new_case', async () => {
     const { cookie } = await loginAs('U-f6-default', '管', 'admin')
     const cat = await ensureCat('F6-test-default')
     const r = await worker.fetch(`http://example.com/api/message-templates?category_id=${cat}`, {
@@ -86,7 +86,7 @@ describe('F6 GET /api/message-templates 行為鎖定（v1.1.15）', () => {
     })
     expect(r.status).toBe(200)
     const body = await r.json()
-    expect(body.data.label).toBe('report')
+    expect(body.data.label).toBe('new_case')
   })
 })
 

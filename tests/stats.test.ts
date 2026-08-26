@@ -421,13 +421,15 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     expect(r.status).toBe(200)
     const body = await r.json()
     expect(body.data.category_label).toBe('F1-test-cat-new')
-    expect(body.data.new_count).toBeGreaterThanOrEqual(1)
-    const newTicket = body.data.new_tickets.find((t: { id: number }) => t.id === tid)
-    expect(newTicket).toBeTruthy()
-    expect(newTicket.creator_name).toBe('管')
-    expect(newTicket.status).toBe('open')
-    expect(newTicket.detail_url).toMatch(/\/ticket\/\d+$/)
-    expect(newTicket.created_at_time).toMatch(/^\d{2}:\d{2}$/)
+    // v1.1.16：新案件拉到 new_cases，預設狀態詢價中
+    expect(body.data.new_cases.length).toBeGreaterThanOrEqual(1)
+    const nc = body.data.new_cases.find((t: { id: number }) => t.id === tid)
+    expect(nc).toBeTruthy()
+    expect(nc.location_label).toBe('F1-test-loc-new')
+    expect(nc.status).toBe('詢價中')
+    expect(nc.description).toContain('今日新建')
+    // v1.1.16 不再回傳 created_at_time / detail_url
+    expect((nc as Record<string, unknown>).created_at_time).toBeUndefined()
   })
 
   it('既有案件：當日有 update 且非當日新建 → existing_tickets 計入 + updates_today 最多 3 筆', async () => {
@@ -480,18 +482,15 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     )
     expect(r.status).toBe(200)
     const body = await r.json()
-    const ex = body.data.existing_tickets.find((t: { id: number }) => t.id === tid)
-    expect(ex).toBeTruthy()
-    expect(ex.current_status).toBe('open') // tickets.status 沒被動，預設 open
-    expect(ex.status_label).toBe('待處理')
-    expect(ex.updates_today).toHaveLength(3) // SQL DESC LIMIT 3 + reverse 回 ASC（F12-1）
-    // 4 筆依序：status(10:00)、comment(10:01)、status(10:02)、comment(10:03)
-    // DESC LIMIT 3 拿 comment(10:03)、status(10:02)、comment(10:01)
-    // reverse 回 ASC：comment(10:01)、status(10:02)、comment(10:03)
-    expect(ex.updates_today[0].kind).toBe('comment')  // 第一筆是 10:01 的 comment
-    expect(ex.updates_today[0].note).toBe('a')
-    expect(ex.updates_today[0].amount).toBeNull()
-    expect(ex.updates_today[0].time).toMatch(/^\d{2}:\d{2}$/)
+    // v1.1.16：既有案件當日 update 拉平到 timeline_updates，最多 3 筆
+    const tl = body.data.timeline_updates.filter((u: { id: number }) => u.id === tid)
+    expect(tl).toHaveLength(3)
+    expect(tl[0].location_label).toBe('F1-test-loc-ex')
+    expect(tl[0].status).toBe('待處理') // tickets.status=open→原 status_label
+    // reverse 回 ASC：comment(10:01=a)、status(10:02=空 note)、comment(10:03=b)
+    expect(tl[0].note).toBe('a')
+    expect(tl[1].note).toBe('')
+    expect(tl[2].note).toBe('b')
   })
 
   // F12-1（v1.1.15）：updates_today 排序 = 時間正序（舊的在上、新的在下）
@@ -551,22 +550,21 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     )
     expect(r.status).toBe(200)
     const body = await r.json()
-    const ex = body.data.existing_tickets.find((t: { id: number }) => t.id === tid)
-    expect(ex).toBeTruthy()
-    expect(ex.updates_today).toHaveLength(3)
+    const tl = body.data.timeline_updates.filter((u: { id: number }) => u.id === tid)
+    expect(tl).toHaveLength(3)
     // F12-1 硬斷言：時間正序 → t3、t4、t5（最新 3 筆，由舊到新）
-    expect(ex.updates_today[0].note).toBe('update 3 (t3)')
-    expect(ex.updates_today[1].note).toBe('update 4 (t4)')
-    expect(ex.updates_today[2].note).toBe('update 5 (t5)')
+    expect(tl[0].note).toBe('update 3 (t3)')
+    expect(tl[1].note).toBe('update 4 (t4)')
+    expect(tl[2].note).toBe('update 5 (t5)')
     // 加固：被切掉的兩筆是 t1 和 t2（不是 t4/t5）—— 確保是「保留最新 3 筆」
-    const keptNotes = ex.updates_today.map((u: { note: string }) => u.note)
+    const keptNotes = tl.map((u: { note: string }) => u.note)
     expect(keptNotes).not.toContain('update 1 (t1)')
     expect(keptNotes).not.toContain('update 2 (t2)')
     expect(keptNotes).toContain('update 3 (t3)')
     expect(keptNotes).toContain('update 4 (t4)')
     expect(keptNotes).toContain('update 5 (t5)')
     // 加固：note 字串中的 t 編號應該嚴格遞增（驗證時間序列 ASC）
-    const tNums = ex.updates_today.map((u: { note: string }) => Number(u.note.match(/t(\d+)/)?.[1]))
+    const tNums = tl.map((u: { note: string }) => Number(u.note.match(/t(\d+)/)?.[1]))
     expect(tNums).toEqual([3, 4, 5])
   })
 
@@ -579,14 +577,14 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     )
     expect(r.status).toBe(200)
     const body = await r.json()
-    expect(body.data.new_count).toBe(0)
-    expect(body.data.existing_count).toBe(0)
-    expect(body.data.total_count).toBe(0)
-    expect(body.data.new_tickets).toEqual([])
-    expect(body.data.existing_tickets).toEqual([])
-    // SPEC §4.7.1：total_count=0 時應回 empty 模板 body（不是 report 模板）
-    expect(body.data.template).not.toBeNull()
-    expect(body.data.template.body).toContain('無案件動態')
+    // v1.1.16：新格式 — new_cases / timeline_updates 皆空
+    expect(body.data.new_cases).toEqual([])
+    expect(body.data.timeline_updates).toEqual([])
+    expect(typeof body.data.has_content).toBe('boolean')
+    expect(body.data.has_content).toBe(false)
+    // v1.1.16：模板仍回傳 new_case / timeline（seed 於 migration）；不再區分 empty/report
+    expect(body.data.templates.new_case.body).toContain('{{#each new_cases}}')
+    expect(body.data.templates.timeline.body).toContain('{{#each timeline_updates}}')
   })
 
   it('三角色皆可讀 daily-report（同 /summary）', async () => {
@@ -615,10 +613,10 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     )
     expect(r.status).toBe(200)
     const body = await r.json()
-    // template 可能 null（如果 0010 migration 沒跑）—— 至少型別對
-    if (body.data.template) {
-      expect(typeof body.data.template.id).toBe('number')
-      expect(typeof body.data.template.body).toBe('string')
-    }
+    // v1.1.16：回傳 templates.new_case / templates.timeline（各含 id + body）
+    expect(typeof body.data.templates.new_case?.id).toBe('number')
+    expect(typeof body.data.templates.new_case?.body).toBe('string')
+    expect(typeof body.data.templates.timeline?.id).toBe('number')
+    expect(typeof body.data.templates.timeline?.body).toBe('string')
   })
 })
