@@ -2062,6 +2062,18 @@ pages.admin = function () {
   root.appendChild(addRow)
 }
 
+// §3.5 登出：清除 session cookie → 重置登入狀態 → 重載（boot 會重新走登入流程）
+async function doLogout() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+    })
+  } catch { /* 端點不可用仍強制清除本地狀態 */ }
+  me = null
+  location.reload()
+}
+
 // ---- 底部導覽 ----
 function renderNav() {
   const nav = document.getElementById('nav')
@@ -2078,6 +2090,13 @@ function renderNav() {
   for (const [href, label] of items) {
     nav.appendChild(el('a', { href, class: 'nav-item', text: label }))
   }
+  // §3.5 登出：所有已登入角色皆可見（committee/manager/admin）
+  nav.appendChild(el('button', {
+    type: 'button',
+    class: 'nav-item nav-logout',
+    text: '🚪 登出',
+    onclick: async () => { if (confirm('確定要登出嗎？')) await doLogout() },
+  }))
 }
 
 // ---- hash router ----
