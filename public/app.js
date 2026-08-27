@@ -463,19 +463,34 @@ async function refreshSession() {
     }
     const idToken = liff.getIDToken()
     if (!idToken) return false
-    const sessionRes = await fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-      body: JSON.stringify({ id_token: idToken }),
-    })
-    if (sessionRes.ok) { resetRelogin(); return true }
-    // v1.1.13：後端 session 重建失敗（idToken 過期等）→ 強制重新授權取得新 token
-    // LINE 內已授權過會無感回新 token；外部瀏覽器會跳 LINE 登入頁
-    if (!reloginStart()) return false // 達上限 → 停
-    try { liff.login() } catch { /* login 會整頁導走 */ }
-    return false
+    // §3.1 標準流程：用 id_token 換 session cookie；後端拒收（401）＝ token 已過期/失效。
+    if (await postSession(idToken)) { resetRelogin(); return true }
+    // v1.1.17：session 重建失敗 → liff.logout() 清 LIFF 快取後強制重新授權（LINE 官方標準流程）。
+    // 過期 token 存在 LIFF 快取裡，liff.login() 對「已登入」狀態是 no-op；先 logout 才會真正重登。
+    return forceFreshLogin()
   })().finally(() => { sessionRefreshPromise = null; loggingIn = false })
   return sessionRefreshPromise
+}
+
+// §3.1 用 id_token 換 session（POST /api/auth/session）。回 true＝cookie 已建立、token 有效。
+async function postSession(idToken) {
+  if (!idToken || !liffReady || !window.liff) return false
+  const res = await fetch('/api/auth/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' }, // A7：CSRF header
+    body: JSON.stringify({ id_token: idToken }),
+  })
+  return res.ok
+}
+
+// §3.1 token 過期失效時，先 liff.logout() 清 LIFF 快取（LINE 官方），再強制重新授權。
+// logout 後 isLoggedIn() 為 false → 下次進 boot/refreshSession 走 liff.login() 完整 OAuth，拿真正新 token，
+// 不必手動清瀏覽器資料。（受 C1 reloginStart 計數保護）
+function forceFreshLogin() {
+  try { if (typeof window.liff.logout === 'function') window.liff.logout() } catch { /* ignore */ }
+  if (!reloginStart()) return false // 達上限 → 顯示錯誤卡，不再跳 OAuth
+  try { window.liff.login() } catch { /* login 會整頁導走 */ }
+  return true
 }
 
 // §3.4 靜默重登：刷新 session → 重送原請求一次
@@ -2187,23 +2202,24 @@ async function boot() {
     me = body.data
   } catch (e) {
     if (e.code === 'UNAUTHORIZED') {
-      // 未登入 → 嘗試 LINE 登入
+      // 未登入 → 嘗試 LINE 登入（§3.1 標準流程：isLoggedIn → getIDToken / liff.login）
       if (liffReady && liff.isLoggedIn()) {
         const idToken = liff.getIDToken()
-        if (idToken) {
+        // 用既有 id_token（可能已過期）換 session；後端拒收 → logout 清快取後重新授權
+        if (idToken && await postSession(idToken)) {
           try {
-            await fetch('/api/auth/session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-              body: JSON.stringify({ id_token: idToken }),
-            })
-            const b = await api('/api/auth/me')
-            me = b.data
-          } catch (e2) {
-            root.innerHTML = ''
-            root.appendChild(el('p', { class: 'error', text: '登入失敗，請重新從 LINE 開啟' }))
+            me = (await api('/api/auth/me')).data
+            resetRelogin()
+            router()
             return
+          } catch (e2) {
+            // session cookie 未生效（極罕見）→ 走下方 forceFreshLogin 重新授權
           }
+        }
+        if (!forceFreshLogin()) {
+          root.innerHTML = ''
+          root.appendChild(el('p', { class: 'error', text: '登入失敗，請重新從 LINE 開啟' }))
+          return
         }
       } else if (liffReady) {
         // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL
@@ -2217,19 +2233,16 @@ async function boot() {
           liffReady = true
           if (liff.isLoggedIn()) {
             const idToken = liff.getIDToken()
-            if (idToken) {
-              const sessionRes = await fetch('/api/auth/session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-                body: JSON.stringify({ id_token: idToken }),
-              })
-              if (!sessionRes.ok) throw new Error('session failed') // 不吞錯：401 時走下方錯誤卡，不無限重導
-              const b = await api('/api/auth/me')
-              me = b.data
-              resetRelogin()
-              router()
-              return
+            // §3.1：用既有 id_token（可能已過期）換 session；後端拒收 → logout 清快取後重新授權
+            if (idToken && await postSession(idToken)) {
+              try {
+                me = (await api('/api/auth/me')).data
+                resetRelogin()
+                router()
+                return
+              } catch (e2) { /* session cookie 未生效（極罕見）→ 走下方重新授權 */ }
             }
+            if (!forceFreshLogin()) throw new Error('session failed') // 達上限才至此 → 錯誤卡，不無限重導
           }
           // OAuth 回跳後拿不到有效 id_token（init 失敗）→ 受次數上限保護，避免無限重導
           if (!reloginStart()) return // 達上限 → 錯誤卡已顯示
