@@ -2221,6 +2221,10 @@ async function boot() {
           root.appendChild(el('p', { class: 'error', text: '登入失敗，請重新從 LINE 開啟' }))
           return
         }
+        // v1.1.19：forceFreshLogin() 已觸發 liff.login() 導航 → 必須 return。
+        // 漏 return 會 fall-through 到 boot 尾端 me.role（此時 me=null）→ TypeError，
+        // 頁面停在「載入中…」無錯誤卡（liff.login() 導航失敗時尤其可見）。
+        return
       } else if (liffReady) {
         // 不指定 redirectUri，讓 LIFF SDK 用 LIFF app 設定的 Endpoint URL
         if (!reloginStart()) return // 達上限 → 顯示錯誤卡，不再跳 OAuth

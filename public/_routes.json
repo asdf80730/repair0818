@@ -1,1 +1,1 @@
-{ "version": 1, "include": ["/api/*", "/share.html"], "exclude": [] }
+{ "version": 1, "include": ["/", "/index.html", "/api/*", "/share.html"], "exclude": [] }

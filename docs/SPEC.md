@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.18（定稿，可施工）** ｜ 日期：2026-08-28
+**版本：v1.1.19（定稿，可施工）** ｜ 日期：2026-08-31
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 → v1.1.19 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -17,6 +17,7 @@
 | v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
 | v1.1.15 | **案件動態訊息框＋訊息模板系統**（業主 2026-08-23 拍板全部照做）：① **F1 新增** `GET /api/stats/daily-report?date=YYYY-MM-DD&category_id=N`（三角色可讀；當日新建 + last_activity_at 當日既有各算一組，updates_today 最多 3 筆、含 amount）；② **F6 新增** `/api/message-templates` CRUD（沿用既有 options 字典表，type='message_template'）；③ **F8** 純函式模板引擎 `{{var}}` 替換 + `{{#each}}...{{/each}}` 迴圈（含巢狀、缺值容錯、`created_at_time`/`note_or_status`/`amount_text` 自動變數）；④ **F2/F3** 統計頁新增「案件動態」區塊——日期選擇器（max=今天）+ 類別下拉（localStorage 記住）+ 複製按鈕（clipboard+execCommand fallback）+ textarea 即時預覽；⑤ **F7** 訊息模板管理頁（從 `pages.admin` tab 進入，F11-1），含雙層下拉變數插入 + 點擊插入面板 + textarea IntelliSense + 即時預覽 + G7 重置為出廠預設按鈕；⑥ **LIFF 進入點健化**：C1 `loggingIn` flag 防 `liff.login()` 迴圈、C2 `openWindow` fallback、C3 外部瀏覽器 boot 兜底錯誤提示、C4 topbar 顯式回列表按鈕；⑦ **A3** NETWORK 錯誤不再靜默吞掉；⑧ **A5** 留言/作廢/重開後 `router()` 局部刷新（不再 `location.reload()`）；⑨ **A6** catalog 失敗提示訊息改用具體錯誤；⑩ **D6/D7** 下拉省略號 + 列表 max-height；⑪ **D8/D9** 統計頁 5s polling + 切頁 200ms 防抖；⑫ **D1** 照片綁定 race 防護（先驗 photos.status='linked' 後再 INSERT binding）、**D5** 索引、**D3** 預計 page 切換時取消舊請求；⑬ **A4** el() 事件名白名單 dev-only（IS_DEV 判斷 localhost / ?dev / ?mock，production 靜默）。**業主決策**：D2 CHECK 約束先不做（用途不明 + 風險過高）；A1 採補測試方案（b）append-only 重建留 v1.1.16+；A7 `app.js` module 封裝留 v1.1.16+（結構重構不混進本版）。**F11 第三輪整合**（2026-08-23）：F11-1 訊息模板入口放 admin 內不從 nav / F11-2 daily-report `date` 驗證錯誤碼 `MISSING_DATE/INVALID_DATE/DATE_FUTURE` + `taipeiToday()` helper / F11-3 seed body 不含 `{{#if}}` / F11-4 `note_or_status` 加 `kind='system'` 第三態分支 / F11-5 daily-report 回應加 `template.body` / F11-6 既有 ticket 加 `last_activity_at` 時間過濾 / F11-7 半開區間 `[startMs, endMs)`（毫秒數字）取代 `BETWEEN`（caller 自轉 ISO）。**F12 簡化決策**：F12-1 `updates_today` 時間正序（ASC）/ F12-2 模板管理用既有 `options` 字典表（不新開表）+ `option_categories` 關聯表。CI 158/160 unit + 25 E2E 全綠、production 已部署 v1.1.15 |
 | v1.1.16 | **案件動態訊息簡化**（業主 2026-08-23 拍板）：① **砍後端 templateEngine**——刪除 `src/lib/templateEngine.ts`，模板渲染全移到前端（`public/templateEngine.js` 負責管理頁即時預覽＋統計頁成品拼裝）；② **daily-report（F1）改回應純資料 + 兩種模板 body**：回傳 `new_cases[]`（案件編號.地點.詢價中.描述）、`timeline_updates[]`（既有案件當日 update 拉平，案件編號.地點.狀態.留言）、`templates:{new_case,timeline}`（可編輯 body，seed 於 migration 0012）＋`has_content` 布林、`date`(unix seconds)；前端自行拼 `修繕系統簡報：{X月Y日}` + s1/s2 + （僅有內容時追加總系統連結），空案時分別顯示「今天無新案件 / 今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板）；③ **訊息模板管理頁（F7）簡化**：從 admin 雙 tab(report/empty)＋雙層下拉變數插入＋IntelliSense → **單 tab「訊息模板」+ 兩個編輯區塊(new_case/timeline)**，body 可用 `{{id}} {{location_label}} {{status}} {{description/note}}` + `{{#each}}...{{/each}}`，含即時預覽 + G7 重置出廠預設；④ **messageTemplates（F6）**：`ALLOWED_LABELS = [new_case, timeline]`（default label='new_case'）、PUT body in-place overwrite（`UNIQUE(type,label)` 下同一 label 覆寫 body，不新增 column、不新 migration）。**業主決策**：R-1 編號=案件真編號 / R-2 僅有實際內容才放系統連結 / R-3 日期「X月Y日」無年份無星期 / R-4 header+empty 文案硬編碼。CI 155/155 unit + E2E 同步更新（規格變更） |
+| v1.1.19 | **cache-busting 真正生效＋boot() 重構遺漏修正**（2026-08-30 正式環境實測發現）：① **根因**——v1.1.17 的 cache-busting Function（原 `functions/index.html.ts`）依 CF Pages「檔案路由」只對應 `/index.html` 路徑，**網站根 `/` 需要 `functions/index.ts`**；且 `public/_routes.json` 的 include 白名單（`/api/*`、`/share.html`）沒列根路徑 → 根路徑 `/` 一律回靜態 `public/index.html`（寫死 `?v=1.1.14/1.1.15`），cache-busting **從未生效**（部署成功、CI 全綠但功能死碼，E2E 未驗根路徑 HTML 故未發現）。② **修法**——抽出共用產出模組 `functions/lib/dynamic-index.ts`（HTML 模板＋安全標頭，`serveDynamicIndex(env)`）；`functions/index.html.ts` 改薄入口；**新增 `functions/index.ts`**（根路徑 `/`）；`_routes.json` include 加入 `"/"`、`"/index.html"`。③ **boot() 修正**（`public/app.js`）——v1.1.18 重構後「`liffReady && isLoggedIn()`」分支 `forceFreshLogin()` 成功（已觸發 `liff.login()` 導航）時**漏 `return`**，fall-through 到 boot 尾端 `me.role`（`me` 仍為 `null`）→ TypeError、頁面停在「載入中…」無錯誤卡（`liff.login()` 導航失敗時可見）；補 `return`。④ **E2E 回歸測試** `e2e/cache-busting.spec.js`：`GET /` 與 `/index.html` 應回 200 動態 HTML（asset `?v=<12 位 commit>`、`Cache-Control: no-cache`、`nosniff`），asset 版本應等於本 commit 前 12 字（CI 有 `GITHUB_SHA` 時）。**未新增資料表／未改 API 回應格式** |
 | v1.1.18 | **登入流程對齊 LINE 官方標準＋修復過期 token 卡死**（業主 2026-08-28 指示查 context7 官方 LIFF 文件後改寫）：① **根因**——LIFF 快取過的 id_token 過期後 `liff.isLoggedIn()` 仍為 true，app 還信它重 POST `/api/auth/session` → 後端永遠 401；且官方文件明訂 `liff.login()` 在 LIFF 瀏覽器內（已登入）是 no-op，無法拿真正新 token，只能手動清瀏覽器資料才登得上。② **修法**——抽出兩個共用 helper：`postSession(idToken)`（唯一 `/api/auth/session` POST 入口）＋`forceFreshLogin()`；session 重建失敗時先 `liff.logout()` 清 LIFF 快取（之後 `isLoggedIn()` 為 false），再 `liff.login()` 走完整 OAuth 拿真正新 token。boot 三處未登入分支統一走此標準流程：isLoggedIn→getIDToken/postSession→失敗即 logout+login。**未新增資料表／未改 API 回應格式**。解決「需清空瀏覽器資料才能登入」。**LINE API 語意取自 `developers.line.biz` LIFF reference（context7 `/websites/developers_line_biz_en_reference_liff`）**。
 | v1.1.17 | **前端登出按鈕＋index.html 動態 cache-busting 自動化**（業主 2026-08-27 指示施工）：① **F-logout 新增前端「🚪 登出」按鈕**——置於底部 nav 最右（`public/app.js` 的 `renderNav()`），所有已登入角色（committee/manager/admin）皆可見；點擊先 `confirm` 確認，再 `POST /api/auth/logout`（帶 `X-Requested-With: fetch` 走 csrfGuard）清除 Cookie，隨後 `location.reload()` 由 boot 重新走登入流程。② **A-cache 動態 cache-busting**——新增 `functions/index.html.ts`（Pages Function）在請求時把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` 取 `dev`），並對回應設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `nosniff`／`Referrer-Policy`。**解決「index.html 寫死 ?v=1.1.15 導致瀏覽器長快取舊版、每次部署看不到新程式」**——因每次部署產生唯一 URL，強制抓最新版，无需手動改版本號、永不忘。未新增資料表／未改 API 回應格式。主站仍不加 CSP（沿用 §8.2 決策）。**v1.1.19 內聯修正**：`functions/index.html.ts` 原在 module top-level 用 `process.env.CF_PAGES_COMMIT_SHA`，但 Worker 無 Node `process` → 拋 `ReferenceError: process is not defined`，CF Pages「Failed to publish your Function」、整次部署回退舊版（用戶端仍看得到 v1.1.15）。改為在 onRequest 執行時從 Env 讀 `env.CF_PAGES_COMMIT_SHA`（與 `src/app.ts:43` `/hello` 同款），宣告 optional、dev fallback `'dev'`。typecheck 過。|
 | v1.0 | 初版：技術棧、schema、API、畫面、部署、里程碑 |
@@ -131,11 +132,14 @@ repair-system/
 │   ├── vendor/
 │   │   ├── browser-image-compression.js   # vendored UMD build（檔頭註明版本與來源）
 │   │   └── liff-mock.js                    # 測試模式 ?mock=true 用（§1.2）
-│   ├── _routes.json               # 只讓 /api/* 走 Functions；v1.1.12 起含 /share.html 走 Function
+│   ├── _routes.json               # include 白名單：/ 與 /index.html（動態 cache-busting）、/api/*、/share.html
 │   └── _headers                   # 靜態檔標頭（安全標頭；主站不設 CSP，見 §8.2）
 ├── functions/
 │   ├── api/
 │   │   └── [[path]].ts            # 唯一入口
+│   ├── index.ts                   # 根路徑 / 動態 cache-busting（v1.1.19，見 §8.2）
+│   ├── index.html.ts              # 路徑 /index.html（v1.1.19 起為薄入口，共用 lib/dynamic-index.ts）
+│   ├── lib/dynamic-index.ts       # 動態 index HTML 共用產出（模板＋安全標頭）
 │   └── share.html.ts              # 動態渲染派工單頁（v1.1.12，見 §5.8）
 ├── src/                           # Hono 應用（TypeScript）
 │   ├── app.ts                     # app 組裝與 middleware 掛載
@@ -1087,8 +1091,10 @@ LINE_CHANNEL_ID = "2008484338"
 **`public/_routes.json`**：
 
 ```json
-{ "version": 1, "include": ["/api/*", "/share.html"], "exclude": [] }
+{ "version": 1, "include": ["/", "/index.html", "/api/*", "/share.html"], "exclude": [] }
 ```
+
+> **⚠ 根路徑必須顯式列出（v1.1.19 實測修正）**：`include` 是白名單，沒列的路徑一律回靜態檔。v1.1.17 曾加 `functions/index.html.ts` 但沒列 `"/"`——CF Pages 檔案路由上根路徑 `/` 對應的檔名是 `functions/index.ts`（不是 `index.html.ts`），兩條件缺一不可，否則根路徑永遠回靜態 `public/index.html`（寫死 `?v=`），cache-busting 形同虛設。
 
 **`public/_headers`**（Pages 靜態檔標頭設定；**v1.1.12 起 share.html 改由 Pages Function 動態渲染，其安全標頭在 `functions/share.html.ts` 內直接回傳**，`_headers` 不再含 `/share.html` 規則）：
 
@@ -1103,8 +1109,9 @@ LINE_CHANNEL_ID = "2008484338"
 
 > **⚠️ 主站不加 CSP（v1.1.13 實測後撤回）**：先前曾嘗試加主站 CSP，但**會導致 LINE 以外的瀏覽器無法開啟**（`script-src`/`connect-src` 白名單過嚴，擋掉 LINE 外環境的非 LIFF 載入）。主站維持「僅 nosniff + referrer-policy」、**不設 CSP**。share.html 的 CSP 由 Function 內獨立回傳（`functions/share.html.ts`），不受 `_headers` 影響，維持安全防護。
 
-**`functions/index.html.ts`（v1.1.17 新增）— 動態 cache-busting**：網站根的 Pages Function，請求時動態產生 `/index.html`，把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` fallback 取 `dev`），回應頭設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `X-Content-Type-Options: nosniff`／`Referrer-Policy: no-referrer`（主站仍不加 CSP，同本節）。**目的：修復「每次部署看不到新程式」**——原本 `public/index.html` 寫死 `app.js?v=1.1.15`，即便 `_headers` 對 `/index.html` 設 `no-cache`，瀏覽器仍長快取舊版腳本；本 Function 讓每次部署產生唯一 `?v=<commit>` URL → 強制抓最新版、无需手動改版本號、永不忘。與 `functions/share.html.ts` 同属「function 動態渲染 HTML」模式，安全標頭皆於函式內直接回傳（不走 `_headers`）。
-> ⚠ 修改 `public/index.html` 結構（增減 `/script`、`/link`）時請同步更新 `functions/index.html.ts` 底部的模板。
+**`functions/index.ts`＋`functions/index.html.ts`（v1.1.19 重構；v1.1.17 新增）— 動態 cache-busting**：兩支薄入口共用 `functions/lib/dynamic-index.ts` 的 `serveDynamicIndex(env)`，請求時動態產生 index HTML，把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` fallback 取 `dev`），回應頭設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `X-Content-Type-Options: nosniff`／`Referrer-Policy: no-referrer`（主站仍不加 CSP，同本節）。**目的：修復「每次部署看不到新程式」**——原本 `public/index.html` 寫死 `app.js?v=1.1.15`，即便 `_headers` 對 `/index.html` 設 `no-cache`，瀏覽器仍長快取舊版腳本；本 Function 讓每次部署產生唯一 `?v=<commit>` URL → 強制抓最新版、无需手動改版本號、永不忘。與 `functions/share.html.ts` 同属「function 動態渲染 HTML」模式，安全標頭皆於函式內直接回傳（不走 `_headers`）。
+> ⚠ v1.1.19 實測修正：v1.1.17 只建了 `functions/index.html.ts`，但 CF Pages 檔案路由上**根路徑 `/` 對應的檔名是 `functions/index.ts`**、`/index.html` 路徑才對應 `index.html.ts`；加上 `_routes.json` include 白名單沒列根路徑 → 根路徑 `/` 一直回靜態 `public/index.html`，cache-busting 從未生效。v1.1.19 起兩支入口＋include 列 `"/"`、`"/index.html"` 才真正生效。
+> ⚠ 修改 index HTML 結構（增減 `<script>`、`<link>`）時改 `functions/lib/dynamic-index.ts` 即可（兩支入口共用，勿再各改各的）。
 
 > `X-Frame-Options`／`frame-ancestors`：LIFF 是 WebView 而非 iframe，理論上可設 `DENY`/`'none'`，但**實測確認不影響 LINE 開啟後再鎖**（避免誤擋）。故首版 `_headers` 先不加，列入施工驗證項。
 

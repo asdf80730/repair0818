@@ -3,7 +3,7 @@
 社區管委會用的修繕案件管理 LINE 應用：住戶／委員透過 LINE LIFF 報修，管理公司派單給廠商，廠商透過公開分享連結接收派工單。
 
 - **正式網域**：https://repair-system-4re.pages.dev
-- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.15 定稿，單一真相來源）
+- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.19 定稿，單一真相來源）
 - **施工規則**：[CLAUDE.md](CLAUDE.md)
 
 ## 技術棧
