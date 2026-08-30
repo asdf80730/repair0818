@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.15（已擴充至 158 單元測試 + 19 E2E）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）
+> 版本：v1.1.15（已擴充至 158 單元測試 + 19 E2E）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
 
 ## 執行方式
 
