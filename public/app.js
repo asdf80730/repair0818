@@ -43,16 +43,16 @@ const mockOptions = {
   location: [{ id: 1, label: '停車場' }, { id: 2, label: '大廳' }, { id: 3, label: '頂樓' }],
   description: [{ id: 1, label: '水泵浦異音' }, { id: 2, label: '照明故障' }],
   comment_desc: [{ id: 1, label: '已通知廠商處理' }, { id: 2, label: '已到場勘查' }],
-  // v1.1.16：訊息模板 mock fixture — new_case / timeline 兩種（案件動態簡化）
+  // v1.1.20：訊息模板 mock fixture — 對應新 schema：type 欄當鍵（message_template_new_case/timeline）、label 欄存內容（body 欄已砍）
   message_template: [
     {
-      id: 1, type: 'message_template', label: 'new_case', sort_order: 0, active: 1,
-      body: '{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}',
+      id: 1, type: 'message_template_new_case', sort_order: 0, active: 1,
+      label: '{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}',
       is_category_specific: false,
     },
     {
-      id: 2, type: 'message_template', label: 'timeline', sort_order: 1, active: 1,
-      body: '{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}',
+      id: 2, type: 'message_template_timeline', sort_order: 1, active: 1,
+      label: '{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}',
       is_category_specific: false,
     },
   ],
@@ -280,9 +280,10 @@ function mockApi(path, options = {}) {
         })
       }
     }
+    // v1.1.20：type 欄當鍵、label 欄存內容（與後端 fetchTmpl 一致：回應 { id, body }，body 取自 label 欄）
     const tpl = (label) => {
-      const f = mockOptions.message_template.find(x => x.label === label)
-      return f ? { id: f.id, body: f.body } : null
+      const f = mockOptions.message_template.find(x => x.type === 'message_template_' + label)
+      return f ? { id: f.id, body: f.label } : null
     }
     return {
       ok: true,
@@ -294,9 +295,13 @@ function mockApi(path, options = {}) {
     }
   }
   // F6（v1.1.15）：message-templates 列表 + 單筆 GET
+  // v1.1.20：mock 對齊新 schema——type 欄當鍵、label 欄存內容；對外回應照後端形狀 { label: 鍵, body: 內容 }
+  const tmplView = (t) => ({ ...t, label: t.type.slice('message_template_'.length), body: t.label })
   if (pathname === '/api/message-templates' && method === 'GET') {
     const label = url.searchParams.get('label')
-    let items = mockOptions.message_template.filter(t => t.label === label || !label)
+    const items = mockOptions.message_template
+      .filter(t => t.type === 'message_template_' + label || !label)
+      .map(tmplView)
     return { ok: true, data: { templates: items } }
   }
   const tmplMatch = pathname.match(/^\/api\/message-templates\/(\d+)$/)
@@ -304,7 +309,7 @@ function mockApi(path, options = {}) {
     const id = Number(tmplMatch[1])
     const t = mockOptions.message_template.find(x => x.id === id)
     if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '模板不存在' } }
-    return { ok: true, data: t }
+    return { ok: true, data: tmplView(t) }
   }
   if (tmplMatch && method === 'PUT') {
     const id = Number(tmplMatch[1])
@@ -313,13 +318,12 @@ function mockApi(path, options = {}) {
     const body = JSON.parse(options.body || '{}')
     if (body.body !== undefined && body.body.trim() === '') return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'body 不可為空' } }
     const cur = mockOptions.message_template[idx]
-    const updated = {
-      ...cur,
-      body: body.body ?? cur.body,
-      label: body.label ?? cur.label,
-    }
+    // v1.1.20：內容寫 label 欄、鍵寫 type 欄（與後端 PUT 一致）
+    if (body.body !== undefined) cur.label = body.body
+    if (body.label !== undefined) cur.type = 'message_template_' + body.label
+    const updated = cur
     mockOptions.message_template[idx] = updated
-    return { ok: true, data: updated }
+    return { ok: true, data: tmplView(updated) }
   }
   // users
   if (pathname === '/api/users' && method === 'GET') {

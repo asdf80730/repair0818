@@ -138,12 +138,12 @@ E2E（`e2e/cache-busting.spec.js`，v1.1.19 新增，不需 mock 登入、直接
 ```
 驗證：total_count=0 → 仍回 template.body（**empty** 模板，不是 report）；對應測試：`tests/stats.test.ts` F1「當日無任何案件」。
 
-### F6-1. `GET /api/message-templates?category_id=N&label=report`
+### F6-1. `GET /api/message-templates?category_id=N&label=new_case`
 ```
-輸入：manager 登入、category_id=1、label=report
-期望：200 { "templates": [{ "id": 1, "label": "report", "body": "...", "is_category_specific": false }] }
+輸入：manager 登入、category_id=1、label=new_case
+期望：200 { "templates": [{ "id": 1, "label": "new_case", "body": "{{#each new_cases}}...{{/each}}", "is_category_specific": false }] }
 ```
-驗證：三角色皆可讀；類別關聯優先 / 全域預設 fallback。
+驗證：三角色皆可讀；類別關聯優先 / 全域預設 fallback。（v1.1.16 起 label 僅 new_case/timeline；v1.1.20 起 label=鍵、body=內容，內容存於 options.label 欄、type 欄當鍵，body 欄已 DROP）
 
 ### F6-2. `PUT /api/message-templates/:id` committee 不可寫
 ```

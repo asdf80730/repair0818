@@ -253,12 +253,13 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
     })),
   )
 
-  // 6. 抓兩種模板 body（v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
+  // 6. 抓兩種模板內容（v1.1.20：type 欄當鍵、label 欄存內容；v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
+  //    回應形狀不變：{ id, body }，body 現在取自 label 欄（內容），key 由 type 導出
   const fetchTmpl = async (label: 'new_case' | 'timeline') => {
     const row = await c.env.DB.prepare(
-      `SELECT o.id, o.body
+      `SELECT o.id, o.label AS body
        FROM options o
-       WHERE o.type = 'message_template' AND o.label = ? AND o.active = 1
+       WHERE o.type = ? AND o.active = 1
          AND (
            o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
            OR o.id NOT IN (SELECT option_id FROM option_categories)
@@ -266,7 +267,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
        ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
                 o.sort_order ASC
        LIMIT 1`,
-    ).bind(label, categoryId, label).first<{ id: number; body: string }>()
+    ).bind('message_template_' + label, categoryId, categoryId).first<{ id: number; body: string }>()
     return row ? { id: row.id, body: row.body } : null
   }
   const [new_case_tpl, timeline_tpl] = await Promise.all([

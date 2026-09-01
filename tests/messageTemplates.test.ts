@@ -1,6 +1,6 @@
 // tests/messageTemplates.test.ts — F6 訊息模板 CRUD 測試（v1.1.15）
 //
-// 沿用既有 options 字典表（type='message_template'）
+// 沿用既有 options 字典表（v1.1.20：type='message_template_new_case'/'message_template_timeline' 當鍵、label 欄存內容）
 // GET 三角色可讀，PUT 限 manager/admin
 // 不做新增、不做刪除、不做啟用切換（F7 業主決策）
 
@@ -110,7 +110,7 @@ describe('F6 GET /api/message-templates/:id 行為鎖定（v1.1.15）', () => {
   it('存在 → 回 200 + 完整欄位', async () => {
     const { cookie } = await loginAs('U-f6-idok', '管', 'admin')
     const exist = await env.DB.prepare(
-      "SELECT id FROM options WHERE type='message_template' AND active=1 LIMIT 1",
+      "SELECT id FROM options WHERE type LIKE 'message_template_%' AND active=1 LIMIT 1",
     ).first<{ id: number }>()
     if (!exist) {
       // 若 migration 0010 沒跑，這條 case 跳過
@@ -130,7 +130,7 @@ describe('F6 PUT /api/message-templates/:id 行為鎖定（v1.1.15）', () => {
   it('committee 不可寫 → 403', async () => {
     const cmt = await loginAs('U-f6-put-cmt', '委', 'committee')
     const exist = await env.DB.prepare(
-      "SELECT id FROM options WHERE type='message_template' AND active=1 LIMIT 1",
+      "SELECT id FROM options WHERE type LIKE 'message_template_%' AND active=1 LIMIT 1",
     ).first<{ id: number }>()
     if (!exist) return
     const r = await worker.fetch(`http://example.com/api/message-templates/${exist.id}`, {
@@ -144,7 +144,7 @@ describe('F6 PUT /api/message-templates/:id 行為鎖定（v1.1.15）', () => {
   it('manager 可寫 body → 200，回新內容', async () => {
     const mgr = await loginAs('U-f6-put-mgr', '管', 'manager')
     const exist = await env.DB.prepare(
-      "SELECT id FROM options WHERE type='message_template' AND active=1 LIMIT 1",
+      "SELECT id FROM options WHERE type LIKE 'message_template_%' AND active=1 LIMIT 1",
     ).first<{ id: number }>()
     if (!exist) return
     const newBody = `測試 body ${Date.now()}`
@@ -162,7 +162,7 @@ describe('F6 PUT /api/message-templates/:id 行為鎖定（v1.1.15）', () => {
   it('空 body + 空 label → 400 VALIDATION_ERROR', async () => {
     const mgr = await loginAs('U-f6-put-empty', '管', 'manager')
     const exist = await env.DB.prepare(
-      "SELECT id FROM options WHERE type='message_template' AND active=1 LIMIT 1",
+      "SELECT id FROM options WHERE type LIKE 'message_template_%' AND active=1 LIMIT 1",
     ).first<{ id: number }>()
     if (!exist) return
     const r = await worker.fetch(`http://example.com/api/message-templates/${exist.id}`, {

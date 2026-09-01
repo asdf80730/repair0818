@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.19 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.20 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -87,7 +87,7 @@
 ## 部署與 preview（v1.1.5 決策）
 - preview 自動部署已關閉（preview_deployment_setting: none）。單人開發直接 push main 走 production。
 - production 的 D1/R2/JWT_SECRET/LINE_CHANNEL_ID 已設定；preview 未設（也不需設）。
-- **Migrations 不會自動套用（v1.1.19 事故）**：Cloudflare 部署只上程式碼，`migrations/` 新增檔**不會自動跑進 production D1**——寫完 migration 後必須 `npx wrangler d1 migrations apply repair-db0818 --remote` 並實測（v1.1.15 曾漏套 0010–0012 導致 daily-report 500，壞了兩週）。CI 有 `scripts/check-migration-drift.py` 直查 production 比對，缺即紅（需 GitHub secret `CLOUDFLARE_API_TOKEN`）；**新 migration 一律寫成幂等**（`INSERT OR IGNORE`／`CREATE INDEX IF NOT EXISTS`／`ALTER` 前先確認）。
+- **Migrations 不會自動套用（v1.1.19 事故）**：Cloudflare 部署只上程式碼，`migrations/` 新增檔**不會自動跑進 production D1**——寫完 migration 後必須 `npx wrangler d1 migrations apply repair-db0818 --remote` 並實測（v1.1.15 曾漏套 0010–0012 導致 daily-report 500，壞了兩週）。CI 有 `scripts/check-migration-drift.py` 直查 production 比對，缺即紅（需 GitHub secret `CLOUDFLARE_API_TOKEN`）；**新 migration 一律寫成幂等**（`INSERT OR IGNORE`／`CREATE INDEX IF NOT EXISTS`／`ALTER` 前先確認）。**apply 與 deploy 的順序**：原則先 apply 後 deploy，但**若 migration 會砍掉舊 code 還在讀的欄位（如 0013 DROP COLUMN body），必須先 deploy 新 code 再 apply**——反向會 500（舊 code `no such column`）；正向風險僅新 code 對舊 DB 查不到新 type → 模板暫空不 500。以 SPEC 該版「部署順序」註記為準。
 
 ## 沙箱 git push 限制與解法（v1.1.15 發現）
 
