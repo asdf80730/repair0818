@@ -207,15 +207,6 @@ button { cursor: pointer; }
   font-size: 14px;
   min-height: 44px;
 }
-.nav-logout {
-  flex: 0 0 auto;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--red);
-  font-weight: 600;
-}
-
 /* 其他 */
 .loading, .error { text-align: center; padding: 40px 16px; color: var(--gray); }
 
@@ -313,3 +304,76 @@ button { cursor: pointer; }
 .insert-chip { display: block; width: 100%; text-align: left; padding: 4px 8px; margin-bottom: 2px; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 .insert-chip:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
 @media (max-width: 640px) { .tmpl-editor-grid { grid-template-columns: 1fr; } .insert-panel { max-height: 240px; } }
+
+/* v1.1.21：統計頁 sub-tab（月度統計／案件動態一次只看一塊）＋訊息模板頁「完整簡報預覽＋模板來源」 */
+/* 統計：月份行與日報框 */
+.month-row { display: flex; align-items: center; gap: 8px; padding: 8px; }
+.month-row .select { flex: 1; max-width: 220px; }
+.report-box { padding: 0 8px; }
+.report-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.report-controls label { font-weight: 600; font-size: 14px; }
+.report-controls input[type="date"], .report-controls .select { min-width: 0; }
+.report-controls input[type="date"] { flex: 1 1 150px; }
+.report-controls .select { flex: 1 1 150px; }
+.report-controls .btn { flex-shrink: 0; white-space: nowrap; }
+.report-preview {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--black);
+  box-sizing: border-box;
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 訊息模板頁：區塊、完整簡報預覽、模板來源行 */
+.tmpl-section { margin: 12px 8px; }
+.tmpl-full {
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f6f6f4;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--black);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.tmpl-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.tmpl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.tmpl-name { font-weight: 600; flex: 1; }
+.tmpl-link { color: var(--blue); text-decoration: underline; }
+.tmpl-meta { color: var(--gray); font-size: 13px; white-space: nowrap; }
+/* 編輯 modal 內的表單列＋即時預覽 */
+.form-row { margin-top: 12px; }
+.tmpl-preview {
+  margin: 6px 0 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f6f6f4;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}

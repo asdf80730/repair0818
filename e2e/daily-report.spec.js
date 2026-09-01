@@ -8,20 +8,28 @@ import { test, expect } from '@playwright/test'
 
 const BASE = process.env.E2E_BASE_URL || 'https://repair-system-4re.pages.dev'
 
+// v1.1.21：與 app.js 的 taipeiDateStr() 完全一致——formatToParts 組 YYYY-MM-DD，locale 無關。
+// 舊法用 Intl 'en-CA' 字串，但 en-CA 顯示格式非 spec 保證（完整 ICU 回 MM/DD/YYYY、受限 ICU 回 ISO），
+// 且 <input type=date> 只認 YYYY-MM-DD；用 formatToParts 才能兩邊對齊。
+function taipeiToday() {
+  const p = {}
+  new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value })
+  return p.year + '-' + p.month + '-' + p.day
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto(`${BASE}/?mock=true#/stats`)
-  await page.waitForSelector('text=案件動態', { timeout: 15000 })
+  // v1.1.21：案件動態獨立成 sub-tab，先點進該 tab 才載入
+  await page.getByRole('button', { name: '案件動態', exact: true }).click()
+  await page.waitForSelector('.report-box input[type=date]', { timeout: 15000 })
 })
 
 test('案件動態區塊結構存在', async ({ page }) => {
   await expect(page.getByText('案件動態')).toBeVisible()
   const dateInput = page.locator('.report-box input[type=date]')
   await expect(dateInput).toBeVisible()
-  const todayTaipei = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date())
-  await expect(dateInput).toHaveAttribute('max', todayTaipei)
+  await expect(dateInput).toHaveAttribute('max', taipeiToday())
   await expect(page.locator('.report-box select')).toBeVisible()
   await expect(page.getByText('📋 複製')).toBeVisible()
   const preview = page.locator('.report-box textarea')
@@ -31,11 +39,7 @@ test('案件動態區塊結構存在', async ({ page }) => {
 
 test('日期選擇器預設值 = 今日台灣', async ({ page }) => {
   const dateInput = page.locator('.report-box input[type=date]')
-  const todayTaipei = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date())
-  await expect(dateInput).toHaveValue(todayTaipei)
+  await expect(dateInput).toHaveValue(taipeiToday())
 })
 
 test('mock 攔截：daily-render 前端拼裝成品（header + 新案件 + 連結，v1.1.16）', async ({ page }) => {

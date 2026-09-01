@@ -7,6 +7,17 @@
 // ---- 設定 ----
 const LIFF_ID = '2008484338-AvdMWQQg' // 正式 LIFF
 
+// v1.1.21：以台灣時區組 YYYY-MM-DD（locale 無關）。
+// 舊法用 Intl.DateTimeFormat('en-CA') 拿字串再 split('/')，但 en-CA 的顯示格式非 spec 保證：
+// 完整 ICU 的瀏覽器回 MM/DD/YYYY（喂給 <input type=date> 還會變 invalid，value 落空），
+// 受限 ICU 環境（headless、部分 WebView）回 ISO。formatToParts 永遠回 year/month/day 結構，兩邊都穩。
+function taipeiDateStr(d = new Date()) {
+  const p = {}
+  new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(d).forEach(x => { p[x.type] = x.value })
+  return p.year + '-' + p.month + '-' + p.day
+}
+
 // ---- 全域狀態 ----
 let me = null // { id, display_name, role }
 let liffReady = false
@@ -246,8 +257,9 @@ function mockApi(path, options = {}) {
     const categoryId = Number(url.searchParams.get('category_id'))
     if (!date) return { ok: false, error: { code: 'MISSING_DATE', message: 'date 必填' } }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: { code: 'INVALID_DATE', message: 'date 格式錯' } }
-    // 用台灣時區當天（與前端 dateInput 的 todayTaipeiStr() 一致），避免 UTC 前一天 16:00~24:00 誤判為未來日期
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    // 用台灣時區當天（與前端 dateInput 的 taipeiDateStr() 一致），避免 UTC 前一天 16:00~24:00 誤判為未來日期
+    // v1.1.21：改用 formatToParts 組 YYYY-MM-DD（locale 無關；en-CA 字串格式非 spec 保證，受限 ICU 環境會回 ISO 而非 MM/DD/YYYY）
+    const today = taipeiDateStr()
     if (date > today) return { ok: false, error: { code: 'DATE_FUTURE', message: 'date 不可晚於今天' } }
     if (!categoryId) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
     const cat = mockOptions.category.find(c => c.id === categoryId)
@@ -1419,6 +1431,35 @@ pages.stats = function () {
     el('div', { class: 'loading-text', text: '載入統計…' }),
   ]))
 
+  // v1.1.21：月度統計／案件動態拆成 sub-tab（手機單屏可讀；記住上次選擇）。
+  // 兩塊原本摺在同一條滾動軸（6 卡+金額表+日報框），手機要滑兩三屏；現在一次只看一塊。
+  let curStatsTab = localStorage.getItem('statsTab') === 'report' ? 'report' : 'monthly'
+  let reportLoadPromise = null // 防重入：切回「案件動態」不重發請求（loadReport 是下方 function 宣告，hoisted，可安全引用）
+  const tabsBar = el('div', { class: 'tabs' })
+  const monthlyPanel = el('div', {})
+  const reportPanel = el('div', {})
+  monthlyPanel.style.display = curStatsTab === 'monthly' ? '' : 'none'
+  reportPanel.style.display = curStatsTab === 'report' ? '' : 'none'
+  const tabMonthlyBtn = el('button', { type: 'button', class: 'tab' + (curStatsTab === 'monthly' ? ' active' : ''), text: '月度統計' })
+  const tabReportBtn = el('button', { type: 'button', class: 'tab' + (curStatsTab === 'report' ? ' active' : ''), text: '案件動態' })
+  function showStatsTab(tab) {
+    curStatsTab = tab
+    localStorage.setItem('statsTab', tab)
+    tabMonthlyBtn.classList.toggle('active', tab === 'monthly')
+    tabReportBtn.classList.toggle('active', tab === 'report')
+    monthlyPanel.style.display = tab === 'monthly' ? '' : 'none'
+    reportPanel.style.display = tab === 'report' ? '' : 'none'
+    // catSel.value 有值才發請求：目錄還沒載完時切進 tab 不占 promise，
+    // 留給下方 ensureCatalog().then 的初始載入分支補發（catSel 有選項時必然非空）
+    if (tab === 'report' && !reportLoadPromise && catSel.value) reportLoadPromise = loadReport()
+  }
+  tabMonthlyBtn.onclick = () => showStatsTab('monthly')
+  tabReportBtn.onclick = () => showStatsTab('report')
+  tabsBar.append(tabMonthlyBtn, tabReportBtn)
+  root.appendChild(tabsBar)
+  root.appendChild(monthlyPanel)
+  root.appendChild(reportPanel)
+
   // A4（v1.1.14）：月份下拉（近 12 個月），切換時 Promise.all 同步刷新 summary + amount-by-category
   const monthSel = el('select', { class: 'select' })
   const now = new Date()
@@ -1428,16 +1469,16 @@ pages.stats = function () {
     const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     monthSel.appendChild(el('option', { value: ym, text: ym, selected: ym === curMonth ? 'selected' : null }))
   }
-  root.appendChild(el('div', { class: 'month-row' }, [
+  monthlyPanel.appendChild(el('div', { class: 'month-row' }, [
     el('label', { text: '月份' }), monthSel,
   ]))
 
   const grid = el('div', { class: 'stats-grid' })
   const amountBox = el('div', { class: 'amount-box' })
   const amountTitle = el('h3', { class: 'section-title' })
-  root.appendChild(grid)
-  root.appendChild(amountTitle)
-  root.appendChild(amountBox)
+  monthlyPanel.appendChild(grid)
+  monthlyPanel.appendChild(amountTitle)
+  monthlyPanel.appendChild(amountBox)
 
   async function load(month) {
     clearLoading(root)
@@ -1500,17 +1541,14 @@ pages.stats = function () {
   // - 複製按鈕（navigator.clipboard + execCommand fallback）
   // - textarea 即時預覽（F8 templateEngine.render）
   // ────────────────────────────────────────────────────────────
-  const reportTitle = el('h3', { class: 'section-title', text: '案件動態' })
-  root.appendChild(reportTitle)
+  // v1.1.21：報告框掛 reportPanel（sub-tab 內）；原「案件動態」section-title 砍掉（tab 標籤已說明）
   const reportBox = el('div', { class: 'report-box' })
-  root.appendChild(reportBox)
+  reportPanel.appendChild(reportBox)
 
   // 工具：今天台灣日期 YYYY-MM-DD
   function todayTaipeiStr() {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Taipei',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date())
+    // v1.1.21：改用頂層 taipeiDateStr()（formatToParts，locale 無關；<input type=date> 需 YYYY-MM-DD）
+    return taipeiDateStr()
   }
 
   // 日期選擇器
@@ -1535,7 +1573,8 @@ pages.stats = function () {
         selected: (savedCatId ? c.id === savedCatId : c === allCategories[0]) ? 'selected' : null,
       }))
     }
-    if (allCategories.length > 0) loadReport()
+    // v1.1.21：初始只在「案件動態」tab 活躍時載入（月度 tab 預設時不打日報請求）
+    if (allCategories.length > 0 && curStatsTab === 'report' && !reportLoadPromise) reportLoadPromise = loadReport()
   })
   catSel.addEventListener('change', () => {
     if (catSel.value) localStorage.setItem('dailyReportCatId', catSel.value)
@@ -1613,7 +1652,7 @@ pages.stats = function () {
 
   // 匯出 CSV（僅 manager/admin，§5.5）
   if (me && (me.role === 'manager' || me.role === 'admin')) {
-    root.appendChild(el('div', { class: 'export-row' }, [
+    monthlyPanel.appendChild(el('div', { class: 'export-row' }, [
       el('button', { class: 'btn', text: '匯出 CSV', onclick: exportCsv }),
       el('span', { class: 'hint', text: '將於外部瀏覽器開啟下載' }),
     ]))
@@ -1751,7 +1790,6 @@ pages.messageTemplates = async function () {
     location.hash = '#/'
     return
   }
-
   const root = document.getElementById('page')
   root.innerHTML = ''
   root.appendChild(el('header', { class: 'topbar' }, [
@@ -1759,17 +1797,49 @@ pages.messageTemplates = async function () {
     el('h1', { text: '訊息模板' }),
   ]))
 
+  // v1.1.16：模板 new_case / timeline；v1.1.21：進頁先組好「完整簡報範例」，模板名做超連結，
+  // 點下去才開 modal-mask 編輯（內含即時預覽），存檔後整篇簡報同步刷新。
+  const LABEL_META = { new_case: '新案件', timeline: '時間軸' }
   const catId = await getFirstCategoryId()
   if (!catId) {
     root.appendChild(el('p', { class: 'error', text: '尚未建立類別，無法管理模板' }))
     return
   }
 
-  // v1.1.16：單 tab「訊息模板」，兩行（新案件 / 時間軸）各自可編輯 body + 即時預覽
-  const LABEL_META = { new_case: '新案件', timeline: '時間軸' }
+  // 模板內容：{ new_case: { id, body, is_category_specific }, timeline: {...} }
+  let tmplData = { new_case: null, timeline: null }
+
+  // 完整簡報範例：兩段模板套 fixture 範例資料，組出「實際發送長什麼樣」的整篇訊息
+  function fullPreviewText() {
+    const render = (body, label) => {
+      if (!body) return ''
+      try {
+        const ctx = makeFixtureContext(label)
+        return globalThis.templateEngine.render(body, ctx)
+      } catch (e) { return '' }
+    }
+    let s1 = render(tmplData.new_case?.body, 'new_case')
+    let s2 = render(tmplData.timeline?.body, 'timeline')
+    if (!s1.trim()) s1 = EMPTY_NEW_CASES_TEXT
+    if (!s2.trim()) s2 = EMPTY_TIMELINE_TEXT
+    return `${DAILY_REPORT_HEADER}：\n${s1}\n\n${s2}\n\n${SYSTEM_LINK}`
+  }
+
+  const fullPreview = el('pre', { class: 'report-preview tmpl-full', text: '載入中…' })
 
   const listBox = el('div', { class: 'tmpl-list' })
-  root.appendChild(listBox)
+  // 整段版面：說明 → 完整簡報範例 → 模板來源（兩行，名稱可點）
+  root.appendChild(el('p', { class: 'hint', text: '以下為套用範例資料後的完整簡報預覽。點下方模板名稱（或「編輯」鈕）即可編輯對應區塊，存檔後預覽即時更新。' }))
+  root.appendChild(el('div', { class: 'tmpl-section' }, [
+    el('h3', { class: 'section-title', text: '完整簡報預覽' }), fullPreview,
+  ]))
+  root.appendChild(el('div', { class: 'tmpl-section' }, [
+    el('h3', { class: 'section-title', text: '模板來源' }), listBox,
+  ]))
+
+  function refreshPreview() {
+    fullPreview.textContent = fullPreviewText()
+  }
 
   async function loadList() {
     listBox.innerHTML = ''
@@ -1778,87 +1848,101 @@ pages.messageTemplates = async function () {
       const rows = []
       for (const label of ['new_case', 'timeline']) {
         const r = await api(`/api/message-templates?category_id=${catId}&label=${label}`)
-        for (const t of (r.data.templates || [])) rows.push(t)
+        const t = (r.data.templates || [])[0]
+        if (t) {
+          tmplData[label] = t
+          rows.push(t)
+        }
       }
       listBox.innerHTML = ''
       if (rows.length === 0) {
-        listBox.appendChild(el('p', { class: 'empty', text: '目前無啟用模板（請至後台 migration 跑 0012）' }))
-        return
+        listBox.appendChild(el('p', { class: 'empty', text: '目前無啟用模板（請確認 migration 0012 已套用）' }))
       }
-      for (const t of rows) {
+      for (const label of ['new_case', 'timeline']) {
+        const t = tmplData[label]
+        if (!t) continue
+        // 行：名稱（超連結→開編輯 modal）+ 範圍說明
+        const nameLink = el('a', {
+          class: 'tmpl-name tmpl-link',
+          text: LABEL_META[label],
+          href: 'javascript:void(0)',
+          onclick: (e) => { e.preventDefault(); openEdit(label) },
+        })
         listBox.appendChild(el('div', { class: 'tmpl-row' }, [
-          el('div', { class: 'tmpl-name', text: LABEL_META[t.label] || t.label }),
+          nameLink,
           el('div', { class: 'tmpl-meta', text: t.is_category_specific ? '此類別專用' : '全域預設' }),
-          el('button', { class: 'btn', text: '編輯', onclick: () => openEdit(t) }),
-          el('button', { class: 'btn btn-ghost', text: '重置出廠預設', onclick: () => resetToFactory(t) }),
+          el('button', { class: 'btn btn-ghost', text: '編輯', onclick: () => openEdit(label) }),
         ]))
       }
+      refreshPreview()
     } catch (e) {
       listBox.innerHTML = ''
       listBox.appendChild(el('p', { class: 'error', text: e.message }))
     }
   }
 
-  async function openEdit(t) {
-    const cur = t
-    const modal = el('div', { class: 'modal-bg', onclick: (e) => { if (e.target === modal) close() } })
-    const content = el('div', { class: 'modal modal-wide' })
-    modal.appendChild(content)
-    content.appendChild(el('h2', { text: '編輯模板：' + (LABEL_META[cur.label] || cur.label) }))
+  // 編輯 modal（v1.1.21：改回 modal-mask 定位，置中彈窗；舊 modal-bg 非既有 class，會掉進文件流）
+  async function openEdit(label) {
+    let cur = tmplData[label]
+    if (!cur) { await loadList(); cur = tmplData[label] } // 防 race：尚未載入完成時先補載
+    if (!cur) return
+    const mask = el('div', { class: 'modal-mask', onclick: (e) => { if (e.target === mask) close() } })
+    const modal = el('div', { class: 'modal modal-wide' })
+    mask.appendChild(modal)
+    modal.appendChild(el('h2', { text: '編輯「' + LABEL_META[label] + '」模板' }))
 
-    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 10, value: cur.body ?? '' })
+    const bodyArea = el('textarea', { class: 'tmpl-body', rows: 9, value: cur.body ?? '' })
     const previewBox = el('pre', { class: 'tmpl-preview', text: '(預覽將顯示於此)' })
-    const hint = el('div', { class: 'hint', text: VARIABLE_HINT[cur.label] || '' })
+    const hint = el('div', { class: 'hint', text: VARIABLE_HINT[label] || '' })
 
-    content.appendChild(el('div', { class: 'form-row' }, [el('label', { text: '內容（body，可使用 {{變數}} 與 {{#each}}...{{/each}}）' }), bodyArea]))
-    content.appendChild(hint)
-    content.appendChild(el('div', { class: 'form-row' }, [el('label', { text: '即時預覽（用範例資料渲染）' }), previewBox]))
+    modal.appendChild(el('div', { class: 'form-row' }, [
+      el('label', { text: '模板內容（可用 {{變數}} 與 {{#each}}…{{/each}}）' }), bodyArea,
+    ]))
+    modal.appendChild(hint)
+    modal.appendChild(el('div', { class: 'form-row' }, [
+      el('label', { text: '即時預覽（用範例資料渲染）' }), previewBox,
+    ]))
 
     function renderPreview() {
       try {
-        previewBox.textContent = globalThis.templateEngine.render(bodyArea.value, makeFixtureContext(cur.label))
+        previewBox.textContent = globalThis.templateEngine.render(bodyArea.value, makeFixtureContext(label))
       } catch (e) {
         previewBox.textContent = '預覽失敗：' + e.message
       }
     }
     bodyArea.addEventListener('input', renderPreview)
-    setTimeout(renderPreview, 0)
 
-    content.appendChild(el('div', { class: 'modal-actions' }, [
+    modal.appendChild(el('div', { class: 'modal-actions' }, [
+      el('button', { class: 'btn btn-ghost', text: '重置出廠預設', onclick: async () => {
+        const seed = SEED_TEMPLATE_BODY[label]
+        if (!seed) { toast('找不到出廠預設'); return }
+        if (!confirm(`確定將「${LABEL_META[label]}」重置為出廠預設？\n目前內容將被覆寫。`)) return
+        try {
+          await api(`/api/message-templates/${cur.id}`, { method: 'PUT', body: JSON.stringify({ body: seed }) })
+          bodyArea.value = seed
+          renderPreview()
+          toast('已重置為出廠預設')
+        } catch (e) { toast('重置失敗：' + e.message) }
+      } }),
       el('button', { class: 'btn btn-ghost', text: '取消', onclick: close }),
       el('button', { class: 'btn', text: '儲存', onclick: async () => {
         try {
           await api(`/api/message-templates/${cur.id}`, { method: 'PUT', body: JSON.stringify({ body: bodyArea.value }) })
+          tmplData[label] = { ...cur, body: bodyArea.value }
+          refreshPreview() // v1.1.21：存檔後整篇簡報同步更新
           toast('已儲存')
           close()
-          loadList()
-        } catch (e) {
-          toast('儲存失敗：' + e.message)
-        }
+        } catch (e) { toast('儲存失敗：' + e.message) }
       } }),
     ]))
 
-    function close() { modal.remove() }
-    document.body.appendChild(modal)
-    setTimeout(() => bodyArea.focus(), 100)
-  }
-
-  async function resetToFactory(t) {
-    if (!confirm(`確定將「${LABEL_META[t.label] || t.label}」重置為出廠預設？\n目前的 body 將被覆寫。`)) return
-    const seed = SEED_TEMPLATE_BODY[t.label]
-    if (!seed) { toast('找不到出廠預設 body'); return }
-    try {
-      await api(`/api/message-templates/${t.id}`, { method: 'PUT', body: JSON.stringify({ body: seed }) })
-      toast('已重置為出廠預設')
-      loadList()
-    } catch (e) {
-      toast('重置失敗：' + e.message)
-    }
+    function close() { mask.remove() }
+    document.body.appendChild(mask)
+    setTimeout(() => { bodyArea.focus(); renderPreview() }, 100)
   }
 
   loadList()
 }
-
 // F7：模板預覽用 fixture 資料（hardcoded，與 SPEC §F5 一致）
 // v1.1.16：模板管理頁即時預覽用範例資料（依 label 回傳對應陣列）
 function makeFixtureContext(label) {
@@ -2081,18 +2165,6 @@ pages.admin = function () {
   root.appendChild(addRow)
 }
 
-// §3.5 登出：清除 session cookie → 重置登入狀態 → 重載（boot 會重新走登入流程）
-async function doLogout() {
-  try {
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-    })
-  } catch { /* 端點不可用仍強制清除本地狀態 */ }
-  me = null
-  location.reload()
-}
-
 // ---- 底部導覽 ----
 function renderNav() {
   const nav = document.getElementById('nav')
@@ -2109,13 +2181,9 @@ function renderNav() {
   for (const [href, label] of items) {
     nav.appendChild(el('a', { href, class: 'nav-item', text: label }))
   }
-  // §3.5 登出：所有已登入角色皆可見（committee/manager/admin）
-  nav.appendChild(el('button', {
-    type: 'button',
-    class: 'nav-item nav-logout',
-    text: '🚪 登出',
-    onclick: async () => { if (confirm('確定要登出嗎？')) await doLogout() },
-  }))
+  // v1.1.21：移除「登出」按鈕——LINE 憑證在 LIFF 快取而非 cookie，登出無法真正登出（重載後無感自動重登），
+  // 且憑證過期時 boot 已自動走 forceFreshLogin()（liff.logout + 重導 OAuth，受 C1 重登上限保護）。
+  // 底部導覽列空間還給功能 tab（admin 6 格→5 格、manager 5→4、committee 4→3）。後端 /api/auth/logout 端點保留。
 }
 
 // ---- hash router ----
