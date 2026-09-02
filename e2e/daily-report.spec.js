@@ -42,6 +42,26 @@ test('日期選擇器預設值 = 今日台灣', async ({ page }) => {
   await expect(dateInput).toHaveValue(taipeiToday())
 })
 
+test('預設「全部類別」：新案件與時間軸都有內容（v1.1.22）', async ({ page }) => {
+  // 類別下拉第一項 = 全部類別、預設選取
+  const sel = page.locator('.report-box select')
+  await expect(sel).toHaveValue('all')
+  // 等 mock fetch 完成 + 前端 render
+  await expect.poll(async () => {
+    const v = await page.locator('.report-box textarea').inputValue()
+    return v.length > 0
+  }, { timeout: 8000 }).toBe(true)
+  const preview = await page.locator('.report-box textarea').inputValue()
+  // header + 當日新建（id=99 電梯）+ 既有案件今日 update（id=98 門禁）
+  expect(preview).toContain('修繕系統簡報：')
+  expect(preview).toContain('99.')
+  expect(preview).toContain('門開關異常')
+  expect(preview).toContain('98.')
+  expect(preview).toContain('大廳')
+  expect(preview).toContain('廠商今日到場勘查')
+  expect(preview).toContain('https://liff.line.me/2008484338-AvdMWQQg')
+})
+
 test('mock 攔截：daily-render 前端拼裝成品（header + 新案件 + 連結，v1.1.16）', async ({ page }) => {
   // 明確選電梯，確保 mock 當日新建案件 id=99（电梯－停車場）進入 new_cases
   await page.locator('.report-box select').selectOption({ label: '電梯' })

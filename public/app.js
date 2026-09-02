@@ -35,6 +35,8 @@ let mockTickets = [
   { id: 6, title: '水泵－頂樓 #0006', status: 'open', category_label: '水泵', location_label: '頂樓', description: '頂樓水塔噪音', vendor_name: null, amount: null, amount_at: null, created_at: '2026-08-20T02:50:00.000Z', last_activity_at: '2026-08-20T22:19:00.000Z' },
   // F10 mock：當日 ticket（用 today UTC，避免 E2E 對時間耦合）
   { id: 99, title: '電梯－停車場 #0099', status: 'in_progress', category_label: '電梯', location_label: '停車場', description: '門開關異常', vendor_name: '測試廠商', amount: null, amount_at: null, created_at: new Date().toISOString(), last_activity_at: new Date().toISOString() },
+  // v1.1.22：既有案件（08-18 建、今日有 update）—— daily-report 時間軸用（「全部」模式預設展示）
+  { id: 98, title: '門禁－大廳 #0098', status: 'in_progress', category_label: '門禁', location_label: '大廳', description: '大門感應故障（既有）', vendor_name: '測試廠商', amount: 15000, amount_at: '2026-08-19T09:00:00.000Z', created_at: '2026-08-18T09:00:00.000Z', last_activity_at: new Date().toISOString() },
 ]
 let mockNextId = 7
 let mockPhotosCount = 0 // A8：mock 照片上傳計數（產生唯一 id）
@@ -43,6 +45,8 @@ let mockUpdates = [
   { id: 1, ticket_id: 2, kind: 'status', status: 'in_progress', note: '已發包施作', amount: 12000, display_name: '測試用戶', created_at: '2026-08-18T11:00:00.000Z', photo_urls: [] },
   // F10 mock：當日 update（id=99 ticket）
   { id: 99, ticket_id: 99, kind: 'status', status: 'in_progress', note: '已通知廠商', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] },
+  // v1.1.22：當日 update（id=98 既有 ticket）—— 測 daily-report timeline_updates（「全部」模式預設展示）
+  { id: 98, ticket_id: 98, kind: 'status', status: 'in_progress', note: '廠商今日到場勘查', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] },
 ]
 // mock 類別關聯（v1.1.7）：電梯→頂樓、門禁→大廳；assoc=0 時清空（零關聯＝全部通用）
 const mockAssoc = [
@@ -254,24 +258,28 @@ function mockApi(path, options = {}) {
   // F1（v1.1.15）：daily-report mock — 依 date 過濾今天 tickets，回純資料 + template
   if (pathname === '/api/stats/daily-report') {
     const date = url.searchParams.get('date')
-    const categoryId = Number(url.searchParams.get('category_id'))
     if (!date) return { ok: false, error: { code: 'MISSING_DATE', message: 'date 必填' } }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: { code: 'INVALID_DATE', message: 'date 格式錯' } }
     // 用台灣時區當天（與前端 dateInput 的 taipeiDateStr() 一致），避免 UTC 前一天 16:00~24:00 誤判為未來日期
     // v1.1.21：改用 formatToParts 組 YYYY-MM-DD（locale 無關；en-CA 字串格式非 spec 保證，受限 ICU 環境會回 ISO 而非 MM/DD/YYYY）
     const today = taipeiDateStr()
     if (date > today) return { ok: false, error: { code: 'DATE_FUTURE', message: 'date 不可晚於今天' } }
-    if (!categoryId) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
-    const cat = mockOptions.category.find(c => c.id === categoryId)
-    if (!cat) return { ok: false, error: { code: 'NOT_FOUND', message: '類別不存在' } }
-    // 撈台灣當天屬於該類別的 tickets（start/end = 台灣當天 00:00 的 UTC 對應，與後端 taipeiDayRangeUtc 一致）
+    const catParam = url.searchParams.get('category_id') // v1.1.22：'all'（全部類別）或正整數字串
+    if (!catParam) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
+    const isAll = catParam === 'all'
+    if (!isAll && (!Number.isInteger(Number(catParam)) || Number(catParam) <= 0)) {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 需為正整數或 "all"' } }
+    }
+    const cat = isAll ? null : mockOptions.category.find(c => c.id === Number(catParam))
+    if (!isAll && !cat) return { ok: false, error: { code: 'NOT_FOUND', message: '類別不存在' } }
+    // 撈台灣當天屬於該類別的 tickets（all：不限類別；start/end = 台灣當天 00:00 的 UTC 對應，與後端 taipeiDayRangeUtc 一致）
     // 台灣當天 00:00 = UTC 前一日 16:00；end = 台灣隔天 00:00 = 當天 16:00 UTC（半開區間）
     const [yy, mm, dd] = date.split('-').map(Number)
     const startMs = Date.UTC(yy, mm - 1, dd) - 8 * 3600 * 1000
     const endMs = startMs + 24 * 3600 * 1000
     const start = new Date(startMs).toISOString()
     const end = new Date(endMs).toISOString()
-    const inCat = mockTickets.filter(t => t.category_label === cat.label)
+    const inCat = mockTickets.filter(t => isAll || t.category_label === cat.label)
     const newTs = inCat.filter(t => t.created_at >= start && t.created_at <= end)
     const existingTs = inCat.filter(t => t.last_activity_at >= start && t.last_activity_at <= end && t.created_at < start)
     // v1.1.16：新案件（預設狀態詢價中）+ 時間軸拉平清單
@@ -300,7 +308,7 @@ function mockApi(path, options = {}) {
     return {
       ok: true,
       data: {
-        date, category_id: categoryId, category_label: cat.label,
+        date, category_id: isAll ? null : Number(catParam), category_label: isAll ? '全部類別' : cat.label,
         new_cases, timeline_updates,
         templates: { new_case: tpl('new_case'), timeline: tpl('timeline') },
       },
@@ -1449,9 +1457,9 @@ pages.stats = function () {
     tabReportBtn.classList.toggle('active', tab === 'report')
     monthlyPanel.style.display = tab === 'monthly' ? '' : 'none'
     reportPanel.style.display = tab === 'report' ? '' : 'none'
-    // catSel.value 有值才發請求：目錄還沒載完時切進 tab 不占 promise，
-    // 留給下方 ensureCatalog().then 的初始載入分支補發（catSel 有選項時必然非空）
-    if (tab === 'report' && !reportLoadPromise && catSel.value) reportLoadPromise = loadReport()
+    // 目錄還沒載完（allCategories 空）時切進 tab 不占 promise，
+    // 留給下方 ensureCatalog().then 的初始載入分支補發（catSel 預設「全部類別」，載完後必然有值）
+    if (tab === 'report' && !reportLoadPromise && allCategories.length > 0) reportLoadPromise = loadReport()
   }
   tabMonthlyBtn.onclick = () => showStatsTab('monthly')
   tabReportBtn.onclick = () => showStatsTab('report')
@@ -1564,13 +1572,18 @@ pages.stats = function () {
   let allCategories = []
   ensureCatalog().then((cat) => {
     allCategories = (cat.categories || []).filter((c) => c.active !== false)
-    // localStorage 記住上次選擇（F3 業主決策 2026-08-23）
-    const savedCatId = Number(localStorage.getItem('dailyReportCatId') || 0)
+    // v1.1.22：「全部類別」（value='all'）列第一、預設選取；localStorage 記住上次選擇（F3 業主決策 2026-08-23）
+    const savedCat = localStorage.getItem('dailyReportCatId') // 'all' 或類別 id 字串
+    catSel.appendChild(el('option', {
+      value: 'all',
+      text: '全部類別',
+      selected: (savedCat ? savedCat === 'all' : true) ? 'selected' : null, // 未記憶 → 預設「全部」
+    }))
     for (const c of allCategories) {
       catSel.appendChild(el('option', {
         value: String(c.id),
         text: c.label,
-        selected: (savedCatId ? c.id === savedCatId : c === allCategories[0]) ? 'selected' : null,
+        selected: (savedCat ? String(c.id) === savedCat : false) ? 'selected' : null,
       }))
     }
     // v1.1.21：初始只在「案件動態」tab 活躍時載入（月度 tab 預設時不打日報請求）
@@ -1622,13 +1635,13 @@ pages.stats = function () {
   }
   async function loadReport() {
     const date = dateInput.value
-    const categoryId = Number(catSel.value)
+    const categoryId = catSel.value // v1.1.22：'all'（全部類別）或類別 id 字串
     if (!date || !categoryId) {
       preview.value = ''
       return
     }
     try {
-      const r = await api(`/api/stats/daily-report?date=${date}&category_id=${categoryId}`)
+      const r = await api(`/api/stats/daily-report?date=${date}&category_id=${encodeURIComponent(categoryId)}`)
       const data = r.data
       const ncBody = (data.templates && data.templates.new_case && data.templates.new_case.body) || ''
       const tlBody = (data.templates && data.templates.timeline && data.templates.timeline.body) || ''

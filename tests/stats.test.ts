@@ -604,6 +604,63 @@ describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
     void admin
   })
 
+  // v1.1.22：category_id=all — 不限類別合併、固定全域預設模板、category_label='全部類別'
+  it('v1.1.22 category_id=all：合併多個類別的當日案件、回 category_label=全部類別', async () => {
+    const admin = await loginAs('U-f1-all', '管', 'admin')
+    const catA = await ensureCategory('F1-test-cat-all-a')
+    const catB = await ensureCategory('F1-test-cat-all-b')
+    const loc = await ensureLocation('F1-test-loc-all')
+
+    const today = todayTaipei()
+    const todayCreatedAt = new Date(Date.UTC(
+      Number(today.slice(0, 4)),
+      Number(today.slice(5, 7)) - 1,
+      Number(today.slice(8, 10)),
+      2, 0, 0,
+    )).toISOString()
+
+    const tidA = await makeTicket({
+      adminUserId: admin.userId, catId: catA, catLabel: 'F1-test-cat-all-a',
+      locId: loc, locLabel: 'F1-test-loc-all',
+      desc: 'all 測試 A', createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
+    })
+    const tidB = await makeTicket({
+      adminUserId: admin.userId, catId: catB, catLabel: 'F1-test-cat-all-b',
+      locId: loc, locLabel: 'F1-test-loc-all',
+      desc: 'all 測試 B', createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
+    })
+
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${today}&category_id=all`,
+      { headers: { Cookie: admin.cookie } },
+    )
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.category_id).toBeNull()
+    expect(body.data.category_label).toBe('全部類別')
+    // 兩個類別的當日新建案件都被合併進來
+    const ids = body.data.new_cases.map((t: { id: number }) => t.id)
+    expect(ids).toContain(tidA)
+    expect(ids).toContain(tidB)
+    expect(body.data.has_content).toBe(true)
+    // 模板仍回傳（all 固定取全域預設；seed 模板即全域）
+    expect(body.data.templates.new_case.body).toContain('{{#each new_cases}}')
+    expect(body.data.templates.timeline.body).toContain('{{#each timeline_updates}}')
+  })
+
+  it('v1.1.22 category_id 非正整數且非 all（abc/0/1.5）→ 400 VALIDATION_ERROR', async () => {
+    const { cookie } = await loginAs('U-f1-allbad', '管', 'admin')
+    for (const bad of ['abc', '0', '1.5']) {
+      const r = await worker.fetch(
+        `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${bad}`,
+        { headers: { Cookie: cookie } },
+      )
+      expect(r.status).toBe(400)
+      const b = await r.json()
+      expect(b.error.code).toBe('VALIDATION_ERROR')
+    }
+  })
+
   it('回傳 template（含 id + body）—— 從 migration 0010 seed 預設模板撈', async () => {
     const { cookie } = await loginAs('U-f1-tmpl', '管', 'admin')
     const cat = await ensureCategory('F1-test-cat-tmpl')

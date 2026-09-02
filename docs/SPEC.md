@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.21（定稿，可施工）** ｜ 日期：2026-09-02
+**版本：v1.1.22（定稿，可施工）** ｜ 日期：2026-09-02
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 → v1.1.19 → v1.1.20 → v1.1.21 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 → v1.1.19 → v1.1.20 → v1.1.21 → v1.1.22 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -14,6 +14,7 @@
 
 | 版本 | 內容 |
 |---|---|
+| v1.1.22 | **案件動態「全部類別」預設**（2026-09-02）：① **F1 端點加 `category_id=all`**——合併全部類別當日案件（新／既有兩組 SQL 跳過 `t.category_id` 過濾）、`category_label` 固定「全部類別」、`category_id` 回 `null`、**模板固定取全域預設**（all 無單一類別可取樣；實作以 `category_id=-1` 查 `option_categories` 必然無匹配落全域）；`category_id` 非正整數且非 `all` → `400 VALIDATION_ERROR`（錯誤訊息改「需為正整數或 "all"」）。② **前端「案件動態」類別下拉加「全部類別」列（value=`all`）並設為預設**（`localStorage.dailyReportCatId` 記憶值優先，含 `all`）。③ mock fixture 補當日既有案件（id=98 門禁）＋當日 update，讓「全部」預設模式同時有 new_cases 與 timeline_updates。**未新增 migration、未改其他端點** |
 | v1.1.21 | **前端兩頁改版＋登出鈕移除＋日期 locale 修正**（2026-09-02）：① **統計頁拆 sub-tab**——「月度統計」（六卡＋月份下拉＋各類別金額＋CSV）與「案件動態」（F2/F3 日報框）拆成 `.tabs` sub-tab，一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇；「案件動態」tab 才載入時才發 daily-report 請求（月度預設時不打）；原「案件動態」section-title 砍掉（tab 標籤已說明）。② **訊息模板管理頁重構**——進頁先組「完整簡報預覽」（兩段模板套前端 fixture 即時渲染成整篇實際發送長相，`.tmpl-full`），下方「模板來源」兩行（名稱＋範圍）；**模板名稱改超連結**、點名稱或「編輯」開 `modal-mask` 置中彈窗（textarea＋即時預覽＋重置出廠預設（G7 移入 modal 內）＋儲存），存檔後整篇簡報預覽同步刷新（不再整頁 reload）。編輯 modal 改回既有 `modal-mask` 定位（舊 `modal-bg` 非既有 class、會掉進文件流）。③ **移除底部 nav「🚪 登出」鈕**（v1.1.17 加）——LINE 憑證在 LIFF 快取而非 cookie，`POST /api/auth/logout` 清 cookie 後重載仍會用 LIFF 快取 token 無感自動重登，登出無實際效果；憑證過期時 boot 已自動 `forceFreshLogin()`（`liff.logout()`＋重導 OAuth，受 C1 重登上限保護）。**後端 `/api/auth/logout` 端點保留**（§3.5 端點契約不變）。④ **日期字串 locale 修正**——`taipeiDateStr()` 改用 `Intl.DateTimeFormat('en-US', …).formatToParts()` 組 `YYYY-MM-DD`（locale 無關）；舊法 `'en-CA'` 字串格式非 spec 保證（完整 ICU 回 `MM/DD/YYYY`、受限 ICU 環境回 ISO），餵 `<input type=date>` 會 invalid。**未新增端點、未改 API 回應格式、未動 DB** |
 | v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
 | v1.1.15 | **案件動態訊息框＋訊息模板系統**（業主 2026-08-23 拍板全部照做）：① **F1 新增** `GET /api/stats/daily-report?date=YYYY-MM-DD&category_id=N`（三角色可讀；當日新建 + last_activity_at 當日既有各算一組，updates_today 最多 3 筆、含 amount）；② **F6 新增** `/api/message-templates` CRUD（沿用既有 options 字典表，type='message_template'）；③ **F8** 純函式模板引擎 `{{var}}` 替換 + `{{#each}}...{{/each}}` 迴圈（含巢狀、缺值容錯、`created_at_time`/`note_or_status`/`amount_text` 自動變數）；④ **F2/F3** 統計頁新增「案件動態」區塊——日期選擇器（max=今天）+ 類別下拉（localStorage 記住）+ 複製按鈕（clipboard+execCommand fallback）+ textarea 即時預覽；⑤ **F7** 訊息模板管理頁（從 `pages.admin` tab 進入，F11-1），含雙層下拉變數插入 + 點擊插入面板 + textarea IntelliSense + 即時預覽 + G7 重置為出廠預設按鈕；⑥ **LIFF 進入點健化**：C1 `loggingIn` flag 防 `liff.login()` 迴圈、C2 `openWindow` fallback、C3 外部瀏覽器 boot 兜底錯誤提示、C4 topbar 顯式回列表按鈕；⑦ **A3** NETWORK 錯誤不再靜默吞掉；⑧ **A5** 留言/作廢/重開後 `router()` 局部刷新（不再 `location.reload()`）；⑨ **A6** catalog 失敗提示訊息改用具體錯誤；⑩ **D6/D7** 下拉省略號 + 列表 max-height；⑪ **D8/D9** 統計頁 5s polling + 切頁 200ms 防抖；⑫ **D1** 照片綁定 race 防護（先驗 photos.status='linked' 後再 INSERT binding）、**D5** 索引、**D3** 預計 page 切換時取消舊請求；⑬ **A4** el() 事件名白名單 dev-only（IS_DEV 判斷 localhost / ?dev / ?mock，production 靜默）。**業主決策**：D2 CHECK 約束先不做（用途不明 + 風險過高）；A1 採補測試方案（b）append-only 重建留 v1.1.16+；A7 `app.js` module 封裝留 v1.1.16+（結構重構不混進本版）。**F11 第三輪整合**（2026-08-23）：F11-1 訊息模板入口放 admin 內不從 nav / F11-2 daily-report `date` 驗證錯誤碼 `MISSING_DATE/INVALID_DATE/DATE_FUTURE` + `taipeiToday()` helper / F11-3 seed body 不含 `{{#if}}` / F11-4 `note_or_status` 加 `kind='system'` 第三態分支 / F11-5 daily-report 回應加 `template.body` / F11-6 既有 ticket 加 `last_activity_at` 時間過濾 / F11-7 半開區間 `[startMs, endMs)`（毫秒數字）取代 `BETWEEN`（caller 自轉 ISO）。**F12 簡化決策**：F12-1 `updates_today` 時間正序（ASC）/ F12-2 模板管理用既有 `options` 字典表（不新開表）+ `option_categories` 關聯表。CI 158/160 unit + 25 E2E 全綠、production 已部署 v1.1.15 |
@@ -752,7 +753,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 | Query | 必填 | 說明 |
 |---|---|---|
 | `date` | **必填** | `YYYY-MM-DD` 台灣時區；**不驗證真實日期以外的合法性**（前端 max=今天） |
-| `category_id` | **必填** | 正整數；不存在 → `404 NOT_FOUND` |
+| `category_id` | **必填** | 正整數（該類別）或字串 `all`（**v1.1.22**：全部類別，合併所有類別當日案件、`category_label` 固定「全部類別」、`category_id` 回 `null`、模板固定取**全域預設**）；類別不存在 → `404 NOT_FOUND`；非正整數且非 `all` → `400 VALIDATION_ERROR` |
 
 - **時間計算**：`taipeiDayRangeUtc(date)` 回 `{startMs, endMs}`（毫秒數字）
   - `startMs` = 該日**台灣 00:00** 的 UTC 對應 = 前一日 16:00:00.000Z
@@ -763,8 +764,8 @@ GROUP BY category_label ORDER BY total_amount DESC
   ```jsonc
   {
     "date": 1755892800,                 // unix seconds（當日台灣 00:00），前端取 M月D日
-    "category_id": 1,
-    "category_label": "水電",
+    "category_id": 1,                   // v1.1.22：category_id=all 時回 null
+    "category_label": "水電",           // v1.1.22：all 時固定「全部類別」
     "new_cases": [
       { "id": 7, "location_label": "頂樓", "status": "詢價中", "description": "水泵故障" }
     ],
@@ -783,6 +784,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **業主決策（2026-08-23）**：當日新建 + 當日又有 update 的案件只進 `new_cases`，不進 `timeline_updates`
 - **templates.new_case / timeline**：可編輯模板內容（v1.1.16 起 seed 於 migration 0012；**v1.1.20 起內容存 `label` 欄、`type` 欄當鍵**，migration 0013 自 `body` 欄搬遷並 DROP 該欄；active=1、全域）。即使無案件也回傳（前端空案時以硬編文案取代渲染結果）
 - **has_content**：`new_cases` 與 `timeline_updates` 任一非空 → true。前端依此決定成品末尾是否追加總系統連結（R-2）
+- **all 模式（v1.1.22）**：`category_id=all` 時新／既有兩組 SQL 皆不限類別（`WHERE` 跳過 `t.category_id` 過濾），`category_label` 固定「全部類別」、`category_id` 回 `null`；**模板固定取全域預設**（all 沒有單一類別可取樣專用模板——實作上以 `category_id = -1` 查 `option_categories`，必然無匹配 → 落全域）。前端統計頁「案件動態」類別下拉因此多一列「全部類別」（value=`all`）且**預設選取**
 
 ### 4.8 CSV 匯出（D3）
 
@@ -948,6 +950,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **各類別金額區塊（v1.1.12）**：以發包時間（`amount_at`）為月份基準，各類別 `amount` 加總，顯示「類別／件數／金額」＋合計
 - 「匯出 CSV」按鈕＋固定提示「將於外部瀏覽器開啟下載」（流程見 §4.8）——**僅 manager/admin 可見**（D3）
 - **sub-tab 拆分（v1.1.21）**：統計頁拆成兩支 sub-tab（`.tabs`）——**「月度統計」**（六卡＋月份下拉＋各類別金額＋CSV 匯出）與**「案件動態」**（下方日報框），一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇、預設月度；「案件動態」tab 活躍才發 daily-report 請求（月度預設時不打）
+- **類別下拉預設「全部類別」（v1.1.22）**：「案件動態」日報框的類別下拉第一列為「全部類別」（value=`all`、對應端點 `category_id=all` 合併全部類別當日案件），**預設選取**；`localStorage.dailyReportCatId` 記憶上次選擇（含 `all`），有記憶值時以記憶值為準
 - **案件動態區塊（F2/F3，v1.1.15；v1.1.21 起為 sub-tab 內容）**：
   ```
   [月度統計 | 案件動態]   ← sub-tab

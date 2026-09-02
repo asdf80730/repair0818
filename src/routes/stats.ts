@@ -111,9 +111,10 @@ statsRoutes.get('/amount-by-category', requireAuth(), async (c) => {
 })
 
 // GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15；v1.1.16 簡化回應格式）
-// Query 必填：date=YYYY-MM-DD、category_id=N
+// Query 必填：date=YYYY-MM-DD、category_id=N 或 'all'（v1.1.22：全部類別，固定用全域預設模板）
 // 回傳純資料 + new_case / timeline 兩模板 body（v1.1.16：前端自行渲染並拼成成品）
-// 用途：保全每天對委員發 LINE 群組報告該類別當日案件動態
+// 用途：保全每天對委員發 LINE 群組報告該類別（或全部類別）當日案件動態
+const ALL_CATEGORIES = 'all'
 statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   const date = c.req.query('date')
   const categoryIdStr = c.req.query('category_id')
@@ -122,9 +123,10 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   if (!isValidDate(date)) return fail(c, 400, 'INVALID_DATE', 'date 格式需為 YYYY-MM-DD 且為真實日期')
   if (date > taipeiToday()) return fail(c, 400, 'DATE_FUTURE', 'date 不可晚於今天（台灣）')
   if (!categoryIdStr) return fail(c, 400, 'VALIDATION_ERROR', 'category_id 必填')
-  const categoryId = Number(categoryIdStr)
-  if (!Number.isInteger(categoryId) || categoryId <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', 'category_id 需為正整數')
+  const isAll = categoryIdStr === ALL_CATEGORIES
+  const categoryId = isAll ? -1 : Number(categoryIdStr) // -1：all 時當「不存在」的 category_id 用（SQL 過濾跳過、模板取樣落全域）
+  if (!isAll && (!Number.isInteger(categoryId) || categoryId <= 0)) {
+    return fail(c, 400, 'VALIDATION_ERROR', 'category_id 需為正整數或 "all"')
   }
 
   const { startMs, endMs } = taipeiDayRangeUtc(date)
@@ -132,23 +134,28 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   const startIso = new Date(startMs).toISOString()
   const endIso = new Date(endMs).toISOString()
 
-  // 撈類別 label
-  const cat = await c.env.DB.prepare(
-    "SELECT label FROM options WHERE type='category' AND id = ? AND active = 1",
-  ).bind(categoryId).first<{ label: string }>()
-  if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在或已停用')
+  // 撈類別 label（all：固定「全部類別」，不查 DB）
+  let categoryLabel = '全部類別'
+  if (!isAll) {
+    const cat = await c.env.DB.prepare(
+      "SELECT label FROM options WHERE type='category' AND id = ? AND active = 1",
+    ).bind(categoryId).first<{ label: string }>()
+    if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在或已停用')
+    categoryLabel = cat.label
+  }
 
   const baseUrl = c.env.BASE_URL || DEFAULT_BASE_URL
+  const catFilter = isAll ? '' : 't.category_id = ? AND '
 
-  // 1. 新建：當日 created_at 在區間內、屬該類別的 tickets
+  // 1. 新建：當日 created_at 在區間內、屬該類別（all：不限類別）的 tickets
   const newTicketsRaw = await c.env.DB.prepare(
     `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
             t.created_at, u.display_name AS creator_name
      FROM tickets t
      JOIN users u ON u.id = t.created_by
-     WHERE t.category_id = ? AND t.created_at >= ? AND t.created_at < ?
+     WHERE ${catFilter}t.created_at >= ? AND t.created_at < ?
      ORDER BY t.id ASC`,
-  ).bind(categoryId, startIso, endIso).all<{
+  ).bind(...(isAll ? [] : [categoryId]), startIso, endIso).all<{
     id: number; category_label: string; location_label: string; description: string | null;
     status: string; created_at: string; creator_name: string
   }>()
@@ -170,15 +177,14 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
     detail_url: `${baseUrl}/#/ticket/${t.id}`,
   }))
 
-  // 2. 既有：last_activity_at 落在當日、屬該類別、且**非當日新建**
+  // 2. 既有：last_activity_at 落在當日、屬該類別（all：不限類別）、且**非當日新建**
   const existingTicketsRaw = await c.env.DB.prepare(
     `SELECT t.id, t.category_label, t.location_label, t.status
      FROM tickets t
-     WHERE t.category_id = ?
-       AND t.last_activity_at >= ? AND t.last_activity_at < ?
+     WHERE ${catFilter}t.last_activity_at >= ? AND t.last_activity_at < ?
        AND t.created_at < ?
      ORDER BY t.id ASC`,
-  ).bind(categoryId, startIso, endIso, startIso).all<{
+  ).bind(...(isAll ? [] : [categoryId]), startIso, endIso, startIso).all<{
     id: number; category_label: string; location_label: string; status: string
   }>()
 
@@ -255,6 +261,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 6. 抓兩種模板內容（v1.1.20：type 欄當鍵、label 欄存內容；v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
   //    回應形狀不變：{ id, body }，body 現在取自 label 欄（內容），key 由 type 導出
+  //    v1.1.22：all 時 categoryId=-1 → 無任何 option_categories 匹配 → 固定取全域預設模板
   const fetchTmpl = async (label: 'new_case' | 'timeline') => {
     const row = await c.env.DB.prepare(
       `SELECT o.id, o.label AS body
@@ -277,8 +284,8 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   return ok(c, {
     date,
-    category_id: categoryId,
-    category_label: cat.label,
+    category_id: isAll ? null : categoryId, // v1.1.22：all → null
+    category_label: categoryLabel,
     // v1.1.16：前端自行渲染兩種模板並拼成成品（砍後端 templateEngine）
     new_cases: newTickets.map((t) => ({
       id: t.id,

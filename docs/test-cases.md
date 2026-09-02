@@ -2,8 +2,9 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.15（已擴充至 158 單元測試 + 19 E2E）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
+> 版本：v1.1.22（157 單元測試：v1.1.15 擴充至 158 後，v1.1.20 起隨模板 schema 調整為 155、v1.1.22 加 `category_id=all` 2 條）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
 > v1.1.21：`e2e/daily-report.spec.js`（4 條，v1.1.15 既有、本版對齊 stats 拆 sub-tab：先點「案件動態」tab 才載入、日期 max/預設值＝今日台灣（`formatToParts` 組 YYYY-MM-DD）、mock daily-render 前端拼裝、複製鈕）＋ `e2e/message-templates.spec.js`（5 條，v1.1.15 既有、本版對齊模板頁重構：管理頁 tab、完整簡報預覽＋模板來源兩行、點模板名稱超連結開 modal-mask 置中彈窗、即時預覽、G7 重置移入 modal 內）
+> v1.1.22：`category_id=all`（全部類別合併）unit 測試 2 條（多類別當日案件合併＋`category_label=全部類別`/`category_id=null`；非正整數且非 all 的 `abc/0/1.5` → 400 `VALIDATION_ERROR`）＋ E2E 加 1 條（`e2e/daily-report.spec.js` 共 5 條：類別下拉預設 `all`、預設預覽同時含當日新建與既有案件時間軸）
 
 ## 執行方式
 
