@@ -71,7 +71,9 @@ jobs:
           echo "部署版本比對失敗：預期 ${EXPECTED}，實際 ${COMMIT}"
           exit 1
 
+      # --retries=1：正式環境 e2e 偶發 chromium 崩潰（CDP session closed，`toHaveCount` 回 undefined、
+      # 非代碼失敗——同代碼不同 run 結果不一致）。對一過性崩潰重試一輪；真失敗仍會紅。
       - name: Run E2E tests
-        run: npx playwright test
+        run: npx playwright test --retries=1
         env:
           E2E_BASE_URL: https://repair-system-4re.pages.dev
