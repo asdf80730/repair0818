@@ -20,7 +20,7 @@ test('根路徑 / 是 Function 動態產出（asset 帶 ?v=<commit 前12字>、n
 
   // 本機 asset 一律 ?v= 參數（動態注入），且非寫死的舊版本號
   const srcs = [...html.matchAll(/src="\/(app|templateEngine|vendor\/[^"]+)\.js\?v=([^"]*)"/g)].map((m) => m[2])
-  expect(srcs.length).toBeGreaterThanOrEqual(3) // liff-mock + browser-image-compression + templateEngine + app.js
+  expect(srcs.length).toBeGreaterThanOrEqual(4) // liff-mock + browser-image-compression + heic2any + templateEngine + app.js
   for (const v of srcs) {
     expect(v, `asset 版本參數 "${v}" 應為 12 字元短 commit SHA（動態注入）`).toMatch(/^[0-9a-f]{12}$/)
   }

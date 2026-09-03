@@ -1,5 +1,6 @@
 // e2e/app.spec.js — 前端互動 E2E 測試（Playwright，mock 模式，ESM）
 // 用 ?mock=true 繞過 LINE 登入（@line/liff-mock），測前端互動完整流程
+import fs from 'node:fs'
 import { test, expect } from '@playwright/test'
 
 const BASE = process.env.E2E_BASE_URL || 'https://repair-system-4re.pages.dev'
@@ -311,4 +312,25 @@ test('v1.1.14 A8：建單照片選擇器（選照片）', async ({ page }) => {
   // 縮圖預覽出現（expect 自動重試取代固定等待）
   const thumbs = page.locator('.form .photo-preview .photo-thumb')
   await expect(thumbs).toHaveCount(2, { timeout: 8000 })
+})
+
+// v1.1.23：HEIC/HEIF → JPEG 轉換 E2E——真實 HEIC fixture（ftyp/mif1，iPhone 常見容器
+// brand；heic2any 官方 demo 樣本），驗證完整管線：isHeicBlob 偵測（magic bytes，不靠
+// file.type）→ heic2any 轉 JPEG → browser-image-compression 壓縮（1280px/≤500KB 沿用）
+// → mock 上傳 → 縮圖。chromium 不支援 HEIC 原生解碼，若未走 heic2any 分支此測試必 fail。
+test('v1.1.23：建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）', async ({ page }) => {
+  await page.goto(`${BASE}/?mock=true#/new`)
+  await page.waitForSelector('.form select', { timeout: 10000 })
+  await page.locator('.form select').nth(0).selectOption({ label: '門禁' })
+  await page.locator('.form select').nth(1).selectOption({ label: '大廳' })
+  await page.waitForSelector('.form input[type=file]', { timeout: 10000 })
+  // 故意用 octet-stream MIME——手機選檔常報錯 MIME，管線以 magic bytes 判斷
+  // （isHeicBlob），此處模擬該路徑
+  const heic = fs.readFileSync(new URL('./fixtures/sample.heic', import.meta.url))
+  await page.locator('.form input[type=file]').setInputFiles([
+    { name: 'IMG_0001.heic', mimeType: 'application/octet-stream', buffer: heic },
+  ])
+  // 縮圖出現＝HEIC 已轉 JPEG 並上傳成功（heic2any 首次載入 wasm 較慢，給 20s）
+  const thumbs = page.locator('.form .photo-preview .photo-thumb')
+  await expect(thumbs).toHaveCount(1, { timeout: 20000 })
 })

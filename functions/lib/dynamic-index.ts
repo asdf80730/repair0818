@@ -48,6 +48,8 @@ export function serveDynamicIndex(env: Env): Response {
   <script src="/vendor/liff-mock.js?v=${version}"></script>
   <!-- browser-image-compression（vendored，§1.2） -->
   <script src="/vendor/browser-image-compression.js?v=${version}"></script>
+  <!-- heic2any（vendored，§1.2；v1.1.23 HEIC/HEIF → JPEG，需先於 app.js） -->
+  <script src="/vendor/heic2any.js?v=${version}"></script>
   <!-- F8（v1.1.15）訊息模板渲染引擎（純函式）——必須在 app.js 之前載入 -->
   <script src="/templateEngine.js?v=${version}"></script>
   <!-- 主系統邏輯 -->

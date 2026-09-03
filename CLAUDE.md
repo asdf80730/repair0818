@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.22 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.23 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -8,7 +8,7 @@
 - 語言分界：functions/、src/ 用 TypeScript；public/ 一律純 JS，禁止 import npm 套件。
 - 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN。
 - **C4（v1.1.15）唯一例外**：LINE 官方 LIFF SDK（`https://static.line-scdn.net/liff/edge/2/sdk.js`）走 LINE 平台 CDN，是 LINE LIFF 平台的官方 SDK，必須從 LINE 載入（vendor 無法模擬 LIFF runtime）。liff-mock（測試用）仍 vendored 至 `public/vendor/liff-mock.js`。
-- 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression。
+- 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression, heic2any（v1.1.23 起，vendored，HEIC/HEIF → JPEG）。
 - 禁止：Node.js 專屬 API 或套件（jsonwebtoken, bcrypt, fs, multer, sharp, crypto.createHmac）。
 - 測試：@cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock）。
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、

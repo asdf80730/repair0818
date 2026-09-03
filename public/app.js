@@ -538,12 +538,39 @@ async function silentRelogin(path, options, headers) {
 }
 
 // ---- 工具 ----
+// v1.1.23：HEIC/HEIF 偵測（magic bytes）。部分裝置（Android Chrome）把 HEIC 檔的
+// MIME 報成 application/octet-stream、file.type 不可靠——直接讀前 12 bytes：
+// 4–8 位元組 "ftyp"（ISO BMFF box）＋ 8–12 位元組的 HEIF brand。
+async function isHeicBlob(file) {
+  try {
+    const buf = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+    if (buf.length < 12) return false
+    if (!(buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70)) return false // "ftyp"
+    const brand = String.fromCharCode(buf[8], buf[9], buf[10], buf[11])
+    return ['heic', 'heix', 'hevc', 'hevx', 'heif', 'mif1', 'heim', 'heis'].includes(brand)
+  } catch {
+    return false
+  }
+}
+
+// v1.1.23：HEIC/HEIF → JPEG（heic2any，vendored §1.2；wasm 已內嵌、無外部請求）。
+// 轉出的 JPEG 仍是原解析度、可能幾 MB——交由下游 compressPhoto 照舊縮到 1280px / ≤500KB。
+async function heicToJpeg(file) {
+  if (typeof window.heic2any !== 'function') throw new Error('heic2any 未載入')
+  const blob = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+  const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg'
+  return new File([blob], name, { type: 'image/jpeg' })
+}
+
 // 照片壓縮（§5.0：最長邊 1280px、目標 ≤500KB、輸出 JPEG；解碼失敗顯示提示）
 // maxSizeMB 是「目標大小」，設 0.5 會迭代壓縮到 ≤500KB（2MB 照片約縮到 200KB）
 async function compressPhoto(file) {
   if (!window.imageCompression) return file
   try {
-    const compressed = await imageCompression(file, {
+    // v1.1.23：HEIC/HEIF（iPhone 相機預設、部分 Android 裝置）瀏覽器解不開——
+    // 先轉 JPEG，再進與其他格式相同的壓縮管線（1280px / ≤500KB / JPEG 輸出照舊）。
+    const src = (await isHeicBlob(file)) ? await heicToJpeg(file) : file
+    const compressed = await imageCompression(src, {
       maxSizeMB: 0.5,
       maxWidthOrHeight: 1280,
       initialQuality: 0.7,
@@ -552,8 +579,8 @@ async function compressPhoto(file) {
     })
     return compressed
   } catch (e) {
-    // 已在此 toast（照片格式無法處理），掛標記避免上層 attachPhotoPicker 重複 toast
-    toast('此照片格式無法處理，請改用相機拍攝或先在相簿轉存')
+    // 已在此 toast，掛標記避免上層 attachPhotoPicker 重複 toast
+    toast('此照片無法處理（檔案可能損壞或不支援的格式），請改用相機拍攝或先在相簿轉存')
     if (e && typeof e === 'object') e.toasted = true
     throw e
   }
