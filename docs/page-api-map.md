@@ -21,8 +21,7 @@
 | | | `/api/photos`(上傳) | 附加照片時 |
 | **統計** | `#/stats` | `/api/stats/summary?month=` | 主查詢（v1.1.14 支援月份切換） |
 | | | `/api/stats/amount-by-category?month=` | 各類別金額（v1.1.12；v1.1.14 與 summary 同步 Promise.all） |
-| | | `/api/stats/daily-report?date=&category_id=` | **案件動態**（F1 v1.1.15；日期+類別必填） |
-| | | `/api/message-templates?label=empty` | 空態時撈 empty 模板（F4 v1.1.15） |
+| | | `/api/stats/daily-report?date=&category_id=` | **案件動態**（F1 v1.1.15；日期必填，`category_id` 正整數或 `all`（v1.1.22「全部類別」預設））。空態文案硬編碼、不撈 empty 模板（v1.1.16） |
 | | | `/api/exports/sign` | 匯出 CSV 時 |
 | **訊息模板** | `#/message-templates` | `/api/message-templates?category_id=&label=` | 列表（F6 v1.1.15） |
 | | | `/api/message-templates/:id` | 編輯 modal 載入 |

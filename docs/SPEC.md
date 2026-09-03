@@ -170,7 +170,24 @@ repair-system/
 │   ├── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
 │   ├── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
 │   ├── 0008_vendors_sort.sql      # 移除 vendors.phone、加 vendors.sort_order（v1.1.13）
-│   └── 0009_vendors_idx_updates_trigger.sql  # vendors 複合索引 + ticket_updates append-only trigger（v1.1.14）
+│   ├── 0009_vendors_idx_updates_trigger.sql  # vendors 複合索引 + ticket_updates append-only trigger（v1.1.14）
+│   ├── 0010_message_templates.sql # options 加 body 欄（v1.1.15，已被 0013 砍掉）
+│   ├── 0011_message_template_seed_fix.sql  # 修 0010 seed 漏 created_at（v1.1.15 bug fix）
+│   ├── 0012_daily_report_templates.sql     # 補 new_case/timeline 兩套預設模板（v1.1.16）
+│   └── 0013_message_template_type_as_key.sql  # type 當鍵＋label 存內容、砍 body 欄（v1.1.20）
+├── scripts/
+│   └── check-migration-drift.py   # 直查 production D1 比對 migrations（v1.1.19 守門，見 §8.7）
+├── tests/                         # 單元測試（11 檔 157 tests）
+│   ├── *.test.ts                  # app/assoc/boundary/coverage/messageTemplates/share-html/share/stats/ticket-actions/tickets/time
+│   ├── worker.ts / env.d.ts       # workers pool 入口與型別
+│   ├── apply-migrations.ts
+│   └── node/                      # test:local 的 node:sqlite shim（§8.7）
+├── e2e/                           # Playwright E2E（33 條；對 production ?mock=true）
+│   ├── app.spec.js                # 20 條（v1.1.23 加 HEIC 上傳）
+│   ├── daily-report.spec.js       # 5 條（案件動態日報，v1.1.22 加「全部類別」預設）
+│   ├── message-templates.spec.js  # 5 條（模板頁，v1.1.16 重構後）
+│   ├── cache-busting.spec.js      # 3 條（v1.1.19；本地 http.server 無 Functions 層故只 CI 跑）
+│   └── fixtures/sample.heic       # v1.1.23 真實 HEIC fixture（ftyp/mif1）
 ├── CLAUDE.md                      # 見 §6
 ├── README.md                      # 專案入口（技術棧/結構/本機開發/文件導覽）
 ├── docs/
@@ -254,7 +271,8 @@ CREATE TABLE vendors (
 CREATE TABLE options (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   type       TEXT NOT NULL,                        -- category / location / description / comment_desc
-  label      TEXT NOT NULL,
+                                                   -- ＋ message_template_new_case / message_template_timeline（v1.1.20 起 type 當鍵）
+  label      TEXT NOT NULL,                        -- 選項文字；message_template_% 兩行則存模板內容（v1.1.20，body 欄已被 0013 砍掉）
   sort_order INTEGER NOT NULL DEFAULT 0,
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -301,6 +319,7 @@ CREATE TABLE ticket_updates (
                (kind = 'comment' AND note IS NOT NULL AND note <> '')
                OR (kind IN ('status','system'))
              ),
+  amount     INTEGER,                 -- 發包金額（v1.1.12，0007 ALTER ADD；僅 kind='status' 且 in_progress 帶值）
   created_at TEXT NOT NULL
   -- 只能新增，不可修改刪除
   -- CHECK 約束讓資料庫成為第二道防線：AI 寫錯 kind/status/note 組合會在 INSERT 時被擋
@@ -961,7 +980,7 @@ GROUP BY category_label ORDER BY total_amount DESC
   [訊息預覽 textarea readonly]
   ```
   - 日期選擇器：`<input type="date">`，**max=今天**（不允許選未來），onchange 重抓
-  - 類別下拉：從 `ensureCatalog()` 拿 categories，**預設第一個類別**，**不做「全部類別」選項**（訊息會過長），**不存 hash**，**用 `localStorage` 記住上次選擇**（業主 2026-08-23 決策）
+  - 類別下拉：從 `ensureCatalog()` 拿 categories，**第一列為「全部類別」（v1.1.22 預設選取，值 `all`；取代 v1.1.15「預設第一個、不做全部」的決策）**，**不存 hash**，**用 `localStorage` 記住上次選擇**
   - 複製按鈕：`navigator.clipboard.writeText`；LIFF WebView / iOS Safari 權限問題 fallback `document.execCommand('copy')` + toast「已複製」
   - 訊息預覽（v1.1.16）：讀 daily-report 回傳的 `new_cases` / `timeline_updates` + `templates.new_case/timeline` body → 前端 templateEngine.render 渲染成兩段文案，再拼上硬編 header「修繕系統簡報：{X月Y日}」、空案文案（今天無新案件／今天沒有案件狀態更新），僅有實際內容時末尾追加總系統連結（R-2）
   - **空態**：`new_cases`、`timeline_updates` 皆空 → 兩段分別顯示「今天無新案件」「今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板渲染）
@@ -1006,57 +1025,12 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 ## 6. CLAUDE.md（放 repo 根目錄，AI 施工必讀）
 
-````markdown
-# 社區修繕管理系統 — 施工規則
-
-## 技術棧與結構
-- 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
-  （export const onRequest = handle(app)）；路由在 src/routes/，共用層在 src/lib/。
-- 語言分界：functions/、src/ 用 TypeScript；public/ 一律純 JS，禁止 import npm 套件。
-- 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN（唯一例外：LINE LIFF 官方 SDK，見 §1.2 前端套件規則）。
-- 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression。
-- 禁止：Node.js 專屬 API 或套件（jsonwebtoken, bcrypt, fs, multer, sharp, crypto.createHmac）。
-
-## 硬性規則
-1. SQL 一律 env.DB.prepare(...).bind(...)，禁止字串拼接；
-   禁止 SELECT *（所有端點，逐欄列出）。
-2. D1 不支援互動式交易；多步驟寫入一律 env.DB.batch([...])。
-3. 時間寫入一律 new Date().toISOString()；禁止 datetime('now')；
-   月份邊界只准用 src/lib/time.ts 的 taipeiMonthRangeUtc()（Asia/Taipei）。
-4. API 回應信封統一走 lib/respond.ts：
-   { ok:true, data } / { ok:false, error:{ code, message } }。
-5. 權限：一律經 src/lib/auth.ts 的 resolveUser()/requireAuth()（每請求從 D1 讀 role/active）；
-   禁止只信 JWT 內容；禁止只用前端藏按鈕當權限控制。
-   auth/me、auth/logout 用 requireAuth({ allowPending: true })。
-6. middleware 掛載順序即安全邊界（見 §1.3）：
-   可能在無 Cookie 或 pending 狀態被呼叫的端點（share、GET /exports/tickets.csv），
-   一律註冊於全域 requireAuth() 之上，並在端點內自驗（呼叫 resolveUser 或驗簽名）；
-   禁止在全域 requireAuth() 之上新增未自驗權限的路由。
-7. mutation 端點一律掛 csrfGuard：驗 X-Requested-With: fetch；
-   Sec-Fetch-Site 有送且為 cross-site → 拒絕；沒送 → 僅驗 X-Requested-With（相容舊 WebView）。
-8. 使用者內容（description, note, display_name, option label, vendor name）
-   進 DOM 一律 textContent，禁止 innerHTML。
-9. photo_ids 綁定必驗：uploaded_by=本人 && target_id IS NULL && ≤5 張；
-   留言照片一律 target_type='update' + target_id=留言 id。
-10. share 公開端點只回 §4.5 白名單欄位，禁止回傳時間軸與內部人員資料；
-    share 照片端點必驗 target_type='ticket'。
-11. ticket_updates 只有 INSERT，禁止 UPDATE/DELETE。
-12. 不得自行新增資料表欄位或修改 API 回應格式；需要變更時輸出 diff 建議並停止，等待人工確認。
-13. 不確定的 LINE / Cloudflare API 一律留 // TODO: verify against official docs，禁止猜測。
-14. daily-report 簡化後（v1.1.16）訊息預覽不再逐項輸出時間欄位（`new_cases`/`timeline_updates` 皆為案件編號.地點.狀態.描述/留言的純文字），故無 HH:MM 時區問題；其余頁面的時間顯示仍一律台灣時區（與 §8.5 一致）。
-15. 詳情連結走登入後路由 `/#/ticket/{id}`，**不走 share_token**（避免把公開連結用於內部通訊）。
-16. 模板變數語法（F8）：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**完全不渲染**，API 只回純資料 + new_case/timeline 兩種模板 body，前端 templateEngine.render() 負責管理頁預覽與統計頁成品拼裝（v1.1.16）
-
-## 產品規則（不可自行更動）
-- 狀態流：open → in_progress → done；另有 void；done/void 僅 admin 可 reopen。
-- 回報（kind=status）限 manager/admin；留言（kind=comment）三角色皆可、不改狀態。
-- 編輯、void、reopen 都必須寫入時間軸；reopen 訊息須帶入實際前狀態（已完成／已作廢）。
-- month_done 從 ticket_updates 計算（見 §4.7），禁止用 tickets.closed_at。
-- 建單不接受 vendor_id；廠商僅在 PATCH 由 manager/admin 指派。
-- 編輯權限：committee 僅自己建的單；manager/admin 全部（D7）。
-- 統計頁三角色皆可（D6）；CSV 匯出限 manager/admin（D3）。
-- committee 看得到 vendor_name 但 GET /api/vendors 限 manager/admin——刻意設計，勿「順手修掉」。
-````
+> **施工規則全文以根目錄 `CLAUDE.md` 為準**（v1.1.23 起不再於 SPEC 內嵌副本——此前兩份各走各的、已漂移：根目錄版含 test:local/CI 工作流/依賴清單等 SPEC 副本沒有的一半，SPEC 副本含 2 條 SPEC 側細則根目錄版沒有）。此兩條 SPEC 側細則為 CLAUDE.md 未重複者：
+>
+> 1. **詳情連結走登入後路由 `/#/ticket/{id}`，不走 share_token**（避免把公開連結用於內部通訊）。
+> 2. **模板變數語法（F8，v1.1.16）**：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**完全不渲染**，API 只回純資料 + new_case/timeline 兩種模板 body，前端 `templateEngine.render()` 負責管理頁預覽與統計頁成品拼裝。
+>
+> 產品規則（狀態流/權限/時間軸不可改等）以 §0.3 為唯一真相來源；CLAUDE.md 的「產品規則」段僅補 §0.3 未列的 AI 動作細則。
 
 ---
 
@@ -1169,7 +1143,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **本地單元測試快速迴圈 `npm run test:local`（v1.1.15 新增，不用 workerd）**：
 
-- **用途**：本機立即驗證單元測試（12 檔 170 tests，約 50 秒），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
+- **用途**：本機立即驗證單元測試（11 檔 157 tests，約 10–60 秒視環境），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
 - **原理**：`vitest.node.config.ts` 以 `resolve.alias` 把 `cloudflare:test` 指向 `tests/node/cloudflare-test-shim.ts`，**測試檔零改動**：
   - `SELF.fetch()` → Hono `app.request()`（不起 HTTP server）
   - `env.DB` → `tests/node/d1.ts`：以 Node 內建 `node:sqlite` 實作的 D1 shim（prepare/bind/run/all/first/raw/batch/exec；batch 經 `__execForBatch` 保留 INSERT 的 `meta.last_row_id`）
@@ -1178,7 +1152,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
   - `tests/node/_icu-polyfill.ts`：精簡 ICU 的 Node 上補 en-CA 的 `format`／`formatToParts`（full-ICU 環境自動 no-op），避免日期格式假失敗
 - **語意警告**：shim 是近似而非真 D1——錯誤訊息格式、meta 欄位細節與真 D1 有差。**`npm test`（workers pool / CI）仍是唯一真相**；`test:local` 全綠不代表可略過 CI。
 
-**CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。
+**CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。E2E 現行規模：4 支 spec 共 33 條（app 20／daily-report 5／message-templates 5／cache-busting 3）；cache-busting 3 條在本地 `http.server`（無 Functions 層）必掛，屬環境限制、非代碼問題。
 
 **E2E 效能（v1.1.14 優化）**：
 - **等待方式**：E2E 一律用 Playwright 的 `expect(...)`／`expect.poll()` **自動重試**（DOM 出現即過），**禁止固定 `waitForTimeout()`**（v1.1.14 已移除全部 14 處固定等待，實際測試從 ~20s 降到 ~9s）。

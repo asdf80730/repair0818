@@ -25,7 +25,7 @@ npm test   # 等於 vitest run
 
 > 斷言 1–4 均已實作並通過（見 `tests/app.test.ts` 對應案例）；不再有 `it.skip` 或 501。
 
-## 測試檔結構（v1.1.15，158 單元測試）
+## 測試檔結構（v1.1.23 現況，157 單元測試）
 
 ```
 tests/
@@ -37,16 +37,22 @@ tests/
 ├── boundary.test.ts       # 邊界與例外（權限/欄位/D7/reopen/comments/分頁/auth/session/404/已發包金額）＋A10（32）
 ├── assoc.test.ts          # v1.1.7 類別關聯（join 表/三模式/category_ids 三態/assoc 端點/catalog）（20）
 ├── share-html.test.ts     # v1.1.13 分享頁動態標題 + og 標籤（5）
-├── stats.test.ts          # v1.1.15：A1 統計完成率 + F1 daily-report（date/category 必填、空態、半開區間）（13）
-├── templateEngine.test.ts # v1.1.15：F8 純函式模板引擎（{{var}} 替換 + {{#each}} 迴圈 + 自動變數）（12）
-├── messageTemplates.test.ts # v1.1.15：F6 CRUD（三角色讀、committee 不可寫、label 重複、空 body 拒收）（11）
+├── stats.test.ts          # A1 統計完成率 + F1 daily-report（date/category 必填、空態、半開區間、v1.1.22 全部類別）（17）
+├── messageTemplates.test.ts # F6 CRUD（三角色讀、committee 不可寫、label 重複、空 body 拒收；v1.1.20 起 type LIKE 'message_template_%'）（11）
+├── time.test.ts           # lib/time taipeiMonthRangeUtc 月份邊界（7）
 ├── apply-migrations.ts    # setup：套用 D1 migrations + PRAGMA FK（C7）
 └── env.d.ts               # 測試環境型別（DB/PHOTOS/TEST_MIGRATIONS）
 ```
 
+> v1.1.15 的 `tests/templateEngine.test.ts`（12 條）隨 v1.1.16 砍後端引擎而刪（引擎移到前端 `public/templateEngine.js`，無獨立單測、由 E2E 覆蓋）；stats 13→17（v1.1.22 全部類別等）、新增 time.test.ts。
+
 E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**20 個測試**（v1.1.23 加 HEIC 上傳）涵蓋列表/卡片（維修內容＋日期＋天數）/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填/**A8 照片選擇器（PNG＋v1.1.23 HEIC 自動轉 JPEG）**/**A9 作廢（二次確認）與 reopen modal**。
 
-E2E（`e2e/cache-busting.spec.js`，v1.1.19 新增，不需 mock 登入、直接取 HTML）：**3 個測試**鎖死動態 cache-busting——① `GET /` 應回 200 動態 HTML（asset `?v=<12 位 commit>`、非寫死 `?v=1.1.14/1.1.15`、`Cache-Control: no-cache`、`nosniff`）；② `GET /index.html` 應由 Function 直接回 200（非靜態 308 → /）；③ asset `?v` 應等於本 commit 前 12 字（CI 有 `GITHUB_SHA` 時，本機跑跳過）。
+E2E（`e2e/daily-report.spec.js`，v1.1.16 拆出）：**5 個測試**——案件動態日報頁（月份 tab、日期+類別下拉、空態、v1.1.22「全部類別」預設與 localStorage 記憶、切回單類別）。
+
+E2E（`e2e/message-templates.spec.js`，v1.1.16 拆出）：**5 個測試**——模板管理頁（完整簡報預覽、modal 編輯、存檔同步、G7 重置、權限）。
+
+E2E（`e2e/cache-busting.spec.js`，v1.1.19 新增，不需 mock 登入、直接取 HTML）：**3 個測試**鎖死動態 cache-busting——① `GET /` 應回 200 動態 HTML（asset `?v=<12 位 commit>`、非寫死 `?v=1.1.14/1.1.15`、`Cache-Control: no-cache`、`nosniff`）；② `GET /index.html` 應由 Function 直接回 200（非靜態 308 → /）；③ asset `?v` 應等於本 commit 前 12 字（CI 有 `GITHUB_SHA` 時，本機跑跳過）。**本地 `http.server`（無 Functions 層）必掛 3 條，屬環境限制、非代碼問題；以 CI 為準。**
 
 ## 核心端點案例（輸入 → 期望輸出）
 

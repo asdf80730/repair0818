@@ -20,11 +20,13 @@
 ```
 functions/api/[[path]].ts   # Pages Functions 唯一入口
 src/                        # Hono 後端（app.ts + routes/ + lib/）
-migrations/                 # D1 migrations（含 seed）
-public/                     # 前端靜態檔（app.js SPA + share.js + style.css + vendor/）
-tests/                      # 單元測試（workerd runtime）
-e2e/                        # Playwright E2E
+migrations/                 # D1 migrations（0001–0013，含 seed）
+public/                     # 前端靜態檔（app.js SPA + share.js + style.css + templateEngine.js + vendor/）
+tests/                      # 單元測試（11 檔 157 tests；CI workerd，本地 npm run test:local 用 node:sqlite）
+e2e/                        # Playwright E2E（4 spec 33 條；fixtures/ 含 HEIC 樣本）
+scripts/                    # check-migration-drift.py（CI 直查 production D1）
 docs/                       # SPEC / lib-spec / test-cases / page-api-map / archive/
+CLAUDE.md                   # AI 施工規則（SPEC §6 指向此檔）
 ```
 
 ## 本機開發

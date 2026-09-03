@@ -14,7 +14,7 @@
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
-- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~50 秒 170 tests）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒 157 tests；本專案 11 支 `tests/*.test.ts`）。
   - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
     `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
     `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
