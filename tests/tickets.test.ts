@@ -64,11 +64,11 @@ describe('M3 案件核心（§4.3）', () => {
     const create = await worker.fetch('http://example.com/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
-      body: JSON.stringify({ category_id: categoryId, location_id: locationId, description: '電梯故障' }),
+      body: JSON.stringify({ category_id: categoryId, location_id: locationId, description: '弱電故障' }),
     })
     expect(create.status).toBe(201)
     const created = await create.json()
-    expect(created.data.title).toContain('電梯')
+    expect(created.data.title).toContain('弱電修繕')
     expect(created.data.share_token).toBeTruthy()
 
     // 列表
@@ -78,7 +78,7 @@ describe('M3 案件核心（§4.3）', () => {
     expect(list.status).toBe(200)
     const listBody = await list.json()
     expect(listBody.data.items.length).toBeGreaterThan(0)
-    expect(listBody.data.items[0].title).toContain('電梯')
+    expect(listBody.data.items[0].title).toContain('弱電修繕')
 
     // 詳情
     const detail = await worker.fetch(`http://example.com/api/tickets/${created.data.id}`, {
@@ -86,7 +86,7 @@ describe('M3 案件核心（§4.3）', () => {
     })
     expect(detail.status).toBe(200)
     const detailBody = await detail.json()
-    expect(detailBody.data.description).toBe('電梯故障')
+    expect(detailBody.data.description).toBe('弱電故障')
     expect(detailBody.data.share_url).toContain('/share.html?token=')
     expect(detailBody.data.updates).toEqual([])
   })

@@ -58,7 +58,7 @@ describe('M6 share 公開頁 + token 重發（§4.3/§4.5）', () => {
     const r = await worker.fetch(`http://example.com/api/share/${share_token}`)
     expect(r.status).toBe(200)
     const body = await r.json()
-    expect(body.data.title).toContain('電梯')
+    expect(body.data.title).toContain('弱電修繕')
     expect(body.data.status).toBe('open')
     expect(body.data.description).toBe('分享測試')
     // 白名單：不該有 vendor_name / updates / 內部資料

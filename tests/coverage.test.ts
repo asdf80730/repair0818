@@ -297,7 +297,7 @@ describe('options 寫操作（§4.6）', () => {
     const r = await worker.fetch('http://example.com/api/options', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
-      body: JSON.stringify({ type: 'category', label: '電梯', sort_order: 1 }),
+      body: JSON.stringify({ type: 'category', label: '弱電修繕', sort_order: 1 }),
     })
     expect(r.status).toBe(200)
     const body = await r.json()
