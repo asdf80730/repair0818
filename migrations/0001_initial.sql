@@ -199,11 +199,3 @@ INSERT INTO options (type, label, sort_order, active, created_at) VALUES
   ('message_template_timeline', '{{#each timeline_updates}}
 {{id}}. {{location_label}}　{{status}}　{{note}}
 {{/each}}', 1, 1, '2026-09-11T00:00:00.000Z');
-
--- ============================================================================
--- 以下為 150 筆初始報修單（tickets）
--- 狀態映射：已完成/售服系統已結案→done｜取消報修/重複報修→void
---           已報修→in_progress(amount=1)｜已報修等報價/未報修/空白→open
--- 說明：原項次/報修人/報修方式 併入 description（報修方式無值則不寫）
--- 廠商空白→vendor_id=NULL；category/location 由 label 子查詢對應 id
--- ============================================================================
