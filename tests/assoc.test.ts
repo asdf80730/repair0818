@@ -60,19 +60,19 @@ describe('GET /api/options 三種模式（v1.1.7）', () => {
   it('?type=X&category_id=N 回該類別關聯＋通用', async () => {
     const { cookie } = await loginAs('U-assoc-2', '關聯2', 'manager')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期A')
+    const locId = await optionId('location', '三期A棟')
     // 把 頂樓 掛到 電梯，大廳 掛到 門禁（使其非通用、不屬電梯）
     const doorCat = await optionId('category', '其他')
-    const hallLoc = await optionId('location', '四期K')
+    const hallLoc = await optionId('location', '四期K棟')
     await setAssoc(cookie, locId, [catId])
     await setAssoc(cookie, hallLoc, [doorCat])
     const r = await worker.fetch(`http://example.com/api/options?type=location&category_id=${catId}`, { headers: { Cookie: cookie } })
     expect(r.status).toBe(200)
     const body = await r.json()
     const labels = body.data.map(o => o.label)
-    expect(labels).toContain('三期A')   // 關聯（原：頂樓）
-    expect(labels).toContain('三期B')   // 通用（原：停車場，無關聯）
-    expect(labels).not.toContain('四期K') // 已掛到其他類別，非電梯修繕（原：大廳→門禁）
+    expect(labels).toContain('三期A棟')   // 關聯（原：頂樓）
+    expect(labels).toContain('三期B棟')   // 通用（原：停車場，無關聯）
+    expect(labels).not.toContain('四期K棟') // 已掛到其他類別，非電梯修繕（原：大廳→門禁）
   })
 
   it('?type=X&include_inactive=1 附 category_ids，限 manager/admin', async () => {
@@ -102,7 +102,7 @@ describe('category_ids 寫入（v1.1.7）', () => {
   it('PATCH 帶 category_ids 全量覆寫', async () => {
     const { cookie } = await loginAs('U-assoc-6', '關聯6', 'admin')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期A')
+    const locId = await optionId('location', '三期A棟')
     const r = await setAssoc(cookie, locId, [catId])
     expect(r.status).toBe(200)
     // 驗證已寫入
@@ -113,7 +113,7 @@ describe('category_ids 寫入（v1.1.7）', () => {
   it('PATCH 帶 [] 清空關聯（回歸通用）', async () => {
     const { cookie } = await loginAs('U-assoc-7', '關聯7', 'admin')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期A')
+    const locId = await optionId('location', '三期A棟')
     await setAssoc(cookie, locId, [catId])
     const r = await setAssoc(cookie, locId, [])
     expect(r.status).toBe(200)
@@ -124,7 +124,7 @@ describe('category_ids 寫入（v1.1.7）', () => {
   it('PATCH 未帶 category_ids 不動關聯', async () => {
     const { cookie } = await loginAs('U-assoc-8', '關聯8', 'admin')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期A')
+    const locId = await optionId('location', '三期A棟')
     await setAssoc(cookie, locId, [catId])
     // 只改 label，不帶 category_ids
     const r = await worker.fetch(`http://example.com/api/options/${locId}`, {
@@ -146,8 +146,8 @@ describe('category_ids 寫入（v1.1.7）', () => {
 
   it('category_ids 含非類別 → 400', async () => {
     const { cookie } = await loginAs('U-assoc-10', '關聯10', 'admin')
-    const locId = await optionId('location', '三期A')
-    const otherLoc = await optionId('location', '四期K')
+    const locId = await optionId('location', '三期A棟')
+    const otherLoc = await optionId('location', '四期K棟')
     const r = await setAssoc(cookie, locId, [otherLoc]) // 大廳是 location 非 category
     expect(r.status).toBe(400)
   })
@@ -157,7 +157,7 @@ describe('建單驗證（v1.1.7）', () => {
   it('location 不屬於 category 且非通用 → 400', async () => {
     const { cookie } = await loginAs('U-assoc-11', '關聯11', 'admin') // 建關聯需 manager/admin
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '四期K')
+    const locId = await optionId('location', '四期K棟')
     // 把 大廳 掛到 門禁（非電梯），使其非通用
     const doorCat = await optionId('category', '其他')
     await setAssoc(cookie, locId, [doorCat])
@@ -172,7 +172,7 @@ describe('建單驗證（v1.1.7）', () => {
   it('location 為通用 → 任何類別可建單', async () => {
     const { cookie } = await loginAs('U-assoc-12', '關聯12', 'committee')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期B') // 通用
+    const locId = await optionId('location', '三期B棟') // 通用
     const r = await worker.fetch('http://example.com/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
@@ -186,7 +186,7 @@ describe('詳情回應補 id（v1.1.7）', () => {
   it('GET /tickets/:id 回 category_id 與 location_id', async () => {
     const { cookie } = await loginAs('U-assoc-13', '關聯13', 'committee')
     const catId = await optionId('category', '電梯修繕')
-    const locId = await optionId('location', '三期B')
+    const locId = await optionId('location', '三期B棟')
     const create = await worker.fetch('http://example.com/api/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
@@ -253,7 +253,7 @@ describe('GET /api/options 類別計數與 associated（v1.1.7）', () => {
   it('type=location&category_id=N&include_inactive=1 附 associated', async () => {
     const { cookie } = await loginAs('U-assoc17', '關聯17', 'admin')
     const catId = await optionId('category', '其他')
-    const locId = await optionId('location', '四期K')
+    const locId = await optionId('location', '四期K棟')
     // 用 POST assoc 端點建關聯（不受 PATCH assertValidAssoc 影響，且避免與前面停用電梯衝突）
     const set = await worker.fetch(`http://example.com/api/options/${catId}/assoc`, {
       method: 'POST',
@@ -273,7 +273,7 @@ describe('POST /api/options/:id/assoc 以類別為中心（v1.1.7）', () => {
   it('全量覆寫該類別對 type 的關聯', async () => {
     const { cookie } = await loginAs('U-assoc18', '關聯18', 'admin')
     const catId = await optionId('category', '電梯修繕')
-    const locIds = [await optionId('location', '三期B'), await optionId('location', '四期K')]
+    const locIds = [await optionId('location', '三期B棟'), await optionId('location', '四期K棟')]
     // 電梯 ← 停車場、大廳
     const r = await worker.fetch(`http://example.com/api/options/${catId}/assoc`, {
       method: 'POST',
