@@ -15,6 +15,7 @@
 | 版本 | 內容 |
 |---|---|
 | v1.1.23 | **照片上傳支援 HEIC/HEIF 自動轉 JPEG**（2026-09-03，業主指示「手機端接受更多格式、轉成 JPG，縮小管線沿用」）：① **vendored `heic2any` 0.0.4**（MIT、UMD、wasm 已內嵌、無外部請求）→ `public/vendor/heic2any.js`，兩支 index（`public/index.html`＋`functions/lib/dynamic-index.ts`）於 browser-image-compression 之後、app.js 之前載入（全局 `window.heic2any`）。② **`compressPhoto()`（public/app.js）加前置步驟**——`isHeicBlob()` 讀前 12 bytes magic（`ftyp` ＋ HEIF brand 白名單 `heic/heix/hevc/hevx/heif/mif1/heim/heis`，**不靠 `file.type`**：部分 Android 裝置把 HEIC 報成 `application/octet-stream`）→ 是 HEIC 則 `heic2any({toType:'image/jpeg', quality:0.9})` 轉 JPEG → **再進既有壓縮管線**（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG——參數原封未動）；非 HEIC 直接照舊。轉換失敗與既有解碼失敗同路徑：toast「此照片無法處理（檔案可能損壞或不支援的格式），請改用相機拍攝或先在相簿轉存」＋`e.toasted` 防重複。③ **後端零改動**（§4.4 照片端點白名單/magic bytes/10MB 不變——到後端的幾乎一定是 JPEG）；§5.0 照片壓縮規則更新、§1.2 目錄樹補 heic2any.js。④ **E2E 加 1 條**（真實 HEIC fixture → 瀏覽器內轉換 → mock 上傳 → 縮圖；cache-busting spec asset 數 3→4）。**未新增 migration、未改 API** |
+| v1.1.24 | **後端優化**（2026-09-22）：① **A3/E1 統一 400 信封**——`lib/respond.ts` 新增 `zv`（包 `@hono/zod-validator`，第三參 hook 把 zod `issues[0].message` 轉為 `error.message`、`code='VALIDATION_ERROR'`），全站 18 個驗證點由裸 `zValidator` 改掛 `zv`，與手動 `fail()` 同形；② **A1/A2 熱路徑**——`resolveUser` 順帶 `payload.exp`（`User` 型別加選填 `exp`），`requireAuth` 續期判斷直讀 `user.exp`（免二次 `decodeJwt`）；`secretKey` 以 secret 為鍵做模組層 `CryptoKey` 快取；③ **B1/B2 查詢**——`optionAllowedInCategory` 單次 `EXISTS`/`NOT EXISTS`（既單查詢）、CSV `update_count` 由關聯子查詢改 `LEFT JOIN` 彙總表；④ **B3 索引**——`idx_tickets_list` 加尾端 tie-breaker `(status, last_activity_at DESC, id DESC)` 對齊列表 `ORDER BY`；⑤ **C1** `dynamic-index` 模板依 version 快取（同部署僅組裝一次）。单元兩阶層 `test`／`test:local` 各 11 檔 157 tests 全綠，E2E 32 實跑＋1 skip（commit 比對需 CI `GITHUB_SHA`） |
 | v1.1.22 | **案件動態「全部類別」預設**（2026-09-02）：① **F1 端點加 `category_id=all`**——合併全部類別當日案件（新／既有兩組 SQL 跳過 `t.category_id` 過濾）、`category_label` 固定「全部類別」、`category_id` 回 `null`、**模板固定取全域預設**（all 無單一類別可取樣；實作以 `category_id=-1` 查 `option_categories` 必然無匹配落全域）；`category_id` 非正整數且非 `all` → `400 VALIDATION_ERROR`（錯誤訊息改「需為正整數或 "all"」）。② **前端「案件動態」類別下拉加「全部類別」列（value=`all`）並設為預設**（`localStorage.dailyReportCatId` 記憶值優先，含 `all`）。③ mock fixture 補當日既有案件（id=98 門禁）＋當日 update，讓「全部」預設模式同時有 new_cases 與 timeline_updates。**未新增 migration、未改其他端點** |
 | v1.1.21 | **前端兩頁改版＋登出鈕移除＋日期 locale 修正**（2026-09-02）：① **統計頁拆 sub-tab**——「月度統計」（六卡＋月份下拉＋各類別金額＋CSV）與「案件動態」（F2/F3 日報框）拆成 `.tabs` sub-tab，一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇；「案件動態」tab 才載入時才發 daily-report 請求（月度預設時不打）；原「案件動態」section-title 砍掉（tab 標籤已說明）。② **訊息模板管理頁重構**——進頁先組「完整簡報預覽」（兩段模板套前端 fixture 即時渲染成整篇實際發送長相，`.tmpl-full`），下方「模板來源」兩行（名稱＋範圍）；**模板名稱改超連結**、點名稱或「編輯」開 `modal-mask` 置中彈窗（textarea＋即時預覽＋重置出廠預設（G7 移入 modal 內）＋儲存），存檔後整篇簡報預覽同步刷新（不再整頁 reload）。編輯 modal 改回既有 `modal-mask` 定位（舊 `modal-bg` 非既有 class、會掉進文件流）。③ **移除底部 nav「🚪 登出」鈕**（v1.1.17 加）——LINE 憑證在 LIFF 快取而非 cookie，`POST /api/auth/logout` 清 cookie 後重載仍會用 LIFF 快取 token 無感自動重登，登出無實際效果；憑證過期時 boot 已自動 `forceFreshLogin()`（`liff.logout()`＋重導 OAuth，受 C1 重登上限保護）。**後端 `/api/auth/logout` 端點保留**（§3.5 端點契約不變）。④ **日期字串 locale 修正**——`taipeiDateStr()` 改用 `Intl.DateTimeFormat('en-US', …).formatToParts()` 組 `YYYY-MM-DD`（locale 無關）；舊法 `'en-CA'` 字串格式非 spec 保證（完整 ICU 回 `MM/DD/YYYY`、受限 ICU 環境回 ISO），餵 `<input type=date>` 會 invalid。**未新增端點、未改 API 回應格式、未動 DB** |
 | v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
@@ -162,19 +163,7 @@ repair-system/
 │       ├── time.ts                # taipeiMonthRangeUtc() 等
 │       └── db.ts                  # 共用查詢
 ├── migrations/
-│   ├── 0001_init.sql              # 見 §2
-│   ├── 0002_seed.sql              # seed 單一來源（v1.1.6，見 §2.3）
-│   ├── 0003_category_assoc.sql    # option_categories join 表（v1.1.7）
-│   ├── 0004_comment_desc.sql      # 回報範本選項類型（v1.1.9）
-│   ├── 0005_updates_stats_idx.sql # 統計查詢複合索引（v1.1.11，F4）
-│   ├── 0006_amount.sql            # 發包金額欄位 amount/amount_at（v1.1.12）
-│   ├── 0007_updates_amount.sql    # ticket_updates.amount（時間軸顯示發包金額，v1.1.12）
-│   ├── 0008_vendors_sort.sql      # 移除 vendors.phone、加 vendors.sort_order（v1.1.13）
-│   ├── 0009_vendors_idx_updates_trigger.sql  # vendors 複合索引 + ticket_updates append-only trigger（v1.1.14）
-│   ├── 0010_message_templates.sql # options 加 body 欄（v1.1.15，已被 0013 砍掉）
-│   ├── 0011_message_template_seed_fix.sql  # 修 0010 seed 漏 created_at（v1.1.15 bug fix）
-│   ├── 0012_daily_report_templates.sql     # 補 new_case/timeline 兩套預設模板（v1.1.16）
-│   └── 0013_message_template_type_as_key.sql  # type 當鍵＋label 存內容、砍 body 欄（v1.1.20）
+│   └── 0001_initial.sql           # 單一 squash migration（淨最終態；原 0001~0013 已壓平，見 §2）
 ├── scripts/
 │   └── check-migration-drift.py   # 直查 production D1 比對 migrations（v1.1.19 守門，見 §8.7）
 ├── tests/                         # 單元測試（11 檔 157 tests）
@@ -246,7 +235,7 @@ app.route('/exports', exportRoutes)  // 僅 POST /sign（走標準 Cookie＋CSRF
 
 ## 2. 資料庫 Schema
 
-### 2.1 migrations/0001_init.sql
+### 2.1 `migrations/0001_initial.sql`（單一 squash migration，淨最終態）
 
 ```sql
 CREATE TABLE users (
@@ -263,9 +252,9 @@ CREATE TABLE users (
 CREATE TABLE vendors (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,   -- 排序（v1.1.13，後台改資料庫；與 options.sort_order 同模式）
   active     INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0    -- 排序（v1.1.13，與 options.sort_order 同模式）
 );
 
 CREATE TABLE options (
@@ -301,7 +290,9 @@ CREATE TABLE tickets (
   created_at       TEXT NOT NULL,
   last_activity_at TEXT NOT NULL,
   closed_at        TEXT,        -- 結案或作廢時間；reopen 時清空
-  closed_by        INTEGER REFERENCES users(id)
+  closed_by        INTEGER REFERENCES users(id),
+  amount           INTEGER,                         -- 發包金額（v1.1.12）
+  amount_at        TEXT                             -- 發包時間（多次發包覆寫為最後一次）
   -- 無 ticket_no：顯示用 '#' + id 補零 4 位，由後端組 title 時產生
   -- 無 updated_at：刻意刪除，由 last_activity_at 涵蓋（非漏抄）
 );
@@ -339,50 +330,32 @@ CREATE TABLE photos (
 CREATE INDEX idx_tickets_list    ON tickets(status, last_activity_at DESC);
 CREATE INDEX idx_tickets_created ON tickets(created_at);
 CREATE INDEX idx_updates_ticket  ON ticket_updates(ticket_id, created_at);
+CREATE INDEX idx_updates_stats   ON ticket_updates(kind, status, created_at);
 CREATE INDEX idx_photos_target   ON photos(target_type, target_id);
 CREATE INDEX idx_options_type    ON options(type, active, sort_order);
+CREATE INDEX idx_vendors_active_sort ON vendors(active, sort_order, id);
+-- 觸發器：ticket_updates 為 append-only（時間軸不可修改／刪除）
+CREATE TRIGGER prevent_ticket_updates_update BEFORE UPDATE ON ticket_updates
+BEGIN SELECT RAISE(ABORT, 'ticket_updates is append-only (UPDATE forbidden)'); END;
+CREATE TRIGGER prevent_ticket_updates_delete BEFORE DELETE ON ticket_updates
+BEGIN SELECT RAISE(ABORT, 'ticket_updates is append-only (DELETE forbidden)'); END;
 ```
 
 ### 2.2 時間格式統一規則（寫入 side）
 
 一律 ISO8601 UTC。應用層用 `new Date().toISOString()`；SQL 層（seed、bootstrap）用 `strftime('%Y-%m-%dT%H:%M:%fZ','now')` 或固定字串。**禁止 `datetime('now')`**。
 
-### 2.3 seed.sql
+### 2.3 seed（併入 `migrations/0001_initial.sql` 的 INSERT 區塊）
 
-> **seed 單一來源（v1.1.6）**：seed 併入 `migrations/0002_seed.sql`（INSERT OR IGNORE）作為唯一來源。vitest 自動套用全部 migration；production 用 `wrangler d1 migrations apply`。根目錄 seed.sql 與 `db:seed:remote` script 已刪除。
+> **單一來源**：所有預設資料以 `INSERT ... VALUES`（來源為 Excel「報修清冊」）併入 `0001_initial.sql`。原 `0002_seed`／`0004_comment_desc`／`0010`~`0013` 已壓平進此檔，不再另立檔；根目錄 `seed.sql` 與 `db:seed:remote` script 已刪除。
 
-```sql
-INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
-  ('category', '電梯', 1, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '門禁', 2, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '水泵', 3, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '照明', 4, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '消防', 5, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '漏水', 6, 1, '2026-01-01T00:00:00.000Z'),
-  ('category', '其他', 99, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '停車場', 1, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '大廳',   2, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '梯廳',   3, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '頂樓',   4, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '中庭',   5, 1, '2026-01-01T00:00:00.000Z'),
-  ('location', '其他',  99, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '水泵浦異音',   1, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '照明故障',     2, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '門禁感應不良', 3, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '水管滲漏',     4, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '油漆剝落',     5, 1, '2026-01-01T00:00:00.000Z'),
-  ('description', '其他',        99, 1, '2026-01-01T00:00:00.000Z');
-```
-
-> **回報範本 seed**（migration `0004_comment_desc.sql`，v1.1.9）另新增 `type='comment_desc'`（建單用「故障類型範本」與回報用「回報範本」分開）：
-> ```
-> INSERT OR IGNORE INTO options (type, label, sort_order, active, created_at) VALUES
->   ('comment_desc', '已通知廠商處理', 1, 1, '2026-01-01T00:00:00.000Z'),
->   ('comment_desc', '已到場勘查',     2, 1, '2026-01-01T00:00:00.000Z'),
->   ('comment_desc', '待料中',         3, 1, '2026-01-01T00:00:00.000Z'),
->   ('comment_desc', '已修復完成',     4, 1, '2026-01-01T00:00:00.000Z'),
->   ('comment_desc', '需追蹤',         5, 1, '2026-01-01T00:00:00.000Z');
-> ```
+- `users`：第一位管理員（id=1，`line_user_id='Ucd377f91b66f4f0f7a382a21b3862f15'`，role `admin`，`created_by` 統一引用此 id）
+- `options.type='category'`（Excel J 欄）：弱電修繕／機電修繕／電梯修繕／園藝植栽／泳池設備／消防設備／漏水／地磚泥作／水電項目／其他（`其他` 的 sort_order=99）
+- `options.type='location'`（Excel H 欄）：公共區域／一樓外圍／B1·B2·B3 地下室公設／三期 A~F 棟／四期 G~K 棟（共 16 列）
+- `vendors`（Excel F 欄）：富華創新／順宏弱電／國霖機電／OTIS電梯／園藝／智生活／其它
+- `options.type='description'`（建單說明範本）：水泵浦異音／照明故障／門禁感應不良／水管滲漏／油漆剝落／其他（99）
+- `options.type='comment_desc'`（回報範本）：已通知廠商處理／已到場勘查／待料中／已修復完成／需追蹤
+- `options.type='message_template_new_case'`／`'message_template_timeline'`：`label` 欄即模板內容（v1.1.20，見 §4.9）；`sort_order` 0／1
 
 （預設選項為初始值，上線後由管理公司在 P7 自行維護。）
 
@@ -542,6 +515,11 @@ export function requireAuth(opts?: {
 | 404 | NOT_FOUND | 資源不存在（含 share token 無效） |
 | 500 | INTERNAL | 伺服器錯誤 |
 
+> **統一 400 信封（v1.1.23）**——所有 400 皆走同一形 `{ ok:false, error:{ code, message } }`：
+> - **手動 `fail()` 判準**（如 daily-report 的 `MISSING_DATE`／`INVALID_DATE`／`DATE_FUTURE`、`VALIDATION_ERROR`、users 的 `ADMIN_LOCKED`）→ 同一信封。
+> - **欄位驗證失敗**——`lib/respond.ts` 的 `zv`（包 `@hono/zod-validator`，第三參為統一 hook）把 zod 的 `issues[0].message` 轉成 `error.message`，`code='VALIDATION_ERROR'`；前端一律讀 `body.error.code`／`body.error.message`。
+> 其餘 HTTP 碼（401/403/404/500）一律走統一信封。
+
 ### 4.1 欄位驗證規則表（所有 VALIDATION_ERROR 的判準）
 
 | 欄位 | 規則 |
@@ -553,7 +531,8 @@ export function requireAuth(opts?: {
 | vendor_id | **僅 PATCH 適用**：選填，**三態**——不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（須 active；D1/G1） |
 | photo_ids | 選填，≤ 5 張，**每張須滿足 `uploaded_by=本人` 且 `target_id IS NULL`**（後端強制） |
 | status（回報） | 必填：open / in_progress / done |
-| 廠商 name | 必填，1–50 字；sort_order 選填，非負整數（預設 0） |
+| 廠商 name | 必填，1–50 字（POST／PATCH 皆用） |
+| 廠商 sort_order | 選填，非負整數（**僅 PATCH** 帶；POST 未帶 → DB 預設 0） |
 | 選項 label | 必填，1–30 字 |
 | 成員 display_name | 必填，1–20 字 |
 
@@ -590,14 +569,14 @@ export function requireAuth(opts?: {
 - **`status` 允許值寫死**：`active`（＝open+in_progress，**預設**）｜`open`｜`in_progress`｜`done`｜`void`｜`all`；未帶參數時預設 `active`
 - 排序：`last_activity_at DESC`
 - 回應：`{ items, page, limit, has_more }`（實作：查 `limit+1` 筆判斷）
-- item 欄位：`id, title, status, category_label, location_label, vendor_name, created_at, last_activity_at`
+- item 欄位：`id, title, status, category_label, location_label, description, vendor_name, created_at, last_activity_at`（v1.1.13 起列表含 `description`）
 - **item 不含 `stale`**，由前端用 `last_activity_at` 計算
 - v1 不做關鍵字搜尋（明示不做的範圍）
 
 **GET `/api/tickets/:id`**（三角色）
 
 - 案件本體＋`photos`（target_type='ticket' 的 url 陣列，格式 `/api/photos/{id}`）＋`updates` 時間軸
-- `updates` 每筆：`{ id, kind, status, note, display_name, created_at, photo_urls }`（`status` 可為 NULL）
+- `updates` 每筆：`{ id, kind, status, note, amount, display_name, created_at, photo_urls }`（`status`／`note`／`amount` 可為 NULL）
 - 廠商已停用時 `vendor_name` 後綴「（已停用）」
 - `share_url` 三角色皆回傳（僅查看／複製；重新產生限 manager/admin）。**格式 `/share.html?token={share_token}`**（指向人類可讀公開頁；v1.1.4 起，原先指向 JSON API `/api/share/{token}`）
 
@@ -784,7 +763,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **回應結構**（v1.1.16：純資料 + new_case/timeline 兩種模板 body，前端負責渲染成品）：
   ```jsonc
   {
-    "date": 1755892800,                 // unix seconds（當日台灣 00:00），前端取 M月D日
+    "date": 1787414400000,              // taipeiDayRangeUtc(date).startMs（UTC 毫秒數字）
     "category_id": 1,                   // v1.1.22：category_id=all 時回 null
     "category_label": "水電",           // v1.1.22：all 時固定「全部類別」
     "new_cases": [
@@ -843,7 +822,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **`to` 邊界（v1.1.14 F1）**：視 `to` 為「隔天 00:00 前」，`created_at < to+1天`，不漏 `to` 當天 23:59:59.999
 - **CSV injection 防護**：以 `=`、`+`、`-`、`@`、`\t`、`\r` 開頭的儲存格前綴 `'`（v1.1.14 G2：**忽略前導空白**後再判，防 `"  =..."` 繞過）
 - **Quoting 規則**：欄位含 `,`、`"`、`\n`、`\r` → 整欄以雙引號包住；欄位內 `"` → `""`
-- Header：`Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="repair-tickets-20260818.csv"`（檔名用 ASCII＋匯出日期）、`Cache-Control: no-store`、`X-Robots-Tag: noindex`
+- Header：`Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="repair-tickets-2026-08-18.csv"`（檔名用 ASCII＋`taipeiDate()` 之 `en-CA` 短格式，即 `YYYY-MM-DD`）、`Cache-Control: no-store`、`X-Robots-Tag: noindex`
 - v1 只匯出案件主表；時間軸明細匯出列 v2
 
 **前端流程**：
@@ -861,8 +840,8 @@ GROUP BY category_label ORDER BY total_amount DESC
 **GET `/api/message-templates?category_id=N&label=new_case|timeline`（`label` 選填，預設 `new_case`）；`ALLOWED_LABELS = [new_case, timeline]`，其它值 → `400 VALIDATION_ERROR`**
 
 - 三角色皆可讀
-- 回 `{ templates: [{ id, label, body, active, is_category_specific }] }`（v1.1.20：`label` 由 `type` 前綴導出、`body` 取自 `label` 欄）
-- 排序：類別專用優先、無則用全域預設（`active=1` 且無 option_categories 關聯）
+- 回 `{ category_id, label, templates: [{ id, label, body, active, sort_order, is_category_specific }] }`（v1.1.20：`label` 由 `type` 前綴導出、`body` 取自 `label` 欄；`is_category_specific` 依當次查詢的 `category_id` 對 `option_categories` 的關聯計）
+- **列表內容**：該 `type` 全部 `active=1` 列（`is_category_specific DESC, sort_order ASC, id ASC` 排序）——類別專用排前、全域預設排後
 
 **GET `/api/message-templates/:id`**
 
@@ -1110,7 +1089,6 @@ npx wrangler d1 migrations apply repair-db0818 --local      # 開發
 npx wrangler d1 migrations apply repair-db0818 --remote     # 正式
 ```
 > seed 已併入 migration（v1.1.6），無需手動執行 seed.sql。
-```
 
 ### 8.4 secrets
 

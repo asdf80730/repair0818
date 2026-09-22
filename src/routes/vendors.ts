@@ -2,8 +2,7 @@
 // 註冊於全域 requireAuth() 之下
 
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { createVendorSchema, updateVendorSchema } from '../lib/validate'
 import { nowIso } from '../lib/time'
@@ -21,7 +20,7 @@ vendorRoutes.get('/', requireAuth({ roles: ['manager', 'admin'] }), async (c) =>
 })
 
 // POST /api/vendors — manager/admin（§4.6）
-vendorRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createVendorSchema), async (c) => {
+vendorRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zv('json', createVendorSchema), async (c) => {
   const body = c.req.valid('json')
   const insert = await c.env.DB.prepare(
     'INSERT INTO vendors (name, active, created_at) VALUES (?, 1, ?)',
@@ -30,7 +29,7 @@ vendorRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
 })
 
 // PATCH /api/vendors/:id — manager/admin（§4.6）
-vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', updateVendorSchema), async (c) => {
+vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateVendorSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的廠商 id')
   const body = c.req.valid('json')

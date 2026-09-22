@@ -3,7 +3,7 @@
 // JWT 以 jose（Web Crypto 原生）簽驗，HMAC-SHA256，效期 60 分鐘
 // payload 只放 { sub: user_id }，不放 role（每請求從 D1 讀 role/active，禁止只信 JWT）
 
-import { SignJWT, jwtVerify, decodeJwt } from 'jose'
+import { SignJWT, jwtVerify } from 'jose'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { createMiddleware } from 'hono/factory'
 import { fail } from './respond'
@@ -14,15 +14,22 @@ const SESSION_TTL_SEC = 3600 // 60 分鐘
 // A6（v1.1.14）：剩餘 <900 秒（15 分鐘）即滑動續期換發新 JWT
 const RENEW_THRESHOLD_SEC = 900
 
-/** 從 Cookie 取 JWT secret 的 Web Crypto key（HMAC-SHA256） */
+// A2：HMAC CryptoKey 依 secret 做模組層快取，省每請求 importKey 分配
+let cachedKey: CryptoKey | null = null
+let cachedSecret: string | null = null
+
+/** 取 JWT secret 的 Web Crypto key（HMAC-SHA256；同 secret 快取復用） */
 async function secretKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
+  if (cachedKey && cachedSecret === secret) return cachedKey
+  cachedKey = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify'],
   )
+  cachedSecret = secret
+  return cachedKey
 }
 
 /** 簽發 session JWT（payload 只放 sub = user_id） */
@@ -43,6 +50,7 @@ export async function signSessionJWT(
  * 純函式：解析 Cookie、驗 JWT、查 D1，回傳 user 或 null（不拋錯、不寫回應）。
  * 停用者（active=0）視同未登入 → 回 null。
  * 需區分 DISABLED 訊息的端點在 middleware 層另查（見 requireAuth）。
+ * A1：順帶 exp，讓續期判斷免再 decodeJwt。
  */
 export async function resolveUser(c: AppContext): Promise<User | null> {
   // 1. 從 Cookie 取 session JWT；無 Cookie → null
@@ -52,7 +60,7 @@ export async function resolveUser(c: AppContext): Promise<User | null> {
   const secret = c.env.JWT_SECRET
 
   // 2. jose 驗簽＋效期 → 失敗回 null
-  let payload: { sub?: string }
+  let payload: { sub?: string; exp?: number }
   try {
     const key = await secretKey(secret)
     const { payload: p } = await jwtVerify(token, key, {
@@ -77,8 +85,8 @@ export async function resolveUser(c: AppContext): Promise<User | null> {
     return null
   }
 
-  // 5. 回 user
-  return { id: row.id, role: row.role }
+  // 5. 回 user（A1：帶 exp 供續期用）
+  return { id: row.id, role: row.role, exp: payload.exp }
 }
 
 export function requireAuth(opts: {
@@ -106,19 +114,11 @@ export function requireAuth(opts: {
       return fail(c, 403, 'FORBIDDEN', '權限不足')
     }
     c.set('user', user)
-    // A6（v1.1.14）：滑動續期——JWT 剩餘 <900 秒時換發新 JWT（仍查過 D1 active，停用者已被擋）
-    const token = getCookie(c, SESSION_COOKIE)
-    if (token) {
-      try {
-        const decoded = decodeJwt(token)
-        const exp = typeof decoded.exp === 'number' ? decoded.exp : 0
-        if (exp && exp - Math.floor(Date.now() / 1000) < RENEW_THRESHOLD_SEC) {
-          const jwt = await signSessionJWT({ id: user.id }, c.env.JWT_SECRET)
-          setSessionCookie(c, jwt)
-        }
-      } catch {
-        // decode 失敗不影響主流程（resolveUser 已驗過，理論上不會發生）
-      }
+    // A6（v1.1.14）：滑動續期——讀 resolveUser 帶出的 exp（免再 decodeJwt）
+    const exp = user.exp ?? 0
+    if (exp && exp - Math.floor(Date.now() / 1000) < RENEW_THRESHOLD_SEC) {
+      const jwt = await signSessionJWT({ id: user.id }, c.env.JWT_SECRET)
+      setSessionCookie(c, jwt)
     }
     await next()
   })

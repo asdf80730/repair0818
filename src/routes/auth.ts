@@ -2,9 +2,8 @@
 // 註冊於全域 requireAuth() 之上；me/logout 內部各自掛 requireAuth({ allowPending: true })
 
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth, signSessionJWT, setSessionCookie, clearSessionCookie } from '../lib/auth'
 import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
@@ -26,7 +25,7 @@ type LineIDTokenPayload = {
   name?: string
 }
 
-authRoutes.post('/session', zValidator('json', sessionSchema), async (c) => {
+authRoutes.post('/session', zv('json', sessionSchema), async (c) => {
   const { id_token } = c.req.valid('json')
   const channelId = c.env.LINE_CHANNEL_ID
 

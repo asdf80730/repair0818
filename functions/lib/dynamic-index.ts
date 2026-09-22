@@ -22,11 +22,26 @@ export interface Env {
   CF_PAGES_COMMIT_SHA?: string // Pages 部署注入；optional（dev 環境無此變數 → fallback 'dev'）
 }
 
+// 安全標頭固定，於模組層定型
+const INDEX_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  // 與 public/_headers 對 /index.html、/* 的設定保持一致
+  'Cache-Control': 'no-cache',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+}
+
+// C1：模板依 version 快取（同一部署僅組裝一次）
+let cachedVersion = ''
+let cachedHtml = ''
+
 export function serveDynamicIndex(env: Env): Response {
   // 執行時從 Env 讀 SHA（dev 環境無此變數 → fallback 'dev'）
   const version = (env.CF_PAGES_COMMIT_SHA || 'dev').slice(0, 12)
 
-  const html = `<!doctype html>
+  if (!cachedHtml || cachedVersion !== version) {
+    cachedVersion = version
+    cachedHtml = `<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -45,7 +60,7 @@ export function serveDynamicIndex(env: Env): Response {
   <!-- LIFF SDK（LINE 官方 CDN，平台 SDK） -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <!-- liff-mock（測試用，僅 ?mock=true 時啟用，§1.2 vendored） -->
-  <script src="/vendor/liff-mock.js?v=${version}"></script>
+  <script src="/vendor/heic2any.js?v=${version}"></script>
   <!-- browser-image-compression（vendored，§1.2） -->
   <script src="/vendor/browser-image-compression.js?v=${version}"></script>
   <!-- heic2any（vendored，§1.2；v1.1.23 HEIC/HEIF → JPEG，需先於 app.js） -->
@@ -56,14 +71,7 @@ export function serveDynamicIndex(env: Env): Response {
   <script src="/app.js?v=${version}"></script>
 </body>
 </html>`
+  }
 
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      // 與 public/_headers 對 /index.html、/* 的設定保持一致
-      'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'no-referrer',
-    },
-  })
+  return new Response(cachedHtml, { headers: INDEX_HEADERS })
 }

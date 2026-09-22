@@ -6,6 +6,7 @@ export type Role = 'pending' | 'committee' | 'manager' | 'admin'
 export type User = {
   id: number
   role: Role
+  exp?: number
 }
 
 export type Env = {

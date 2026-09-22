@@ -3,9 +3,8 @@
 // 僅 POST /sign 走標準 Cookie＋CSRF 流程（掛在 requireAuth 之下）
 
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth, resolveUser } from '../lib/auth'
 import { exportQuerySchema } from '../lib/validate'
 import { toTaipeiDisplay, taipeiDate } from '../lib/time'
@@ -52,7 +51,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 // POST /api/exports/sign — manager/admin，標準 Cookie＋CSRF（§4.8）
-exportRoutes.post('/sign', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', exportQuerySchema), async (c) => {
+exportRoutes.post('/sign', requireAuth({ roles: ['manager', 'admin'] }), zv('json', exportQuerySchema), async (c) => {
   const user = c.get('user')
   const body = c.req.valid('json') as z.infer<typeof exportQuerySchema>
   const { status = '', from = '', to = '' } = body
@@ -120,11 +119,14 @@ async function buildCsv(c: AppContext) {
                     v.name AS vendor_name, u.display_name AS creator,
                     t.created_at, t.last_activity_at, t.closed_at,
                     t.amount, t.amount_at,
-                    (SELECT COUNT(*) FROM ticket_updates u
-                     WHERE u.ticket_id = t.id AND u.kind = 'status') AS update_count
+                    COALESCE(uc.n, 0) AS update_count
              FROM tickets t
              LEFT JOIN vendors v ON v.id = t.vendor_id
              LEFT JOIN users u ON u.id = t.created_by
+             LEFT JOIN (
+               SELECT ticket_id, COUNT(*) AS n FROM ticket_updates
+               WHERE kind = 'status' GROUP BY ticket_id
+             ) uc ON uc.ticket_id = t.id
              WHERE 1=1`
   const binds: unknown[] = []
   if (status && status !== 'all' && status !== 'active') {

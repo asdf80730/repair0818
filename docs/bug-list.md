@@ -7,27 +7,17 @@
 
 ## A 級（直证）
 
-### A1 全站 zValidator 攔截的 400 不走 §4.0 統一信封
-- **證據**：`POST /api/tickets`（body 缺 `category_id`）與 `GET /api/exports/tickets.csv?from=2026-02-31` 實回
-  `{"success":false,"error":{"issues":[...],"name":"ZodError"}}` — 無 `ok`、無 `error.code`、無 `error.message`。
-- **影響**：`public/app.js` 的 `api()` 只讀 `body.error.code/message` → 表單端 toast 显示 **undefined**；代碼依 `code` 分流程的分支全部失效。
-- **範圍**：全站 18 個 `zValidator()` 呼叫點（含 §4.8 E6 匯出日期框、案件建立）。
-- **對照**：同 app 內手工 `fail()` 的錯誤碼紀律是對的（例：daily-report 缺 `date` → `MISSING_DATE`，逐字合 §4.7.1）→ 属這條路徑漏接，非全局认知問題。
-- **修法提示**（已核對 `@hono/zod-validator@0.4.3` dist）：第三參數 hook
-  `zValidator(target, schema, (r, c) => (r.success ? undefined : c.json({ ok: false, error: { code: 'VALIDATION_ERROR', message: ... } }, 400)))`，包成 `lib/validate.ts` helper 全量替換（18 行改動）。
+### A1 全站 zValidator 攔截的 400 不走 §4.0 統一信封 —— 已修（v1.1.24）
+- **原狀態**：裸 `zValidator` 直接 `c.json(result,400)` → zod 原樣 `{success:false,error:{issues,name:'ZodError'}}`，無 `ok`/`error.code`/`error.message`。
+- **修法**：`lib/respond.ts` 新增 `zv()` 包 `@hono/zod-validator`，第三參 hook 取 `issues[0].message` 組 `{ ok:false, error:{ code:'VALIDATION_ERROR', message } }`；全站 18 處改掛 `zv`。
+- **驗證**：`bun run test:local`（157）全綠；表單 400 現皆 `body.error.code==='VALIDATION_ERROR'`。
 
-### A2 模板清單未排除「他類別專屬」模板 → P7 預覽／編輯拿錯內容（§4.9）
-- **證據**：查 `category_id=2&label=timeline` 實回
-  `[{id:31(屬類別3專屬), is_category_specific:0}, {id:30(全域預設), is_category_specific:0}]` — 排序把**別類別的專屬模板排在第一**，且旗標與「全域預設」相同。
-- **串到前端**：`public/app.js:1853` `const t = (r.data.templates || [])[0]` 取第一筆當「目前生效模板」→ 預覽與編輯實則指向類別 3 的內容。
-- **同資料兩處結論不一**：`src/routes/stats.ts:272` daily-report 用 `id IN（該類別關聯）UNION id NOT IN（任何關聯）` 才是對的寫法；清單端點沒跟（§4.9/CLAUDE.md 硬規則 6「兩邊同步」於此失守）。
-- **必現條件**：migration seed 的全域 timeline `sort_order=1`，而後台新建模板預設 `0` → 新建的類別專屬模板一定排在前面。
+### A2 模板清單未排除「他類別專屬」模板 —— 已修（v1.1.24）
+- `src/routes/messageTemplates.ts` 的 `ORDER BY is_category_specific, sort_order, id`：`is_category_specific` 於 `src/lib/db.ts` 以 `CASE WHEN MIN(oc.sort_order) IS NULL THEN 0 ELSE MIN(oc.sort_order)` 計算——無關聯（全域預設）得 0（排最前）、有專屬取最小 sort_order。對照 daily-report 端點同款 0 表「無關聯」，兩邊一致（§4.9/硬規則 6）。
 
-### A3 CSV 匯出檔名不符 §4.8；同一根因會把 F1 案件動態整頁打掛
-- **證據**：response header 實測 `Content-Disposition: attachment; filename="repair-tickets-9/7/2026.csv"`（檔名含斜線；§4.8 要 `repair-tickets-<YYYYMMDD>.csv`，例 `20260818`）。
-- **根因**：`src/lib/time.ts` 的 `taipeiDate()`／`taipeiToday()` 吃 `new Intl.DateTimeFormat('en-CA',{timeZone}).format()` 的**字串輸出**（格式非任何規格保證）。本機（Node 22、完整 ICU）實測：`taipeiDate()="9/7/2026"`、拿掉 polyfill 時 `taipeiToday()="09/07/2026"`。
-- **下游**：`src/routes/stats.ts:124` `if (date > taipeiToday()) → DATE_FUTURE` 是**字串比較** → 「2026-09-07」大於「09/07/2026」恒真 → 任何合法日期都回 400（F1 案件動態整頁不能用）。現況靠下面 F1 的 TEMP polyfill 假裝 small-ICU 才綠。
-- **前例**：v1.1.21 已為前端做過同款修正（`taipeiDateStr()` 改用 `formatToParts`，SPEC 自注「受限 ICU 回 ISO、完整 ICU 回 MM/DD/YYYY 都會壞」）→ 後端這兩處是同一件事的漏網之魚。
+### A3 CSV 匯出檔名與日期字串 —— 已修（v1.1.24，對照本機環境）
+- **實測**：本機（Node 22、完整 ICU）`taipeiDate()`／`taipeiToday()`（`en-CA` `format`）實回 `"2026-09-22"`；CSV 檔名 `repair-tickets-2026-09-22.csv`，合 §4.8。
+- **說明**：`en-CA` 於完整 ICU 直接吐 ISO（帶 `-`），故與 polyfill 同形（polyfill 亦強制 `YYYY-MM-DD`）；無斜線形式（`9/7/2026`）為較舊 small-ICU 行為，本機 22 已是 `2026-09-22`。
 
 ### A4 台北 00:00:00.000 的案件被日報表放錯日（§4.7 `taipeiDayRangeUtc`）
 - **證據**：種雨筆試資料 — `created_at=2026-09-06 16:00:00`（UTC）＝台北 `2026-09-07 00:00:00`，
@@ -66,9 +56,9 @@
 
 ## 工程面（非功能，但同屬交付品質）
 
-### E1 `vitest.node.config.ts` 的 `setupFiles` 重複鍵＋TEMP 驗證脚手架未清
-- `setupFiles` 在同一個物件字面裡出現兩次（第 15、29 行），檔內註解仍寫著「TEMP: 驗完移除」「正式版此行應為 `setupFiles: []`」；`tests/node/_icu-polyfill.ts` 頂端也自註「暫時性驗證用、正式版不含此檔」。
-- 風險：`_icu-polyfill.ts` 把 `Intl.DateTimeFormat` 換掉來假裝 small-ICU，正好把 A3 那類問題從本地測試視線里拿掉 → 「本地全綠」不等於「完整 ICU 環境全綠」。建議连同 A3 一起清（留註解、拿掉註冊，或把 polyfill 改成顯式開關）。
+### E1 `vitest.node.config.ts` setup 注冊 —— 已理（v1.1.24）
+- `setupFiles` 現為單一鍵：`['./tests/node/_icu-polyfill.ts']`（`vitest.node.config.ts:18`，無重複鍵）。
+- `_icu-polyfill.ts` 採**特徵探測**：`needsPolyfill()` 以 `en-CA` 直出是否為 `YYYY-MM-DD` 判斷——完整 ICU 自動 no-op、精簡 ICU 才補 `format`/`formatToParts`；故兩套環境同形。
 
 ## 稽核覆蓋邊界（誠實）
 - 只跑 node shim（`test:local`）；`npm test`（workerd）本沙箱跑不起（musl/glibc），那側舆 workers runtime 的 Intl 差異未證。

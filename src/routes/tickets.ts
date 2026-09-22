@@ -2,8 +2,7 @@
 // 註冊於全域 requireAuth() 之下（已開通使用者）
 
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { activeOptionLabel, activeVendor, makeTitle, validateOwnUnboundPhotos, optionAllowedInCategory } from '../lib/db'
 import { nowIso } from '../lib/time'
@@ -21,7 +20,7 @@ import type { Env } from '../lib/env'
 export const ticketRoutes = new Hono<Env>()
 
 // POST /api/tickets — 三角色（§4.3）
-ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), async (c) => {
+ticketRoutes.post('/', requireAuth(), zv('json', createTicketSchema), async (c) => {
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -87,7 +86,7 @@ ticketRoutes.post('/', requireAuth(), zValidator('json', createTicketSchema), as
 })
 
 // GET /api/tickets — 三角色（§4.3）
-ticketRoutes.get('/', requireAuth(), zValidator('query', listTicketsQuerySchema), async (c) => {
+ticketRoutes.get('/', requireAuth(), zv('query', listTicketsQuerySchema), async (c) => {
   const { status, category_id, page, limit } = c.req.valid('query')
 
   // status 允許值：active(預設)/open/in_progress/done/void/all
@@ -236,7 +235,7 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
 })
 
 // PATCH /api/tickets/:id — D7：committee 僅自己建的單；manager/admin 全部（§4.3）
-ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema), async (c) => {
+ticketRoutes.patch('/:id', requireAuth(), zv('json', updateTicketSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   const user = c.get('user')
@@ -393,7 +392,7 @@ ticketRoutes.patch('/:id', requireAuth(), zValidator('json', updateTicketSchema)
 })
 
 // POST /api/tickets/:id/updates — manager/admin（§4.3）
-ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createUpdateSchema), async (c) => {
+ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zv('json', createUpdateSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   const user = c.get('user')
@@ -466,7 +465,7 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
 })
 
 // POST /api/tickets/:id/comments — 三角色（D1，§4.3）
-ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createCommentSchema), async (c) => {
+ticketRoutes.post('/:id/comments', requireAuth(), zv('json', createCommentSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   const user = c.get('user')
@@ -519,7 +518,7 @@ ticketRoutes.post('/:id/comments', requireAuth(), zValidator('json', createComme
 })
 
 // POST /api/tickets/:id/void — manager/admin（§4.3）
-ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', voidTicketSchema), async (c) => {
+ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zv('json', voidTicketSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   const user = c.get('user')
@@ -555,7 +554,7 @@ ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zVa
 })
 
 // POST /api/tickets/:id/reopen — 僅 admin（D2，§3）
-ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zValidator('json', reopenTicketSchema), async (c) => {
+ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zv('json', reopenTicketSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
   const user = c.get('user')

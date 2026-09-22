@@ -98,7 +98,7 @@ CREATE TABLE photos (
 );
 
 -- 索引
-CREATE INDEX idx_tickets_list    ON tickets(status, last_activity_at DESC);
+CREATE INDEX idx_tickets_list    ON tickets(status, last_activity_at DESC, id DESC);
 CREATE INDEX idx_tickets_created ON tickets(created_at);
 CREATE INDEX idx_updates_ticket  ON ticket_updates(ticket_id, created_at);
 CREATE INDEX idx_updates_stats   ON ticket_updates(kind, status, created_at);

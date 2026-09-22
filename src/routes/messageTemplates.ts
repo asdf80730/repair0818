@@ -10,8 +10,7 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { zValidator } from '@hono/zod-validator'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import type { Env } from '../lib/env'
 
@@ -85,7 +84,7 @@ const updateTemplateSchema = z.object({
   message: '至少需提供 body 或 label',
 })
 
-messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', updateTemplateSchema), async (c) => {
+messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateTemplateSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) {
     return fail(c, 400, 'VALIDATION_ERROR', '無效的模板 id')

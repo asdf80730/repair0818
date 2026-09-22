@@ -9,6 +9,9 @@ export default defineConfig({
     alias: {
       // 把官方測試模組換成本地 shim（SELF / env / applyD1Migrations 同名同介面）
       'cloudflare:test': path.resolve(import.meta.dirname, 'tests/node/cloudflare-test-shim.ts'),
+      // zod 3.25 ESM 入口使用 `import * as z ...; export { z }`；vite 5.4 SSR transform
+      // 對 namespace 再重出的 named binding 解析為 undefined，改走已展平 binding 的 cjs 版。
+      zod: path.resolve(import.meta.dirname, 'node_modules/zod/index.cjs'),
     },
   },
   test: {
@@ -23,9 +26,5 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     testTimeout: 30_000,
-    // 不掛 apply-migrations.ts：shim 在 module load 時已對 fresh DB 套完全套 migration，
-    // setup 再跑一次會重複執行 CREATE TABLE。workers pool 的設定檔不受影響。
-    // TEMP: _icu-polyfill.ts 僅為驗證 small-ICU 環境；正式版此行應為 setupFiles: []
-    setupFiles: ['./tests/node/_icu-polyfill.ts'],
   },
 })

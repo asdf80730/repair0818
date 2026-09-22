@@ -9,7 +9,7 @@ describe('v1.1.15 time helpers', () => {
   it('taipeiToday 回傳 YYYY-MM-DD 格式（無斜線、有前導零）', () => {
     const out = taipeiToday()
     expect(out).toMatch(/^\d{4}-\d{2}-\d{2}$/)  // regex 嚴格，與 dateStrOrDay 一致
-    // 不能是 'zh-TW' locale 格式（會出 2026/8/23 或 2026/08/23 不一定）
+    // en-CA 短格式即 ISO（無斜線、有前導零）：2026-08-23
     expect(out).not.toContain('/')
   })
 

@@ -2,8 +2,7 @@
 // 註冊於全域 requireAuth() 之下
 
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { updateUserSchema } from '../lib/validate'
 import { nowIso } from '../lib/time'
@@ -20,7 +19,7 @@ userRoutes.get('/', requireAuth({ roles: ['admin'] }), async (c) => {
 })
 
 // PATCH /api/users/:id — admin，防呆規則見 §4.6（ADMIN_LOCKED）
-userRoutes.patch('/:id', requireAuth({ roles: ['admin'] }), zValidator('json', updateUserSchema), async (c) => {
+userRoutes.patch('/:id', requireAuth({ roles: ['admin'] }), zv('json', updateUserSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的成員 id')
   const me = c.get('user')

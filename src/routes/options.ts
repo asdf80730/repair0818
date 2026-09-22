@@ -3,8 +3,7 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { zValidator } from '@hono/zod-validator'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { createOptionSchema, updateOptionSchema, listOptionsQuerySchema } from '../lib/validate'
 import { nowIso } from '../lib/time'
@@ -35,7 +34,7 @@ export const optionRoutes = new Hono<Env>()
 // ?type=X&include_inactive=1  → 含停用，附 category_ids（P7 用，限 manager/admin）
 //   type=category             → 每個類別附 location_count/description_count（P7 類別列表）
 //   type=location|description & category_id=N → 回該類別所有項附 associated（P7 modal）
-optionRoutes.get('/', requireAuth(), zValidator('query', listOptionsQuerySchema), async (c) => {
+optionRoutes.get('/', requireAuth(), zv('query', listOptionsQuerySchema), async (c) => {
   const q = c.req.valid('query')
   const user = c.get('user')
 
@@ -156,7 +155,7 @@ optionRoutes.get('/catalog', requireAuth(), async (c) => {
 
 // POST /api/options — manager/admin（§4.6）
 // upsert：兩階段寫入（先取 id 再寫關聯），為 CLAUDE.md 規則 2 明文例外
-optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', createOptionSchema), async (c) => {
+optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zv('json', createOptionSchema), async (c) => {
   const body = c.req.valid('json')
   const now = nowIso()
   const categoryIds = body.category_ids !== undefined ? [...new Set(body.category_ids)] : undefined
@@ -192,7 +191,7 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zValidator(
 // POST /api/options/:id/assoc — 以類別為中心設定關聯（v1.1.7）
 // :id 是 category，body { type: 'location'|'description', option_ids: number[] }
 // 全量覆寫該類別對該 type 的關聯（P7 類別 modal 用）
-optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', z.object({
+optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zv('json', z.object({
   type: z.enum(['location', 'description']),
   option_ids: z.array(z.number().int().positive()).max(200),
 })), async (c) => {
@@ -237,7 +236,7 @@ optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zV
 })
 
 // PATCH /api/options/:id — manager/admin（§4.6）
-optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zValidator('json', updateOptionSchema), async (c) => {
+optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateOptionSchema), async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的選項 id')
   const body = c.req.valid('json')
