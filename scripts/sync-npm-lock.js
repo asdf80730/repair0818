@@ -18,7 +18,9 @@ const newPkgs = { "": lock.packages[""] };
 for (const [name, val] of Object.entries(bunPkgs)) {
   if (!Array.isArray(val)) continue;
   const [tag, resolved, info, integrity] = val;
-  const [nm, ver] = tag.split("@");
+  const at = tag.lastIndexOf("@");
+  const nm = tag.slice(0, at);
+  const ver = tag.slice(at + 1);
   const nmKey = "node_modules/" + name;
   const ent = {
     version: ver,
