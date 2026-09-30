@@ -8,12 +8,14 @@ import type { Env } from "../lib/env";
 
 export const shareRoutes = new Hono<Env>();
 
+// §4.5 UUID token 校驗（兩支公開端點共用）
+const uuidRe =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // GET /api/share/:token — 公開，免登入（§4.5）
 shareRoutes.get("/:token", async (c) => {
   const token = c.req.param("token");
   // 只接受標準 UUID 格式，擋掉非 UUID 的掃描/猜測請求（§4.5 安全性，防暴力列舉）
-  const uuidRe =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidRe.test(token)) return fail(c, 404, "NOT_FOUND", "連結已失效");
   const row = await c.env.DB.prepare(
     `SELECT id, category_label, location_label, description, status, created_at, last_activity_at
@@ -70,8 +72,6 @@ shareRoutes.get("/:token", async (c) => {
 shareRoutes.get("/:token/photos/:photo_id", async (c) => {
   const token = c.req.param("token");
   // 只接受標準 UUID 格式，擋掉非 UUID 的掃描（§4.5）
-  const uuidRe =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidRe.test(token)) return fail(c, 404, "NOT_FOUND", "連結已失效");
   const photoId = Number(c.req.param("photo_id"));
   // H3：photo_id 需為正整數（防非數字字串）

@@ -133,7 +133,7 @@
 ```
 repair-system/
 ├── public/                        # 前端靜態檔（純 JS，無建置、無 npm import）
-│   ├── index.html                 # 主系統（SPA 入口，hash router）
+│   ├── index.html                 # 主系統 SPA 入口（由 functions/index.ts + functions/lib/dynamic-index.ts 動態產出；無靜態檔）
 │   ├── app.js / share.js
 │   ├── style.css
 │   ├── vendor/
@@ -329,7 +329,7 @@ CREATE TABLE photos (
   created_at   TEXT NOT NULL
 );
 
-CREATE INDEX idx_tickets_list    ON tickets(status, last_activity_at DESC);
+CREATE INDEX idx_tickets_list    ON tickets(status, last_activity_at DESC, id DESC);
 CREATE INDEX idx_tickets_created ON tickets(created_at);
 CREATE INDEX idx_updates_ticket  ON ticket_updates(ticket_id, created_at);
 CREATE INDEX idx_updates_stats   ON ticket_updates(kind, status, created_at);
@@ -400,7 +400,7 @@ WHERE line_user_id='<他的 LINE user ID>';
    - 角色不符 → `403 FORBIDDEN`
 3. 停用／降權因此**立即生效**
 
-**v1.1.14（A6）session 滑動續期**：`requireAuth` 在 `resolveUser` 成功後，若 JWT 剩餘效期 < 900 秒（15 分鐘），用 `decodeJwt` 讀 `exp` 比對，換發新 JWT 並 `Set-Cookie`（屬性與登入一致：`Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`）。因 `resolveUser` 已查過 D1 active，停用者不會被續期繞過。
+**v1.1.14（A6）session 滑動續期**：`requireAuth` 在 `resolveUser` 成功後，若 JWT 剩餘效期 < 900 秒（15 分鐘），以 `resolveUser` 所帶 `user.exp`（`User` 型別選填 `exp`）直讀比對（免二次 `decodeJwt`，v1.1.24 ②），換發新 JWT 並 `Set-Cookie`（屬性與登入一致：`Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600`）。因 `resolveUser` 已查過 D1 active，停用者不會被續期繞過。
 
 **`lib/auth.ts` 介面（v1.1.3 定案）**——拆為純函式＋middleware 兩層，讓需自驗的端點（如 CSV 下載）可重用驗證邏輯：
 
