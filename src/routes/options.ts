@@ -7,7 +7,7 @@ import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { createOptionSchema, updateOptionSchema, listOptionsQuerySchema, idParam } from '../lib/validate'
 import { nowIso } from '../lib/time'
-import { assertValidAssoc, assertCategoryIds } from '../lib/db'
+import { assertValidAssoc, assertCategoryIds, buildPatch } from '../lib/db'
 import type { Env } from '../lib/env'
 
 // E5：D1 batch 對單次語句數有上限（約 100 條），把 INSERT OR IGNORE 分批（每批 ≤50），避免超出
@@ -255,11 +255,7 @@ optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('par
   }
 
   // 動態組 UPDATE（只更新提供的欄位）
-  const sets: string[] = []
-  const binds: unknown[] = []
-  if (body.label !== undefined) { sets.push('label = ?'); binds.push(body.label) }
-  if (body.sort_order !== undefined) { sets.push('sort_order = ?'); binds.push(body.sort_order) }
-  if (body.active !== undefined) { sets.push('active = ?'); binds.push(body.active) }
+  const { sets, binds } = buildPatch({ label: body.label, sort_order: body.sort_order, active: body.active })
 
   // 關聯寫入（先刪後插，僅當 category_ids 有值或 []）
   if (categoryIds !== undefined) {

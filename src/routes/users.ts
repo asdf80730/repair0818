@@ -6,6 +6,7 @@ import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { updateUserSchema, idParam } from '../lib/validate'
 import { nowIso } from '../lib/time'
+import { buildPatch } from '../lib/db'
 import type { Env } from '../lib/env'
 
 export const userRoutes = new Hono<Env>()
@@ -50,17 +51,16 @@ userRoutes.patch('/:id', requireAuth({ roles: ['admin'] }), zv('param', idParam)
     }
   }
 
-  // 動態組 UPDATE
-  const sets: string[] = []
-  const binds: unknown[] = []
-  if (body.role !== undefined) { sets.push('role = ?'); binds.push(body.role) }
-  if (body.active !== undefined) { sets.push('active = ?'); binds.push(body.active) }
-  if (body.display_name !== undefined) { sets.push('display_name = ?'); binds.push(body.display_name) }
-  // D8：由 pending 開通為其他角色時，記錄 approved_at（僅首次開通，已開通者不覆寫）
-  // role 只能設 committee/manager/admin（zod enum 不含 pending），故 body.role 有值即代表開通
-  if (body.role !== undefined && target.role === 'pending' && target.approved_at === null) {
-    sets.push('approved_at = ?'); binds.push(nowIso())
-  }
+  // 動態組 UPDATE（D8：由 pending 開通為其他角色時，僅首次記錄 approved_at）
+  const approvedAt = body.role !== undefined && target.role === 'pending' && target.approved_at === null
+    ? nowIso()
+    : undefined
+  const { sets, binds } = buildPatch({
+    role: body.role,
+    active: body.active,
+    display_name: body.display_name,
+    approved_at: approvedAt,
+  })
   if (sets.length === 0) return ok(c, { id, updated: false })
 
   // E8：降權/停用 admin 時，用條件式 UPDATE 確保至少保留一位 admin（防雙管理員互相降權的零管理員競態）

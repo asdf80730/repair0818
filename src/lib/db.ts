@@ -123,3 +123,15 @@ export async function assertValidAssoc(
   if (categoryIds.includes(optionId)) return { ok: false, reason: '不可自我關聯' }
   return { ok: true }
 }
+
+/** 動態 UPDATE 組裝：mapping 中 undefined 欄位略過；sets 與 binds 同序對應 */
+export function buildPatch(mapping: Record<string, unknown>): { sets: string[]; binds: unknown[] } {
+  const sets: string[] = []
+  const binds: unknown[] = []
+  for (const [column, value] of Object.entries(mapping)) {
+    if (value === undefined) continue
+    sets.push(`${column} = ?`)
+    binds.push(value)
+  }
+  return { sets, binds }
+}

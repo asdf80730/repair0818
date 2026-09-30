@@ -6,6 +6,7 @@ import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { createVendorSchema, updateVendorSchema, idParam } from '../lib/validate'
 import { nowIso } from '../lib/time'
+import { buildPatch } from '../lib/db'
 import type { Env } from '../lib/env'
 
 export const vendorRoutes = new Hono<Env>()
@@ -38,11 +39,7 @@ vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('par
   ).bind(id).first<{ id: number }>()
   if (!existing) return fail(c, 404, 'NOT_FOUND', '廠商不存在')
 
-  const sets: string[] = []
-  const binds: unknown[] = []
-  if (body.name !== undefined) { sets.push('name = ?'); binds.push(body.name) }
-  if (body.sort_order !== undefined) { sets.push('sort_order = ?'); binds.push(body.sort_order) }
-  if (body.active !== undefined) { sets.push('active = ?'); binds.push(body.active) }
+  const { sets, binds } = buildPatch({ name: body.name, sort_order: body.sort_order, active: body.active })
   if (sets.length === 0) return ok(c, { id, updated: false })
 
   binds.push(id)
