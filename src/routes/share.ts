@@ -3,6 +3,7 @@
 
 import { Hono } from 'hono'
 import { fail } from '../lib/respond'
+import { makeTitle } from '../lib/db'
 import type { Env } from '../lib/env'
 
 export const shareRoutes = new Hono<Env>()
@@ -28,7 +29,7 @@ shareRoutes.get('/:token', async (c) => {
 
   // 白名單欄位（§4.5）：title、status、category_label、location_label、description、
   // photos（target_type='ticket'）、created_at、last_activity_at
-  const title = `${row.category_label}－${row.location_label} #${String(row.id).padStart(4, '0')}`
+  const title = makeTitle(row.category_label, row.location_label, row.id)
   const photos = await c.env.DB.prepare(
     "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ? ORDER BY id",
   ).bind(row.id).all<{ id: number }>()

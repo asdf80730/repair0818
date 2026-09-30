@@ -7,6 +7,7 @@ import { ok, fail, zv } from '../lib/respond'
 import { requireAuth, resolveUser } from '../lib/auth'
 import { exportQuerySchema } from '../lib/validate'
 import { toTaipeiDisplay, taipeiDate } from '../lib/time'
+import { ticketNo } from '../lib/db'
 import type { AppContext, Env } from '../lib/env'
 
 export const exportRoutes = new Hono<Env>()
@@ -157,7 +158,7 @@ async function buildCsv(c: AppContext) {
   const lines = [header.map(csvCell).join(',')]
   for (const r of rowList) {
     lines.push([
-      '#' + String(r.id).padStart(4, '0'),
+      ticketNo(r.id),
       r.category_label,
       r.location_label,
       r.description ?? '',

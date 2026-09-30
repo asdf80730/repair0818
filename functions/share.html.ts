@@ -4,6 +4,8 @@
 //       把 <title> 組成「{類別}－{地點} #{id}」再回傳 HTML。
 // 安全：只取 category_label/location_label（公開白名單欄位，見 §4.5），並做 HTML escape 防 XSS。
 
+import { makeTitle } from '../src/lib/db'
+
 interface Env {
   DB: D1Database
   PHOTOS: R2Bucket
@@ -33,7 +35,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
       'SELECT id, category_label, location_label FROM tickets WHERE share_token = ?',
     ).bind(token).first<{ id: number; category_label: string; location_label: string }>()
     if (row) {
-      title = `${row.category_label}－${row.location_label} #${String(row.id).padStart(4, '0')}`
+      title = makeTitle(row.category_label, row.location_label, row.id)
     }
   }
 

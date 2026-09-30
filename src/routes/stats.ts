@@ -160,14 +160,10 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
     status: string; created_at: string; creator_name: string
   }>()
 
-  // tickets 表無 title 欄位（migration 0001: 無 ticket_no 註解）—— 用 category_label+location_label+id 組標題
-  const pad4 = (n: number) => String(n).padStart(4, '0')
-  const buildTitle = (t: { category_label: string; location_label: string; id: number }) =>
-    `${t.category_label}-${t.location_label} #${pad4(t.id)}`
+  // 標題格式由 lib/db 的 makeTitle 唯一定義（全形「－」）
 
   const newTickets = newTicketsRaw.results.map((t) => ({
     id: t.id,
-    title: buildTitle(t),
     location_label: t.location_label,
     description: t.description ?? '',
     creator_name: t.creator_name,
@@ -190,7 +186,7 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
 
   // 3. updates_today：撈上述既有案件的當日所有 update（按時間正序）
   let existingTickets: Array<{
-    id: number; title: string; location_label: string;
+    id: number; location_label: string;
     current_status: string; status_label: string;
     detail_url: string;
     updates_today: Array<{
@@ -231,7 +227,6 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
       const updates = (byTicket.get(t.id) ?? []).slice(0, UPDATES_PER_TICKET_LIMIT).reverse()
       return {
         id: t.id,
-        title: buildTitle(t),
         location_label: t.location_label,
         current_status: t.status,
         status_label: STATUS_LABEL[t.status] ?? t.status,
