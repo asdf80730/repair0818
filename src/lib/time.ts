@@ -2,11 +2,11 @@
 // 一律 ISO8601 UTC；月份邊界用台灣時區（Asia/Taipei）
 // 純 Web API（Intl），無 Node.js 專屬 API
 
-const TAIWAN_TZ = 'Asia/Taipei'
+const TAIWAN_TZ = "Asia/Taipei";
 
 /** 目前時間，ISO8601 UTC（寫入 side 一律用這個） */
 export function nowIso(): string {
-  return new Date().toISOString()
+  return new Date().toISOString();
 }
 
 /**
@@ -16,34 +16,40 @@ export function nowIso(): string {
  * month 帶入時採嚴格 YYYY-MM＋真月份校驗（非法＝startMs 0 sentinel）；
  * 未帶入時以「台灣當下日期」決定月份。
  */
-export function taipeiMonthRangeUtc(month?: string): { startMs: number; endMs: number } {
+export function taipeiMonthRangeUtc(month?: string): {
+  startMs: number;
+  endMs: number;
+} {
   if (month !== undefined) {
     // F4（v1.1.14）：嚴格格式＋真月份（擋 2026-8、2026-0008、2026-13）
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { startMs: 0, endMs: 0 }
-    const [y, m] = month.split('-').map(Number)
-    const nextYear = m === 12 ? y + 1 : y
-    const nextMonth = m === 12 ? 1 : m + 1
-    return { startMs: toUtcMs(y, m, 1), endMs: toUtcMs(nextYear, nextMonth, 1) }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { startMs: 0, endMs: 0 };
+    const [y, m] = month.split("-").map(Number);
+    const nextYear = m === 12 ? y + 1 : y;
+    const nextMonth = m === 12 ? 1 : m + 1;
+    return {
+      startMs: toUtcMs(y, m, 1),
+      endMs: toUtcMs(nextYear, nextMonth, 1),
+    };
   }
-  const now = new Date()
+  const now = new Date();
   // 台灣當下年／月（用 Intl 依時區取得）
-  const parts = new Intl.DateTimeFormat('en-US', {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: TAIWAN_TZ,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(now)
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
 
-  const year = Number(parts.find((p) => p.type === 'year')!.value)
-  const monthNo = Number(parts.find((p) => p.type === 'month')!.value)
+  const year = Number(parts.find((p) => p.type === "year")!.value);
+  const monthNo = Number(parts.find((p) => p.type === "month")!.value);
 
   // 當月 1 日 00:00 台灣時間 → 換算 UTC
-  const start = toUtcMs(year, monthNo, 1)
+  const start = toUtcMs(year, monthNo, 1);
   // 下月 1 日（月份 +1，跨年時進位）
-  const nextMonth = monthNo === 12 ? 1 : monthNo + 1
-  const nextYear = monthNo === 12 ? year + 1 : year
-  const end = toUtcMs(nextYear, nextMonth, 1)
+  const nextMonth = monthNo === 12 ? 1 : monthNo + 1;
+  const nextYear = monthNo === 12 ? year + 1 : year;
+  const end = toUtcMs(nextYear, nextMonth, 1);
 
-  return { startMs: start, endMs: end }
+  return { startMs: start, endMs: end };
 }
 
 /**
@@ -53,55 +59,64 @@ export function taipeiMonthRangeUtc(month?: string): { startMs: number; endMs: n
 function toUtcMs(year: number, month: number, day: number): number {
   // 先把「疑似台灣該日 00:00 的 UTC 字串」丟進 Date 再推回
   // Date 解析 'YYYY-MM-DDT00:00:00' 當作 UTC；再減去台灣與 UTC 的差。
-  const asUtc = Date.UTC(year, month - 1, day, 0, 0, 0)
+  const asUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
   // 用 Intl 求台灣時區在該瞬間的偏移（offsetMs = 台灣時間 - UTC）
-  const offsetMs = tzOffsetMs(TAIWAN_TZ, asUtc)
+  const offsetMs = tzOffsetMs(TAIWAN_TZ, asUtc);
   // 台灣 00:00 對應的 UTC = asUtc - offsetMs
-  return asUtc - offsetMs
+  return asUtc - offsetMs;
 }
 
 /** 某時區在某 UTC 瞬間的偏移（毫秒，正＝比 UTC 快） */
 function tzOffsetMs(timeZone: string, utcMs: number): number {
   // 用 Intl 求該瞬間該時區的 local 時間部件，再算差
-  const dtf = new Intl.DateTimeFormat('en-US', {
+  const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  })
-  const parts = dtf.formatToParts(new Date(utcMs))
-  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value)
-  const local = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'))
-  return local - utcMs
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = dtf.formatToParts(new Date(utcMs));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  const local = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return local - utcMs;
 }
 
 /** 台灣時區的 YYYY-MM-DD（用於 CSV 檔名等） */
 export function taipeiDate(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TAIWAN_TZ }).format(new Date())
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TAIWAN_TZ }).format(
+    new Date(),
+  );
 }
 
 /**
  * 把 UTC ISO 字串轉成台灣時區的 'YYYY-MM-DD HH:mm'（CSV §4.8 用）。
  */
 export function toTaipeiDisplay(iso: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ''
-  const parts = new Intl.DateTimeFormat('en-CA', {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TAIWAN_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(d)
-  const get = (t: string) => parts.find((p) => p.type === t)!.value
-  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
 /**
@@ -118,32 +133,41 @@ export function toTaipeiDisplay(iso: string): string {
  *
  * **呼叫前請先用 isValidDate() 驗證**——本函式只校驗 regex，不驗證真實日期。
  */
-export function taipeiDayRangeUtc(date: string): { startMs: number; endMs: number } {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { startMs: 0, endMs: 0 }
-  if (!isValidDate(date)) return { startMs: 0, endMs: 0 }
-  const [y, m, d] = date.split('-').map(Number)
+export function taipeiDayRangeUtc(date: string): {
+  startMs: number;
+  endMs: number;
+} {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { startMs: 0, endMs: 0 };
+  if (!isValidDate(date)) return { startMs: 0, endMs: 0 };
+  const [y, m, d] = date.split("-").map(Number);
   // 台灣時區 = UTC+8。台灣該日 00:00 = UTC 前一日 16:00
   // 用 Date.UTC 算「該日台灣 00:00 的 UTC 毫秒」= Date.UTC(y, m-1, d-1, 16)
-  const start = Date.UTC(y, m - 1, d - 1, 16, 0, 0, 0)
+  const start = Date.UTC(y, m - 1, d - 1, 16, 0, 0, 0);
   // end = start + 24 小時
-  return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 }
+  return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 };
 }
 
 /** 驗證 YYYY-MM-DD 格式且為真實日期（F2 v1.1.15） */
 export function isValidDate(date: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
-  const probe = Date.parse(`${date}T00:00:00Z`)
-  if (isNaN(probe)) return false
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const probe = Date.parse(`${date}T00:00:00Z`);
+  if (isNaN(probe)) return false;
   // Date.parse 容忍溢位日期（2026-02-30 → 2026-03-02），需反向驗證
-  const d = new Date(probe)
-  const [y, m, day] = date.split('-').map(Number)
-  return d.getUTCFullYear() === y && d.getUTCMonth() === m - 1 && d.getUTCDate() === day
+  const d = new Date(probe);
+  const [y, m, day] = date.split("-").map(Number);
+  return (
+    d.getUTCFullYear() === y &&
+    d.getUTCMonth() === m - 1 &&
+    d.getUTCDate() === day
+  );
 }
 
 /** 取得今天台灣日期 YYYY-MM-DD（F11-2 v1.1.15：用於 daily-report date 驗證） */
 export function taipeiToday(): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: TAIWAN_TZ,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date())
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }

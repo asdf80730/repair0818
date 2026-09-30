@@ -15,182 +15,270 @@
 // 本測試 ticket 建單時間一律用 monthStart - 16h 保證落在月初前；
 // 事件時間用 monthStart + 1s 起跳，保證落在 SQL 月初之後。
 
-import { SELF, env } from 'cloudflare:test'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { SELF, env } from "cloudflare:test";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
-const worker = SELF
+const worker = SELF;
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => vi.restoreAllMocks());
 
 function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = new URL(String(input))
-    if (url.href.startsWith('https://api.line.me/oauth2/v2.1/verify')) {
-      return new Response(JSON.stringify({
-        iss: 'https://access.line.me', sub, aud: 'test-channel',
-        exp: Math.floor(Date.now() / 1000) + 3600, name,
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
+      return new Response(
+        JSON.stringify({
+          iss: "https://access.line.me",
+          sub,
+          aud: "test-channel",
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          name,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
-    throw new Error('No mock found for ' + url.href)
-  })
+    throw new Error("No mock found for " + url.href);
+  });
 }
 
-async function loginAs(sub: string, name: string, role: 'committee' | 'manager' | 'admin') {
-  mockLineVerify(sub, name)
-  const session = await worker.fetch('http://example.com/api/auth/session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
-    body: JSON.stringify({ id_token: 'mock' }),
-  })
-  const body = await session.json()
-  await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, body.data.user_id).run()
-  return { userId: body.data.user_id, cookie: session.headers.get('set-cookie')?.split(';')[0] ?? '' }
+async function loginAs(
+  sub: string,
+  name: string,
+  role: "committee" | "manager" | "admin",
+) {
+  mockLineVerify(sub, name);
+  const session = await worker.fetch("http://example.com/api/auth/session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Requested-With": "fetch",
+    },
+    body: JSON.stringify({ id_token: "mock" }),
+  });
+  const body = await session.json();
+  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
+    .bind(role, body.data.user_id)
+    .run();
+  return {
+    userId: body.data.user_id,
+    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
+  };
 }
 
 /** 取得當前台灣當月 YYYY-MM（含未來月份滾動時的測試穩定性） */
 function currentMonth(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  return `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}`
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  return `${parts.find((p) => p.type === "year")!.value}-${parts.find((p) => p.type === "month")!.value}`;
 }
 
-describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
-  it('登入三角色皆可讀 /summary', async () => {
-    const { cookie } = await loginAs('U-stats-cmt', '委員', 'committee')
-    const r = await worker.fetch('http://example.com/api/stats/summary', {
+describe("A1 GET /api/stats/summary 行為鎖定（v1.1.15）", () => {
+  it("登入三角色皆可讀 /summary", async () => {
+    const { cookie } = await loginAs("U-stats-cmt", "委員", "committee");
+    const r = await worker.fetch("http://example.com/api/stats/summary", {
       headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(200)
-    const body = await r.json()
-    expect(body.data).toHaveProperty('month_done')
-    expect(body.data).toHaveProperty('month_initial_open')
-  })
+    });
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.data).toHaveProperty("month_done");
+    expect(body.data).toHaveProperty("month_initial_open");
+  });
 
-  it('同月內 done→reopen→再 done，month_done 計 1 件（DISTINCT ticket_id）', async () => {
-    const admin = await loginAs('U-stats-reopen', '管理員', 'admin')
-    const cat = await env.DB.prepare("SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    const loc = await env.DB.prepare("SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    if (!cat || !loc) throw new Error('seed 缺少 options')
+  it("同月內 done→reopen→再 done，month_done 計 1 件（DISTINCT ticket_id）", async () => {
+    const admin = await loginAs("U-stats-reopen", "管理員", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    const loc = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    if (!cat || !loc) throw new Error("seed 缺少 options");
 
     // 抓基線
-    const beforeRes = await worker.fetch('http://example.com/api/stats/summary', {
-      headers: { Cookie: admin.cookie },
-    })
+    const beforeRes = await worker.fetch(
+      "http://example.com/api/stats/summary",
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const before = (await beforeRes.json()).data as {
-      month_done: number; month_initial_open: number; month_new: number
-    }
+      month_done: number;
+      month_initial_open: number;
+      month_new: number;
+    };
 
     // 建單：本月初（保證 month_new +1）
-    const monthStart = currentMonth() + '-01T00:00:00.000Z'
+    const monthStart = currentMonth() + "-01T00:00:00.000Z";
     const ticketIns = await env.DB.prepare(
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
                            status, share_token, created_by, created_at, last_activity_at)
        VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
-    ).bind(cat.id, cat.label, loc.id, loc.label, 'reopen 失真測試',
-           crypto.randomUUID(), admin.userId, monthStart, monthStart).run()
-    const ticketId = Number(ticketIns.meta.last_row_id)
+    )
+      .bind(
+        cat.id,
+        cat.label,
+        loc.id,
+        loc.label,
+        "reopen 失真測試",
+        crypto.randomUUID(),
+        admin.userId,
+        monthStart,
+        monthStart,
+      )
+      .run();
+    const ticketId = Number(ticketIns.meta.last_row_id);
 
     // 三筆時間軸事件，全部在本月內：in_progress → done → reopen → done
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at)
        VALUES (?, ?, 'status', 'in_progress', ?)`,
-    ).bind(ticketId, admin.userId, monthStart).run()
+    )
+      .bind(ticketId, admin.userId, monthStart)
+      .run();
 
-    const t1 = new Date(Date.parse(monthStart) + 1000).toISOString()
+    const t1 = new Date(Date.parse(monthStart) + 1000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at)
        VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, t1).run()
+    )
+      .bind(ticketId, admin.userId, t1)
+      .run();
 
-    const t2 = new Date(Date.parse(monthStart) + 2000).toISOString()
+    const t2 = new Date(Date.parse(monthStart) + 2000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at)
        VALUES (?, ?, 'status', 'open', ?)`,
-    ).bind(ticketId, admin.userId, t2).run() // reopen 視同 status=open
+    )
+      .bind(ticketId, admin.userId, t2)
+      .run(); // reopen 視同 status=open
 
-    const t3 = new Date(Date.parse(monthStart) + 3000).toISOString()
+    const t3 = new Date(Date.parse(monthStart) + 3000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at)
        VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, t3).run()
+    )
+      .bind(ticketId, admin.userId, t3)
+      .run();
 
     await env.DB.prepare(
       `UPDATE tickets SET status='done', closed_at=?, last_activity_at=? WHERE id=?`,
-    ).bind(t3, t3, ticketId).run()
+    )
+      .bind(t3, t3, ticketId)
+      .run();
 
     // 抓 after
-    const afterRes = await worker.fetch('http://example.com/api/stats/summary', {
-      headers: { Cookie: admin.cookie },
-    })
+    const afterRes = await worker.fetch(
+      "http://example.com/api/stats/summary",
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const after = (await afterRes.json()).data as {
-      month_done: number; month_initial_open: number; month_new: number
-    }
+      month_done: number;
+      month_initial_open: number;
+      month_new: number;
+    };
 
     // 預期 delta：
     //   month_new +1（建單在月初當天，created_at >= 月初）
     //   month_done +1（DISTINCT ticket_id 算這件）
     //   month_initial_open 不變（created_at = 月初當天，SQL 嚴格 < 月初不成立）
-    expect(after.month_new - before.month_new).toBe(1)
-    expect(after.month_done - before.month_done).toBe(1)
-    expect(after.month_initial_open - before.month_initial_open).toBe(0)
-  })
+    expect(after.month_new - before.month_new).toBe(1);
+    expect(after.month_done - before.month_done).toBe(1);
+    expect(after.month_initial_open - before.month_initial_open).toBe(0);
+  });
 
-  it('月初前建的單 → 同月 done → reopen → 再 done 仍被算入 month_done 分子（失真案例記錄）', async () => {
-    const admin = await loginAs('U-stats-distort', '失真測試', 'admin')
-    const cat = await env.DB.prepare("SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    const loc = await env.DB.prepare("SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    if (!cat || !loc) throw new Error('seed 缺少 options')
+  it("月初前建的單 → 同月 done → reopen → 再 done 仍被算入 month_done 分子（失真案例記錄）", async () => {
+    const admin = await loginAs("U-stats-distort", "失真測試", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    const loc = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    if (!cat || !loc) throw new Error("seed 缺少 options");
 
     // 抓塞資料前的當月數字（基線）
-    const beforeRes = await worker.fetch('http://example.com/api/stats/summary', {
-      headers: { Cookie: admin.cookie },
-    })
+    const beforeRes = await worker.fetch(
+      "http://example.com/api/stats/summary",
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const before = (await beforeRes.json()).data as {
-      month_done: number; month_initial_open: number; month_new: number
-    }
+      month_done: number;
+      month_initial_open: number;
+      month_new: number;
+    };
 
     // 建單時間：必須比 SQL 認定的「月初」（台灣 1 日 00:00 的 UTC，即前月最後一天 16:00 UTC）更早
     // monthStart 只是「當月 1 日 00:00 UTC」的標籤；SQL 真正的邊界是 taipeiMonthRangeUtc()
     // 算出的台灣當月 1 日 00:00 → UTC。我們用 monthStart 減 16 小時，保證落在 SQL 月初前。
-    const monthStart = currentMonth() + '-01T00:00:00.000Z'
-    const beforeMonthStart = new Date(Date.parse(monthStart) - 16 * 3600 * 1000).toISOString()
+    const monthStart = currentMonth() + "-01T00:00:00.000Z";
+    const beforeMonthStart = new Date(
+      Date.parse(monthStart) - 16 * 3600 * 1000,
+    ).toISOString();
     const ticketIns = await env.DB.prepare(
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
                            status, share_token, created_by, created_at, last_activity_at)
        VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
-    ).bind(cat.id, cat.label, loc.id, loc.label, '失真案例',
-           crypto.randomUUID(), admin.userId, beforeMonthStart, beforeMonthStart).run()
-    const ticketId = Number(ticketIns.meta.last_row_id)
+    )
+      .bind(
+        cat.id,
+        cat.label,
+        loc.id,
+        loc.label,
+        "失真案例",
+        crypto.randomUUID(),
+        admin.userId,
+        beforeMonthStart,
+        beforeMonthStart,
+      )
+      .run();
+    const ticketId = Number(ticketIns.meta.last_row_id);
 
     // 本月內 done 事件：時間軸 done 必須落在 SQL 月初邊界 [startIso, endIso) 內。
     // SQL startIso = monthStart - 16h UTC, endIso = 下月 - 16h UTC。
     // 用 monthStart + 1 秒（即台灣 1 日 08:00:01）保證落在範圍內。
-    const t1 = new Date(Date.parse(monthStart) + 1000).toISOString()
+    const t1 = new Date(Date.parse(monthStart) + 1000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at) VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, t1).run()
-    const t2 = new Date(Date.parse(monthStart) + 2000).toISOString()
+    )
+      .bind(ticketId, admin.userId, t1)
+      .run();
+    const t2 = new Date(Date.parse(monthStart) + 2000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at) VALUES (?, ?, 'status', 'open', ?)`,
-    ).bind(ticketId, admin.userId, t2).run()
-    const t3 = new Date(Date.parse(monthStart) + 3000).toISOString()
+    )
+      .bind(ticketId, admin.userId, t2)
+      .run();
+    const t3 = new Date(Date.parse(monthStart) + 3000).toISOString();
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at) VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, t3).run()
+    )
+      .bind(ticketId, admin.userId, t3)
+      .run();
     await env.DB.prepare(
       `UPDATE tickets SET status='done', closed_at=?, last_activity_at=? WHERE id=?`,
-    ).bind(t3, t3, ticketId).run()
+    )
+      .bind(t3, t3, ticketId)
+      .run();
 
     // 抓塞資料後的當月數字
-    const afterRes = await worker.fetch('http://example.com/api/stats/summary', {
-      headers: { Cookie: admin.cookie },
-    })
+    const afterRes = await worker.fetch(
+      "http://example.com/api/stats/summary",
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const after = (await afterRes.json()).data as {
-      month_done: number; month_initial_open: number; month_new: number
-    }
+      month_done: number;
+      month_initial_open: number;
+      month_new: number;
+    };
 
     // 預期 delta（清單 A1 描述的失真鎖定）：
     //   month_done delta = 1（DISTINCT ticket_id 算這件）
@@ -198,32 +286,44 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
     //   month_new delta = 0（建單在月初前，不計本月新增）
     // 失真點：同一張單同時算進分子（month_done）與分母（month_initial_open），
     // 導致完成率被稀釋。
-    expect(after.month_done - before.month_done).toBe(1)
-    expect(after.month_initial_open - before.month_initial_open).toBe(1)
-    expect(after.month_new - before.month_new).toBe(0)
-  })
+    expect(after.month_done - before.month_done).toBe(1);
+    expect(after.month_initial_open - before.month_initial_open).toBe(1);
+    expect(after.month_new - before.month_new).toBe(0);
+  });
 
-  it('跨月時間軸事件：本月 done 不計上月 month_done', async () => {
-    const admin = await loginAs('U-stats-cross', '跨月測試', 'admin')
-    const cat = await env.DB.prepare("SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    const loc = await env.DB.prepare("SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1").first<{ id: number; label: string }>()
-    if (!cat || !loc) throw new Error('seed 缺少 options')
+  it("跨月時間軸事件：本月 done 不計上月 month_done", async () => {
+    const admin = await loginAs("U-stats-cross", "跨月測試", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    const loc = await env.DB.prepare(
+      "SELECT id, label FROM options WHERE type='location' AND active=1 LIMIT 1",
+    ).first<{ id: number; label: string }>();
+    if (!cat || !loc) throw new Error("seed 缺少 options");
 
-    const monthStart = currentMonth() + '-01T00:00:00.000Z'
+    const monthStart = currentMonth() + "-01T00:00:00.000Z";
     // 「上月最後一天」當時間軸 done 事件的標籤時間。
-    const lastMonthMid = new Date(Date.parse(monthStart) - 86400000).toISOString()
-    const lastMonthStr = lastMonthMid.slice(0, 7)
+    const lastMonthMid = new Date(
+      Date.parse(monthStart) - 86400000,
+    ).toISOString();
+    const lastMonthStr = lastMonthMid.slice(0, 7);
     // 建單時間：必須在上月月初（SQL startIso = 上月 1 日 00:00 台灣 → UTC）之前。
     // 用 monthStart - 40 天（≈上月月初前 24 天）確保遠小於上月月初 UTC。
-    const createdAt = new Date(Date.parse(monthStart) - 40 * 86400000).toISOString()
+    const createdAt = new Date(
+      Date.parse(monthStart) - 40 * 86400000,
+    ).toISOString();
 
     // 抓上月基線
-    const beforeRes = await worker.fetch(`http://example.com/api/stats/summary?month=${lastMonthStr}`, {
-      headers: { Cookie: admin.cookie },
-    })
+    const beforeRes = await worker.fetch(
+      `http://example.com/api/stats/summary?month=${lastMonthStr}`,
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const before = (await beforeRes.json()).data as {
-      month_done: number; month_initial_open: number
-    }
+      month_done: number;
+      month_initial_open: number;
+    };
 
     // 建單時間遠早於上月月初 → SQL `created_at < 月初` 成立；
     // 上月結案 → 時間軸 done 落在上月 → month_done +1；
@@ -232,34 +332,57 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
                            status, share_token, created_by, created_at, last_activity_at)
        VALUES (?, ?, ?, ?, ?, 'done', ?, ?, ?, ?)`,
-    ).bind(cat.id, cat.label, loc.id, loc.label, '上月結案',
-           crypto.randomUUID(), admin.userId, createdAt, createdAt).run()
-    const ticketId = Number(ticketIns.meta.last_row_id)
+    )
+      .bind(
+        cat.id,
+        cat.label,
+        loc.id,
+        loc.label,
+        "上月結案",
+        crypto.randomUUID(),
+        admin.userId,
+        createdAt,
+        createdAt,
+      )
+      .run();
+    const ticketId = Number(ticketIns.meta.last_row_id);
 
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, created_at) VALUES (?, ?, 'status', 'done', ?)`,
-    ).bind(ticketId, admin.userId, lastMonthMid).run()
+    )
+      .bind(ticketId, admin.userId, lastMonthMid)
+      .run();
     await env.DB.prepare(
       `UPDATE tickets SET closed_at=?, last_activity_at=? WHERE id=?`,
-    ).bind(lastMonthMid, lastMonthMid, ticketId).run()
+    )
+      .bind(lastMonthMid, lastMonthMid, ticketId)
+      .run();
 
     // 抓上月 after、本月 after
-    const afterLastRes = await worker.fetch(`http://example.com/api/stats/summary?month=${lastMonthStr}`, {
-      headers: { Cookie: admin.cookie },
-    })
+    const afterLastRes = await worker.fetch(
+      `http://example.com/api/stats/summary?month=${lastMonthStr}`,
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const afterLast = (await afterLastRes.json()).data as {
-      month_done: number; month_initial_open: number
-    }
-    const afterCurRes = await worker.fetch(`http://example.com/api/stats/summary?month=${currentMonth()}`, {
-      headers: { Cookie: admin.cookie },
-    })
+      month_done: number;
+      month_initial_open: number;
+    };
+    const afterCurRes = await worker.fetch(
+      `http://example.com/api/stats/summary?month=${currentMonth()}`,
+      {
+        headers: { Cookie: admin.cookie },
+      },
+    );
     const afterCur = (await afterCurRes.json()).data as {
-      month_done: number; month_initial_open: number
-    }
+      month_done: number;
+      month_initial_open: number;
+    };
 
     // 上月 month_done +1（時間軸 done 在上月），上月 month_initial_open +1（建單在月初前）
-    expect(afterLast.month_done - before.month_done).toBe(1)
-    expect(afterLast.month_initial_open - before.month_initial_open).toBe(1)
+    expect(afterLast.month_done - before.month_done).toBe(1);
+    expect(afterLast.month_initial_open - before.month_initial_open).toBe(1);
     // 本月 month_done、month_initial_open 都不變（沒新增本月事件，closed_at 也是上月）
     // 但注意：本月 summary 的 month_initial_open SQL 條件是「created_at < 本月初」，
     // 這張 ticket created_at 在上月 < 本月初，所以**會**計入本月 month_initial_open。
@@ -268,412 +391,553 @@ describe('A1 GET /api/stats/summary 行為鎖定（v1.1.15）', () => {
     //         OR (closed_at IS NOT NULL AND closed_at >= 本月初) → closed_at < 本月初 → FALSE
     // → 整條 OR FALSE → 這張不算本月 month_initial_open ✅
     // 所以本月 delta month_initial_open = 0
-    expect(afterCur.month_initial_open - before.month_initial_open).toBe(0)
-  })
-})
+    expect(afterCur.month_initial_open - before.month_initial_open).toBe(0);
+  });
+});
 
-describe('F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）', () => {
+describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
   // 工具：建立一個 category 並回傳 id
   async function ensureCategory(label: string): Promise<number> {
     const exist = await env.DB.prepare(
       "SELECT id FROM options WHERE type='category' AND label=? AND active=1",
-    ).bind(label).first<{ id: number }>()
-    if (exist) return exist.id
+    )
+      .bind(label)
+      .first<{ id: number }>();
+    if (exist) return exist.id;
     const r = await env.DB.prepare(
       "INSERT INTO options (type, label, sort_order, active, created_at) VALUES ('category', ?, 999, 1, ?)",
-    ).bind(label, new Date().toISOString()).run()
-    return Number(r.meta.last_row_id)
+    )
+      .bind(label, new Date().toISOString())
+      .run();
+    return Number(r.meta.last_row_id);
   }
 
   // 工具：建立 location
   async function ensureLocation(label: string): Promise<number> {
     const exist = await env.DB.prepare(
       "SELECT id FROM options WHERE type='location' AND label=? AND active=1",
-    ).bind(label).first<{ id: number }>()
-    if (exist) return exist.id
+    )
+      .bind(label)
+      .first<{ id: number }>();
+    if (exist) return exist.id;
     const r = await env.DB.prepare(
       "INSERT INTO options (type, label, sort_order, active, created_at) VALUES ('location', ?, 999, 1, ?)",
-    ).bind(label, new Date().toISOString()).run()
-    return Number(r.meta.last_row_id)
+    )
+      .bind(label, new Date().toISOString())
+      .run();
+    return Number(r.meta.last_row_id);
   }
 
   // 工具：建 ticket
   async function makeTicket(args: {
-    adminUserId: number
-    catId: number
-    catLabel: string
-    locId: number
-    locLabel: string
-    desc: string
-    createdAt: string
-    lastActivityAt: string
+    adminUserId: number;
+    catId: number;
+    catLabel: string;
+    locId: number;
+    locLabel: string;
+    desc: string;
+    createdAt: string;
+    lastActivityAt: string;
   }): Promise<number> {
     const r = await env.DB.prepare(
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,
                            status, share_token, created_by, created_at, last_activity_at)
        VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
-    ).bind(args.catId, args.catLabel, args.locId, args.locLabel, args.desc,
-           crypto.randomUUID(), args.adminUserId, args.createdAt, args.lastActivityAt).run()
-    return Number(r.meta.last_row_id)
+    )
+      .bind(
+        args.catId,
+        args.catLabel,
+        args.locId,
+        args.locLabel,
+        args.desc,
+        crypto.randomUUID(),
+        args.adminUserId,
+        args.createdAt,
+        args.lastActivityAt,
+      )
+      .run();
+    return Number(r.meta.last_row_id);
   }
 
   // 工具：加 ticket_update（status / comment）
   async function addUpdate(args: {
-    ticketId: number; userId: number;
-    kind: 'status' | 'comment';
-    status?: string; note?: string; amount?: number;
+    ticketId: number;
+    userId: number;
+    kind: "status" | "comment";
+    status?: string;
+    note?: string;
+    amount?: number;
     createdAt: string;
   }): Promise<void> {
     await env.DB.prepare(
       `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, amount, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(args.ticketId, args.userId, args.kind,
-           args.status ?? null, args.note ?? null, args.amount ?? null,
-           args.createdAt).run()
+    )
+      .bind(
+        args.ticketId,
+        args.userId,
+        args.kind,
+        args.status ?? null,
+        args.note ?? null,
+        args.amount ?? null,
+        args.createdAt,
+      )
+      .run();
   }
 
   // 取得今天台灣日期 YYYY-MM-DD
   function todayTaipei(): string {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Taipei',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date())
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
   }
 
-  it('F11-2 date 缺 → 400 MISSING_DATE', async () => {
-    const { cookie } = await loginAs('U-f1-nodate', '管', 'admin')
-    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
-    const r = await worker.fetch(`http://example.com/api/stats/daily-report?category_id=${cat!.id}`, {
-      headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(400)
-    const body = await r.json()
-    expect(body.error.code).toBe('MISSING_DATE')
-  })
+  it("F11-2 date 缺 → 400 MISSING_DATE", async () => {
+    const { cookie } = await loginAs("U-f1-nodate", "管", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number }>();
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?category_id=${cat!.id}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(r.status).toBe(400);
+    const body = await r.json();
+    expect(body.error.code).toBe("MISSING_DATE");
+  });
 
-  it('category_id 缺 → 400 VALIDATION_ERROR', async () => {
-    const { cookie } = await loginAs('U-f1-nocat', '管', 'admin')
-    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=${todayTaipei()}`, {
-      headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(400)
-    const body = await r.json()
-    expect(body.error.code).toBe('VALIDATION_ERROR')
-  })
+  it("category_id 缺 → 400 VALIDATION_ERROR", async () => {
+    const { cookie } = await loginAs("U-f1-nocat", "管", "admin");
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${todayTaipei()}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(r.status).toBe(400);
+    const body = await r.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
 
-  it('F11-2 date 格式錯誤（2026-13-99）→ 400 INVALID_DATE', async () => {
-    const { cookie } = await loginAs('U-f1-baddate', '管', 'admin')
-    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
-    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=2026-13-99&category_id=${cat!.id}`, {
-      headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(400)
-    const body = await r.json()
-    expect(body.error.code).toBe('INVALID_DATE')
-  })
+  it("F11-2 date 格式錯誤（2026-13-99）→ 400 INVALID_DATE", async () => {
+    const { cookie } = await loginAs("U-f1-baddate", "管", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number }>();
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=2026-13-99&category_id=${cat!.id}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(r.status).toBe(400);
+    const body = await r.json();
+    expect(body.error.code).toBe("INVALID_DATE");
+  });
 
-  it('F11-2 date 晚於今天 → 400 DATE_FUTURE', async () => {
-    const { cookie } = await loginAs('U-f1-future', '管', 'admin')
-    const cat = await env.DB.prepare("SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1").first<{ id: number }>()
+  it("F11-2 date 晚於今天 → 400 DATE_FUTURE", async () => {
+    const { cookie } = await loginAs("U-f1-future", "管", "admin");
+    const cat = await env.DB.prepare(
+      "SELECT id FROM options WHERE type='category' AND active=1 LIMIT 1",
+    ).first<{ id: number }>();
     // 用 2030-01-01 確保晚於 today
-    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=2030-01-01&category_id=${cat!.id}`, {
-      headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(400)
-    const body = await r.json()
-    expect(body.error.code).toBe('DATE_FUTURE')
-  })
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=2030-01-01&category_id=${cat!.id}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(r.status).toBe(400);
+    const body = await r.json();
+    expect(body.error.code).toBe("DATE_FUTURE");
+  });
 
-  it('category_id 不存在 → 404', async () => {
-    const { cookie } = await loginAs('U-f1-nocat2', '管', 'admin')
-    const r = await worker.fetch(`http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=99999`, {
-      headers: { Cookie: cookie },
-    })
-    expect(r.status).toBe(404)
-  })
+  it("category_id 不存在 → 404", async () => {
+    const { cookie } = await loginAs("U-f1-nocat2", "管", "admin");
+    const r = await worker.fetch(
+      `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=99999`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    expect(r.status).toBe(404);
+  });
 
-  it('新建案件：當日 created_at 在區間內、屬該類別 → new_tickets 計入', async () => {
-    const admin = await loginAs('U-f1-new1', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-new')
-    const loc = await ensureLocation('F1-test-loc-new')
+  it("新建案件：當日 created_at 在區間內、屬該類別 → new_tickets 計入", async () => {
+    const admin = await loginAs("U-f1-new1", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-new");
+    const loc = await ensureLocation("F1-test-loc-new");
 
-    const today = todayTaipei()
+    const today = todayTaipei();
     // 今日 10:00 台灣 = UTC -8h（簡化用：用 Date.UTC 重建台灣 10:00）
-    const todayCreatedAt = new Date(Date.UTC(
-      Number(today.slice(0, 4)),
-      Number(today.slice(5, 7)) - 1,
-      Number(today.slice(8, 10)),
-      2, 0, 0,  // 10:00 台灣 = 02:00 UTC
-    )).toISOString()
+    const todayCreatedAt = new Date(
+      Date.UTC(
+        Number(today.slice(0, 4)),
+        Number(today.slice(5, 7)) - 1,
+        Number(today.slice(8, 10)),
+        2,
+        0,
+        0, // 10:00 台灣 = 02:00 UTC
+      ),
+    ).toISOString();
 
     const tid = await makeTicket({
       adminUserId: admin.userId,
-      catId: cat, catLabel: 'F1-test-cat-new',
-      locId: loc, locLabel: 'F1-test-loc-new',
-      desc: '今日新建',
-      createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
-    })
+      catId: cat,
+      catLabel: "F1-test-cat-new",
+      locId: loc,
+      locLabel: "F1-test-loc-new",
+      desc: "今日新建",
+      createdAt: todayCreatedAt,
+      lastActivityAt: todayCreatedAt,
+    });
 
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
       { headers: { Cookie: admin.cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
-    expect(body.data.category_label).toBe('F1-test-cat-new')
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.data.category_label).toBe("F1-test-cat-new");
     // v1.1.16：新案件拉到 new_cases，預設狀態詢價中
-    expect(body.data.new_cases.length).toBeGreaterThanOrEqual(1)
-    const nc = body.data.new_cases.find((t: { id: number }) => t.id === tid)
-    expect(nc).toBeTruthy()
-    expect(nc.location_label).toBe('F1-test-loc-new')
-    expect(nc.status).toBe('詢價中')
-    expect(nc.description).toContain('今日新建')
+    expect(body.data.new_cases.length).toBeGreaterThanOrEqual(1);
+    const nc = body.data.new_cases.find((t: { id: number }) => t.id === tid);
+    expect(nc).toBeTruthy();
+    expect(nc.location_label).toBe("F1-test-loc-new");
+    expect(nc.status).toBe("詢價中");
+    expect(nc.description).toContain("今日新建");
     // v1.1.16 不再回傳 created_at_time / detail_url
-    expect((nc as Record<string, unknown>).created_at_time).toBeUndefined()
-  })
+    expect((nc as Record<string, unknown>).created_at_time).toBeUndefined();
+  });
 
-  it('既有案件：當日有 update 且非當日新建 → existing_tickets 計入 + updates_today 最多 3 筆', async () => {
-    const admin = await loginAs('U-f1-ex1', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-ex')
-    const loc = await ensureLocation('F1-test-loc-ex')
+  it("既有案件：當日有 update 且非當日新建 → existing_tickets 計入 + updates_today 最多 3 筆", async () => {
+    const admin = await loginAs("U-f1-ex1", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-ex");
+    const loc = await ensureLocation("F1-test-loc-ex");
 
-    const today = todayTaipei()
+    const today = todayTaipei();
     // 上個月同日（既有的 created_at 早於當日，落在 last_activity_at 區間）
     const prevMonth = (() => {
-      const d = new Date()
-      d.setMonth(d.getMonth() - 1)
-      return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Taipei',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(d)
-    })()
-    const prevCreatedAt = new Date(Date.UTC(
-      Number(prevMonth.slice(0, 4)),
-      Number(prevMonth.slice(5, 7)) - 1,
-      Number(prevMonth.slice(8, 10)),
-      2, 0, 0,
-    )).toISOString()
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+    })();
+    const prevCreatedAt = new Date(
+      Date.UTC(
+        Number(prevMonth.slice(0, 4)),
+        Number(prevMonth.slice(5, 7)) - 1,
+        Number(prevMonth.slice(8, 10)),
+        2,
+        0,
+        0,
+      ),
+    ).toISOString();
 
     // 既有案件：上月建、今天有 update
-    const today10am = new Date(Date.UTC(
-      Number(today.slice(0, 4)),
-      Number(today.slice(5, 7)) - 1,
-      Number(today.slice(8, 10)),
-      2, 0, 0,
-    )).toISOString()
+    const today10am = new Date(
+      Date.UTC(
+        Number(today.slice(0, 4)),
+        Number(today.slice(5, 7)) - 1,
+        Number(today.slice(8, 10)),
+        2,
+        0,
+        0,
+      ),
+    ).toISOString();
 
     const tid = await makeTicket({
       adminUserId: admin.userId,
-      catId: cat, catLabel: 'F1-test-cat-ex',
-      locId: loc, locLabel: 'F1-test-loc-ex',
-      desc: '上月建、今日有 update',
-      createdAt: prevCreatedAt, lastActivityAt: today10am,
-    })
+      catId: cat,
+      catLabel: "F1-test-cat-ex",
+      locId: loc,
+      locLabel: "F1-test-loc-ex",
+      desc: "上月建、今日有 update",
+      createdAt: prevCreatedAt,
+      lastActivityAt: today10am,
+    });
 
     // 今日 4 筆 update → 應被 slice(0,3)
-    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'status', status: 'in_progress', createdAt: today10am })
-    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'comment', note: 'a', createdAt: new Date(Date.parse(today10am) + 1000).toISOString() })
-    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'status', status: 'in_progress', createdAt: new Date(Date.parse(today10am) + 2000).toISOString() })
-    await addUpdate({ ticketId: tid, userId: admin.userId, kind: 'comment', note: 'b', createdAt: new Date(Date.parse(today10am) + 3000).toISOString() })
+    await addUpdate({
+      ticketId: tid,
+      userId: admin.userId,
+      kind: "status",
+      status: "in_progress",
+      createdAt: today10am,
+    });
+    await addUpdate({
+      ticketId: tid,
+      userId: admin.userId,
+      kind: "comment",
+      note: "a",
+      createdAt: new Date(Date.parse(today10am) + 1000).toISOString(),
+    });
+    await addUpdate({
+      ticketId: tid,
+      userId: admin.userId,
+      kind: "status",
+      status: "in_progress",
+      createdAt: new Date(Date.parse(today10am) + 2000).toISOString(),
+    });
+    await addUpdate({
+      ticketId: tid,
+      userId: admin.userId,
+      kind: "comment",
+      note: "b",
+      createdAt: new Date(Date.parse(today10am) + 3000).toISOString(),
+    });
 
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
       { headers: { Cookie: admin.cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
     // v1.1.16：既有案件當日 update 拉平到 timeline_updates，最多 3 筆
-    const tl = body.data.timeline_updates.filter((u: { id: number }) => u.id === tid)
-    expect(tl).toHaveLength(3)
-    expect(tl[0].location_label).toBe('F1-test-loc-ex')
-    expect(tl[0].status).toBe('待處理') // tickets.status=open→原 status_label
+    const tl = body.data.timeline_updates.filter(
+      (u: { id: number }) => u.id === tid,
+    );
+    expect(tl).toHaveLength(3);
+    expect(tl[0].location_label).toBe("F1-test-loc-ex");
+    expect(tl[0].status).toBe("待處理"); // tickets.status=open→原 status_label
     // reverse 回 ASC：comment(10:01=a)、status(10:02=空 note)、comment(10:03=b)
-    expect(tl[0].note).toBe('a')
-    expect(tl[1].note).toBe('')
-    expect(tl[2].note).toBe('b')
-  })
+    expect(tl[0].note).toBe("a");
+    expect(tl[1].note).toBe("");
+    expect(tl[2].note).toBe("b");
+  });
 
   // F12-1（v1.1.15）：updates_today 排序 = 時間正序（舊的在上、新的在下）
   // 邊界：當日 5 筆 update，F12-1 要「最新 3 筆、由舊到新」
-  it('F12-1 updates_today 排序 = 時間正序（SQL DESC LIMIT 3 + 應用層 reverse）', async () => {
-    const admin = await loginAs('U-f1-sort', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-sort')
-    const loc = await ensureLocation('F1-test-loc-sort')
+  it("F12-1 updates_today 排序 = 時間正序（SQL DESC LIMIT 3 + 應用層 reverse）", async () => {
+    const admin = await loginAs("U-f1-sort", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-sort");
+    const loc = await ensureLocation("F1-test-loc-sort");
 
-    const today = todayTaipei()
+    const today = todayTaipei();
     // 上個月建單（避免被「當日新建」條件排除）
     const prevMonth = (() => {
-      const d = new Date(); d.setMonth(d.getMonth() - 1)
-      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
-    })()
-    const prevCreatedAt = new Date(Date.UTC(
-      Number(prevMonth.slice(0, 4)),
-      Number(prevMonth.slice(5, 7)) - 1,
-      Number(prevMonth.slice(8, 10)),
-      2, 0, 0,
-    )).toISOString()
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+    })();
+    const prevCreatedAt = new Date(
+      Date.UTC(
+        Number(prevMonth.slice(0, 4)),
+        Number(prevMonth.slice(5, 7)) - 1,
+        Number(prevMonth.slice(8, 10)),
+        2,
+        0,
+        0,
+      ),
+    ).toISOString();
 
-    const todayBase = new Date(Date.UTC(
-      Number(today.slice(0, 4)),
-      Number(today.slice(5, 7)) - 1,
-      Number(today.slice(8, 10)),
-      2, 0, 0,
-    )).getTime()
+    const todayBase = new Date(
+      Date.UTC(
+        Number(today.slice(0, 4)),
+        Number(today.slice(5, 7)) - 1,
+        Number(today.slice(8, 10)),
+        2,
+        0,
+        0,
+      ),
+    ).getTime();
 
     const tid = await makeTicket({
       adminUserId: admin.userId,
-      catId: cat, catLabel: 'F1-test-cat-sort',
-      locId: loc, locLabel: 'F1-test-loc-sort',
-      desc: 'F12-1 排序測試',
-      createdAt: prevCreatedAt, lastActivityAt: new Date(todayBase + 5000).toISOString(),
-    })
+      catId: cat,
+      catLabel: "F1-test-cat-sort",
+      locId: loc,
+      locLabel: "F1-test-loc-sort",
+      desc: "F12-1 排序測試",
+      createdAt: prevCreatedAt,
+      lastActivityAt: new Date(todayBase + 5000).toISOString(),
+    });
 
     // 5 筆 update（時間從早到晚，間隔 1 秒）—— F12-1 應該只取最新 3 筆（4、5、3 → 反轉 → 3、4、5）
     // 原始 ISO 時間：今天 02:00:00, 02:00:01, 02:00:02, 02:00:03, 02:00:04
     const updateTimes = [
-      new Date(todayBase + 0).toISOString(),     // t1 最早
-      new Date(todayBase + 1000).toISOString(),  // t2
-      new Date(todayBase + 2000).toISOString(),  // t3
-      new Date(todayBase + 3000).toISOString(),  // t4
-      new Date(todayBase + 4000).toISOString(),  // t5 最新
-    ]
+      new Date(todayBase + 0).toISOString(), // t1 最早
+      new Date(todayBase + 1000).toISOString(), // t2
+      new Date(todayBase + 2000).toISOString(), // t3
+      new Date(todayBase + 3000).toISOString(), // t4
+      new Date(todayBase + 4000).toISOString(), // t5 最新
+    ];
     for (let i = 0; i < updateTimes.length; i++) {
       await addUpdate({
-        ticketId: tid, userId: admin.userId, kind: 'comment',
-        note: `update ${i + 1} (t${i + 1})`, createdAt: updateTimes[i],
-      })
+        ticketId: tid,
+        userId: admin.userId,
+        kind: "comment",
+        note: `update ${i + 1} (t${i + 1})`,
+        createdAt: updateTimes[i],
+      });
     }
 
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${today}&category_id=${cat}`,
       { headers: { Cookie: admin.cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
-    const tl = body.data.timeline_updates.filter((u: { id: number }) => u.id === tid)
-    expect(tl).toHaveLength(3)
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    const tl = body.data.timeline_updates.filter(
+      (u: { id: number }) => u.id === tid,
+    );
+    expect(tl).toHaveLength(3);
     // F12-1 硬斷言：時間正序 → t3、t4、t5（最新 3 筆，由舊到新）
-    expect(tl[0].note).toBe('update 3 (t3)')
-    expect(tl[1].note).toBe('update 4 (t4)')
-    expect(tl[2].note).toBe('update 5 (t5)')
+    expect(tl[0].note).toBe("update 3 (t3)");
+    expect(tl[1].note).toBe("update 4 (t4)");
+    expect(tl[2].note).toBe("update 5 (t5)");
     // 加固：被切掉的兩筆是 t1 和 t2（不是 t4/t5）—— 確保是「保留最新 3 筆」
-    const keptNotes = tl.map((u: { note: string }) => u.note)
-    expect(keptNotes).not.toContain('update 1 (t1)')
-    expect(keptNotes).not.toContain('update 2 (t2)')
-    expect(keptNotes).toContain('update 3 (t3)')
-    expect(keptNotes).toContain('update 4 (t4)')
-    expect(keptNotes).toContain('update 5 (t5)')
+    const keptNotes = tl.map((u: { note: string }) => u.note);
+    expect(keptNotes).not.toContain("update 1 (t1)");
+    expect(keptNotes).not.toContain("update 2 (t2)");
+    expect(keptNotes).toContain("update 3 (t3)");
+    expect(keptNotes).toContain("update 4 (t4)");
+    expect(keptNotes).toContain("update 5 (t5)");
     // 加固：note 字串中的 t 編號應該嚴格遞增（驗證時間序列 ASC）
-    const tNums = tl.map((u: { note: string }) => Number(u.note.match(/t(\d+)/)?.[1]))
-    expect(tNums).toEqual([3, 4, 5])
-  })
+    const tNums = tl.map((u: { note: string }) =>
+      Number(u.note.match(/t(\d+)/)?.[1]),
+    );
+    expect(tNums).toEqual([3, 4, 5]);
+  });
 
-  it('當日無任何案件 → new_count + existing_count = 0、total_count = 0', async () => {
-    const { cookie } = await loginAs('U-f1-empty', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-empty')
+  it("當日無任何案件 → new_count + existing_count = 0、total_count = 0", async () => {
+    const { cookie } = await loginAs("U-f1-empty", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-empty");
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
       { headers: { Cookie: cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
     // v1.1.16：新格式 — new_cases / timeline_updates 皆空
-    expect(body.data.new_cases).toEqual([])
-    expect(body.data.timeline_updates).toEqual([])
-    expect(typeof body.data.has_content).toBe('boolean')
-    expect(body.data.has_content).toBe(false)
+    expect(body.data.new_cases).toEqual([]);
+    expect(body.data.timeline_updates).toEqual([]);
+    expect(typeof body.data.has_content).toBe("boolean");
+    expect(body.data.has_content).toBe(false);
     // v1.1.16：模板仍回傳 new_case / timeline（seed 於 migration）；不再區分 empty/report
-    expect(body.data.templates.new_case.body).toContain('{{#each new_cases}}')
-    expect(body.data.templates.timeline.body).toContain('{{#each timeline_updates}}')
-  })
+    expect(body.data.templates.new_case.body).toContain("{{#each new_cases}}");
+    expect(body.data.templates.timeline.body).toContain(
+      "{{#each timeline_updates}}",
+    );
+  });
 
-  it('三角色皆可讀 daily-report（同 /summary）', async () => {
-    const admin = await loginAs('U-f1-roles-admin', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-roles')
+  it("三角色皆可讀 daily-report（同 /summary）", async () => {
+    const admin = await loginAs("U-f1-roles-admin", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-roles");
 
-    for (const role of ['committee', 'manager', 'admin'] as const) {
-      const u = await loginAs(`U-f1-roles-${role}`, role, role)
+    for (const role of ["committee", "manager", "admin"] as const) {
+      const u = await loginAs(`U-f1-roles-${role}`, role, role);
       const r = await worker.fetch(
         `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
         { headers: { Cookie: u.cookie } },
-      )
-      expect(r.status).toBe(200)
+      );
+      expect(r.status).toBe(200);
     }
 
     // 避免 lint 抱怨未使用
-    void admin
-  })
+    void admin;
+  });
 
   // v1.1.22：category_id=all — 不限類別合併、固定全域預設模板、category_label='全部類別'
-  it('v1.1.22 category_id=all：合併多個類別的當日案件、回 category_label=全部類別', async () => {
-    const admin = await loginAs('U-f1-all', '管', 'admin')
-    const catA = await ensureCategory('F1-test-cat-all-a')
-    const catB = await ensureCategory('F1-test-cat-all-b')
-    const loc = await ensureLocation('F1-test-loc-all')
+  it("v1.1.22 category_id=all：合併多個類別的當日案件、回 category_label=全部類別", async () => {
+    const admin = await loginAs("U-f1-all", "管", "admin");
+    const catA = await ensureCategory("F1-test-cat-all-a");
+    const catB = await ensureCategory("F1-test-cat-all-b");
+    const loc = await ensureLocation("F1-test-loc-all");
 
-    const today = todayTaipei()
-    const todayCreatedAt = new Date(Date.UTC(
-      Number(today.slice(0, 4)),
-      Number(today.slice(5, 7)) - 1,
-      Number(today.slice(8, 10)),
-      2, 0, 0,
-    )).toISOString()
+    const today = todayTaipei();
+    const todayCreatedAt = new Date(
+      Date.UTC(
+        Number(today.slice(0, 4)),
+        Number(today.slice(5, 7)) - 1,
+        Number(today.slice(8, 10)),
+        2,
+        0,
+        0,
+      ),
+    ).toISOString();
 
     const tidA = await makeTicket({
-      adminUserId: admin.userId, catId: catA, catLabel: 'F1-test-cat-all-a',
-      locId: loc, locLabel: 'F1-test-loc-all',
-      desc: 'all 測試 A', createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
-    })
+      adminUserId: admin.userId,
+      catId: catA,
+      catLabel: "F1-test-cat-all-a",
+      locId: loc,
+      locLabel: "F1-test-loc-all",
+      desc: "all 測試 A",
+      createdAt: todayCreatedAt,
+      lastActivityAt: todayCreatedAt,
+    });
     const tidB = await makeTicket({
-      adminUserId: admin.userId, catId: catB, catLabel: 'F1-test-cat-all-b',
-      locId: loc, locLabel: 'F1-test-loc-all',
-      desc: 'all 測試 B', createdAt: todayCreatedAt, lastActivityAt: todayCreatedAt,
-    })
+      adminUserId: admin.userId,
+      catId: catB,
+      catLabel: "F1-test-cat-all-b",
+      locId: loc,
+      locLabel: "F1-test-loc-all",
+      desc: "all 測試 B",
+      createdAt: todayCreatedAt,
+      lastActivityAt: todayCreatedAt,
+    });
 
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${today}&category_id=all`,
       { headers: { Cookie: admin.cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
-    expect(body.data.category_id).toBeNull()
-    expect(body.data.category_label).toBe('全部類別')
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.data.category_id).toBeNull();
+    expect(body.data.category_label).toBe("全部類別");
     // 兩個類別的當日新建案件都被合併進來
-    const ids = body.data.new_cases.map((t: { id: number }) => t.id)
-    expect(ids).toContain(tidA)
-    expect(ids).toContain(tidB)
-    expect(body.data.has_content).toBe(true)
+    const ids = body.data.new_cases.map((t: { id: number }) => t.id);
+    expect(ids).toContain(tidA);
+    expect(ids).toContain(tidB);
+    expect(body.data.has_content).toBe(true);
     // 模板仍回傳（all 固定取全域預設；seed 模板即全域）
-    expect(body.data.templates.new_case.body).toContain('{{#each new_cases}}')
-    expect(body.data.templates.timeline.body).toContain('{{#each timeline_updates}}')
-  })
+    expect(body.data.templates.new_case.body).toContain("{{#each new_cases}}");
+    expect(body.data.templates.timeline.body).toContain(
+      "{{#each timeline_updates}}",
+    );
+  });
 
-  it('v1.1.22 category_id 非正整數且非 all（abc/0/1.5）→ 400 VALIDATION_ERROR', async () => {
-    const { cookie } = await loginAs('U-f1-allbad', '管', 'admin')
-    for (const bad of ['abc', '0', '1.5']) {
+  it("v1.1.22 category_id 非正整數且非 all（abc/0/1.5）→ 400 VALIDATION_ERROR", async () => {
+    const { cookie } = await loginAs("U-f1-allbad", "管", "admin");
+    for (const bad of ["abc", "0", "1.5"]) {
       const r = await worker.fetch(
         `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${bad}`,
         { headers: { Cookie: cookie } },
-      )
-      expect(r.status).toBe(400)
-      const b = await r.json()
-      expect(b.error.code).toBe('VALIDATION_ERROR')
+      );
+      expect(r.status).toBe(400);
+      const b = await r.json();
+      expect(b.error.code).toBe("VALIDATION_ERROR");
     }
-  })
+  });
 
-  it('回傳 template（含 id + body）—— 從 migration 0010 seed 預設模板撈', async () => {
-    const { cookie } = await loginAs('U-f1-tmpl', '管', 'admin')
-    const cat = await ensureCategory('F1-test-cat-tmpl')
+  it("回傳 template（含 id + body）—— 從 migration 0010 seed 預設模板撈", async () => {
+    const { cookie } = await loginAs("U-f1-tmpl", "管", "admin");
+    const cat = await ensureCategory("F1-test-cat-tmpl");
     const r = await worker.fetch(
       `http://example.com/api/stats/daily-report?date=${todayTaipei()}&category_id=${cat}`,
       { headers: { Cookie: cookie } },
-    )
-    expect(r.status).toBe(200)
-    const body = await r.json()
+    );
+    expect(r.status).toBe(200);
+    const body = await r.json();
     // v1.1.16：回傳 templates.new_case / templates.timeline（各含 id + body）
-    expect(typeof body.data.templates.new_case?.id).toBe('number')
-    expect(typeof body.data.templates.new_case?.body).toBe('string')
-    expect(typeof body.data.templates.timeline?.id).toBe('number')
-    expect(typeof body.data.templates.timeline?.body).toBe('string')
-  })
-})
+    expect(typeof body.data.templates.new_case?.id).toBe("number");
+    expect(typeof body.data.templates.new_case?.body).toBe("string");
+    expect(typeof body.data.templates.timeline?.id).toBe("number");
+    expect(typeof body.data.templates.timeline?.body).toBe("string");
+  });
+});

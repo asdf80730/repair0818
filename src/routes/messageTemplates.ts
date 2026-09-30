@@ -8,86 +8,111 @@
 // v1.1.16：模板從 report/empty 改爲「新案件(new_case)／時間軸(timeline)」兩種，供案件動態訊息框使用；
 // PUT /:id 就地覆寫 body（UNIQUE(type,label) 下同 label 唯一列，故為更新非新增——v1.1.16 業主決策）。
 
-import { Hono } from 'hono'
-import { z } from 'zod'
-import { ok, fail, zv } from '../lib/respond'
-import { requireAuth } from '../lib/auth'
-import type { Env } from '../lib/env'
-import { idParam } from '../lib/validate'
+import { Hono } from "hono";
+import { z } from "zod";
+import { ok, fail, zv } from "../lib/respond";
+import { requireAuth } from "../lib/auth";
+import type { Env } from "../lib/env";
+import { idParam } from "../lib/validate";
 import {
   listTemplates,
   getTemplateById,
   findTemplateKey,
   isKeyTaken,
   writeTemplate,
-} from '../lib/messageTemplates'
+} from "../lib/messageTemplates";
 
-export const messageTemplateRoutes = new Hono<Env>()
+export const messageTemplateRoutes = new Hono<Env>();
 
 // 標籤限定：v1.1.16 支援 new_case / timeline 兩種（取代 v1.1.15 的 report/empty）
-const ALLOWED_LABELS = ['new_case', 'timeline'] as const
+const ALLOWED_LABELS = ["new_case", "timeline"] as const;
 
 // GET /api/message-templates?category_id=N&label=new_case|timeline
 // - 三角色可讀
 // - category_id 必填（沿用 F1 決策：不做「全部」，避免訊息過長）
 // - label 預設 'new_case'（v1.1.16；原 v1.1.15 為 'report'）
 // - 回該類別關聯的模板優先，無則用全域預設（active=1 + 無 option_categories）
-messageTemplateRoutes.get('/', requireAuth(), async (c) => {
-  const categoryIdStr = c.req.query('category_id')
-  if (!categoryIdStr) return fail(c, 400, 'VALIDATION_ERROR', 'category_id 必填')
-  const categoryId = Number(categoryIdStr)
+messageTemplateRoutes.get("/", requireAuth(), async (c) => {
+  const categoryIdStr = c.req.query("category_id");
+  if (!categoryIdStr)
+    return fail(c, 400, "VALIDATION_ERROR", "category_id 必填");
+  const categoryId = Number(categoryIdStr);
   if (!Number.isInteger(categoryId) || categoryId <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', 'category_id 需為正整數')
+    return fail(c, 400, "VALIDATION_ERROR", "category_id 需為正整數");
   }
 
-  const label = c.req.query('label') || 'new_case'
-  if (!ALLOWED_LABELS.includes(label as typeof ALLOWED_LABELS[number])) {
-    return fail(c, 400, 'VALIDATION_ERROR', `label 必須為 ${ALLOWED_LABELS.join('|')}`)
+  const label = c.req.query("label") || "new_case";
+  if (!ALLOWED_LABELS.includes(label as (typeof ALLOWED_LABELS)[number])) {
+    return fail(
+      c,
+      400,
+      "VALIDATION_ERROR",
+      `label 必須為 ${ALLOWED_LABELS.join("|")}`,
+    );
   }
 
   // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）
   // v1.1.20：type 欄當鍵（'message_template_'+label）、label 欄即內容 → 回應 body 取自 label 欄
-  const templates = await listTemplates(c, categoryId, label)
+  const templates = await listTemplates(c, categoryId, label);
 
-  return ok(c, { category_id: categoryId, label, templates })
-})
+  return ok(c, { category_id: categoryId, label, templates });
+});
 
 // GET /api/message-templates/:id — 三角色可讀
-messageTemplateRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
-  const { id } = c.req.valid('param')
-  // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
-  const row = await getTemplateById(c, id)
-  if (!row) return fail(c, 404, 'NOT_FOUND', '模板不存在')
-  return ok(c, row)
-})
+messageTemplateRoutes.get(
+  "/:id",
+  requireAuth(),
+  zv("param", idParam),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
+    const row = await getTemplateById(c, id);
+    if (!row) return fail(c, 404, "NOT_FOUND", "模板不存在");
+    return ok(c, row);
+  },
+);
 
 // PUT /api/message-templates/:id — manager/admin（編輯內容 body 或鍵 label）
 // 只能編輯現有模板（F7：不做新增、不做刪除、不做啟用切換）
 // v1.1.20：內容寫入 label 欄、鍵寫入 type 欄（加 message_template_ 前綴）
-const updateTemplateSchema = z.object({
-  body: z.string().min(1).max(10000).optional(),
-  label: z.enum(ALLOWED_LABELS).optional(),
-}).refine((v) => v.body !== undefined || v.label !== undefined, {
-  message: '至少需提供 body 或 label',
-})
-
-messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', updateTemplateSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const body = c.req.valid('json')
-
-  const existingKey = await findTemplateKey(c, id)
-  if (existingKey === null) return fail(c, 404, 'NOT_FOUND', '模板不存在')
-
-  // 就地覆寫（欄位映射見 lib/messageTemplates）
-  if (body.label !== undefined && body.label !== existingKey
-    && await isKeyTaken(c, body.label, id)) {
-    return fail(c, 400, 'VALIDATION_ERROR', '同 label 已存在')
-  }
-  await writeTemplate(c, id, {
-    body: body.body,
-    key: body.label !== undefined && body.label !== existingKey ? body.label : undefined,
+const updateTemplateSchema = z
+  .object({
+    body: z.string().min(1).max(10000).optional(),
+    label: z.enum(ALLOWED_LABELS).optional(),
   })
+  .refine((v) => v.body !== undefined || v.label !== undefined, {
+    message: "至少需提供 body 或 label",
+  });
 
-  const after = await getTemplateById(c, id)
-  return ok(c, after)
-})
+messageTemplateRoutes.put(
+  "/:id",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  zv("json", updateTemplateSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    const existingKey = await findTemplateKey(c, id);
+    if (existingKey === null) return fail(c, 404, "NOT_FOUND", "模板不存在");
+
+    // 就地覆寫（欄位映射見 lib/messageTemplates）
+    if (
+      body.label !== undefined &&
+      body.label !== existingKey &&
+      (await isKeyTaken(c, body.label, id))
+    ) {
+      return fail(c, 400, "VALIDATION_ERROR", "同 label 已存在");
+    }
+    await writeTemplate(c, id, {
+      body: body.body,
+      key:
+        body.label !== undefined && body.label !== existingKey
+          ? body.label
+          : undefined,
+    });
+
+    const after = await getTemplateById(c, id);
+    return ok(c, after);
+  },
+);

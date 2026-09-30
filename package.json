@@ -11,10 +11,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply repair-db0818 --remote",
     "test": "vitest run",
     "test:local": "vitest run --config vitest.node.config.ts",
-    "typecheck": "tsc --noEmit"
-    ,
-    "format": "prettier --write \"**/*.{js,ts,json}\""
-    ,
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{js,ts,json}\"",
     "format:check": "prettier --check \"**/*.{js,ts,json}\""
   },
   "dependencies": {

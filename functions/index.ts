@@ -8,7 +8,7 @@
 // 注意：根路徑要真正被本 Function 攔截，public/_routes.json 的 include 必須含 "/"
 //       （純靜態預設是 fail-open 會攔到，但本專案 _routes.json 用 include 白名單，需顯式列出）。
 
-import { serveDynamicIndex, type Env } from './lib/dynamic-index'
+import { serveDynamicIndex, type Env } from "./lib/dynamic-index";
 
 export const onRequest: PagesFunction<Env> = async ({ env }) =>
-  serveDynamicIndex(env)
+  serveDynamicIndex(env);

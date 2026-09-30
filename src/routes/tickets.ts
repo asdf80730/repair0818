@@ -1,11 +1,17 @@
 // src/routes/tickets.ts — 建單/列表/詳情/編輯/回報/留言/作廢/reopen/share-token（§4.3）
 // 註冊於全域 requireAuth() 之下（已開通使用者）
 
-import { Hono } from 'hono'
-import { ok, fail, zv } from '../lib/respond'
-import { requireAuth } from '../lib/auth'
-import { activeOptionLabel, activeVendor, makeTitle, validateOwnUnboundPhotos, optionAllowedInCategory } from '../lib/db'
-import { nowIso } from '../lib/time'
+import { Hono } from "hono";
+import { ok, fail, zv } from "../lib/respond";
+import { requireAuth } from "../lib/auth";
+import {
+  activeOptionLabel,
+  activeVendor,
+  makeTitle,
+  validateOwnUnboundPhotos,
+  optionAllowedInCategory,
+} from "../lib/db";
+import { nowIso } from "../lib/time";
 import {
   createTicketSchema,
   updateTicketSchema,
@@ -15,134 +21,182 @@ import {
   reopenTicketSchema,
   listTicketsQuerySchema,
   idParam,
-} from '../lib/validate'
-import type { Env } from '../lib/env'
+} from "../lib/validate";
+import type { Env } from "../lib/env";
 
-export const ticketRoutes = new Hono<Env>()
+export const ticketRoutes = new Hono<Env>();
 
 // POST /api/tickets — 三角色（§4.3）
-ticketRoutes.post('/', requireAuth(), zv('json', createTicketSchema), async (c) => {
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.post(
+  "/",
+  requireAuth(),
+  zv("json", createTicketSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  // 驗證 category/location 是 active 的 option，取 label 快照
-  const categoryLabel = await activeOptionLabel(c, 'category', body.category_id)
-  const locationLabel = await activeOptionLabel(c, 'location', body.location_id)
-  if (!categoryLabel || !locationLabel) {
-    return fail(c, 400, 'VALIDATION_ERROR', '類別或地點無效')
-  }
-
-  // 驗證 location 屬於 category 或為通用（v1.1.7 §4.1）
-  const allowed = await optionAllowedInCategory(c, body.location_id, body.category_id)
-  if (!allowed) {
-    return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於所選類別')
-  }
-
-  // 驗證 photo_ids：每張須 uploaded_by=本人 且 target_id IS NULL（§4.1）
-  const photoIds = body.photo_ids ?? []
-  if (photoIds.length > 0) {
-    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id)
-    if (!valid) {
-      return fail(c, 400, 'VALIDATION_ERROR', '照片無效或已被使用')
+    // 驗證 category/location 是 active 的 option，取 label 快照
+    const categoryLabel = await activeOptionLabel(
+      c,
+      "category",
+      body.category_id,
+    );
+    const locationLabel = await activeOptionLabel(
+      c,
+      "location",
+      body.location_id,
+    );
+    if (!categoryLabel || !locationLabel) {
+      return fail(c, 400, "VALIDATION_ERROR", "類別或地點無效");
     }
-  }
 
-  // G1（v1.1.14）：description 空字串/null/undefined 正規化為 null，與 PATCH 一致（避免存 '' 造成顯示/CSV 判斷差異）
-  const description = body.description == null || body.description.trim() === '' ? null : body.description
+    // 驗證 location 屬於 category 或為通用（v1.1.7 §4.1）
+    const allowed = await optionAllowedInCategory(
+      c,
+      body.location_id,
+      body.category_id,
+    );
+    if (!allowed) {
+      return fail(c, 400, "VALIDATION_ERROR", "此地點不屬於所選類別");
+    }
 
-  const now = nowIso()
-  const shareToken = crypto.randomUUID()
+    // 驗證 photo_ids：每張須 uploaded_by=本人 且 target_id IS NULL（§4.1）
+    const photoIds = body.photo_ids ?? [];
+    if (photoIds.length > 0) {
+      const valid = await validateOwnUnboundPhotos(c, photoIds, user.id);
+      if (!valid) {
+        return fail(c, 400, "VALIDATION_ERROR", "照片無效或已被使用");
+      }
+    }
 
-  // 先 insert ticket 拿 id
-  const insertResult = await c.env.DB.prepare(
-    `INSERT INTO tickets
+    // G1（v1.1.14）：description 空字串/null/undefined 正規化為 null，與 PATCH 一致（避免存 '' 造成顯示/CSV 判斷差異）
+    const description =
+      body.description == null || body.description.trim() === ""
+        ? null
+        : body.description;
+
+    const now = nowIso();
+    const shareToken = crypto.randomUUID();
+
+    // 先 insert ticket 拿 id
+    const insertResult = await c.env.DB.prepare(
+      `INSERT INTO tickets
       (category_id, category_label, location_id, location_label, description,
        status, share_token, created_by, created_at, last_activity_at)
      VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
-  ).bind(
-    body.category_id, categoryLabel,
-    body.location_id, locationLabel,
-    description,
-    shareToken, user.id, now, now,
-  ).run()
-  const ticketId = insertResult.meta.last_row_id
-
-  // 綁定照片（target_type='ticket'，target_id=ticketId）
-  // #2 CAS：加 AND target_id IS NULL，防止兩分頁同時送同張照片被第二次覆蓋綁定
-  if (photoIds.length > 0) {
-    const photoStmts = photoIds.map((pid) =>
-      c.env.DB.prepare(
-        'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL',
-      ).bind('ticket', ticketId, pid),
     )
-    const photoResults = await c.env.DB.batch(photoStmts)
-    // D1（v1.1.15）：逐筆檢查 meta.changes，不足回 400（防止 race 被搶走綁定）
-    if (photoResults.some((r) => r.meta.changes === 0)) {
-      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
-    }
-  }
+      .bind(
+        body.category_id,
+        categoryLabel,
+        body.location_id,
+        locationLabel,
+        description,
+        shareToken,
+        user.id,
+        now,
+        now,
+      )
+      .run();
+    const ticketId = insertResult.meta.last_row_id;
 
-  const title = makeTitle(categoryLabel, locationLabel, ticketId)
-  return ok(c, { id: ticketId, title, share_token: shareToken }, 201)
-})
+    // 綁定照片（target_type='ticket'，target_id=ticketId）
+    // #2 CAS：加 AND target_id IS NULL，防止兩分頁同時送同張照片被第二次覆蓋綁定
+    if (photoIds.length > 0) {
+      const photoStmts = photoIds.map((pid) =>
+        c.env.DB.prepare(
+          "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
+        ).bind("ticket", ticketId, pid),
+      );
+      const photoResults = await c.env.DB.batch(photoStmts);
+      // D1（v1.1.15）：逐筆檢查 meta.changes，不足回 400（防止 race 被搶走綁定）
+      if (photoResults.some((r) => r.meta.changes === 0)) {
+        return fail(
+          c,
+          400,
+          "VALIDATION_ERROR",
+          "部分照片已被其他案件綁定，請重新整理",
+        );
+      }
+    }
+
+    const title = makeTitle(categoryLabel, locationLabel, ticketId);
+    return ok(c, { id: ticketId, title, share_token: shareToken }, 201);
+  },
+);
 
 // GET /api/tickets — 三角色（§4.3）
-ticketRoutes.get('/', requireAuth(), zv('query', listTicketsQuerySchema), async (c) => {
-  const { status, category_id, page, limit } = c.req.valid('query')
+ticketRoutes.get(
+  "/",
+  requireAuth(),
+  zv("query", listTicketsQuerySchema),
+  async (c) => {
+    const { status, category_id, page, limit } = c.req.valid("query");
 
-  // status 允許值：active(預設)/open/in_progress/done/void/all
-  // active = open + in_progress
-  let where = 'WHERE 1=1'
-  const binds: unknown[] = []
-  if (status === 'active') {
-    where += " AND t.status IN ('open','in_progress')"
-  } else if (status !== 'all') {
-    where += ' AND t.status = ?'
-    binds.push(status)
-  }
-  if (category_id) {
-    where += ' AND t.category_id = ?'
-    binds.push(category_id)
-  }
+    // status 允許值：active(預設)/open/in_progress/done/void/all
+    // active = open + in_progress
+    let where = "WHERE 1=1";
+    const binds: unknown[] = [];
+    if (status === "active") {
+      where += " AND t.status IN ('open','in_progress')";
+    } else if (status !== "all") {
+      where += " AND t.status = ?";
+      binds.push(status);
+    }
+    if (category_id) {
+      where += " AND t.category_id = ?";
+      binds.push(category_id);
+    }
 
-  // 查 limit+1 筆判斷 has_more（§4.3）
-  const offset = (page - 1) * limit
-  const rows = await c.env.DB.prepare(
-    `SELECT t.id, t.category_label, t.location_label, t.status, t.description,
+    // 查 limit+1 筆判斷 has_more（§4.3）
+    const offset = (page - 1) * limit;
+    const rows = await c.env.DB.prepare(
+      `SELECT t.id, t.category_label, t.location_label, t.status, t.description,
             v.name AS vendor_name, v.active AS vendor_active, t.created_at, t.last_activity_at
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      ${where}
      ORDER BY t.last_activity_at DESC, t.id DESC
      LIMIT ? OFFSET ?`,
-  ).bind(...binds, limit + 1, offset).all<{
-    id: number; category_label: string; location_label: string; status: string; description: string | null
-    vendor_name: string | null; vendor_active: number | null; created_at: string; last_activity_at: string
-  }>()
+    )
+      .bind(...binds, limit + 1, offset)
+      .all<{
+        id: number;
+        category_label: string;
+        location_label: string;
+        status: string;
+        description: string | null;
+        vendor_name: string | null;
+        vendor_active: number | null;
+        created_at: string;
+        last_activity_at: string;
+      }>();
 
-  const items = rows.results.slice(0, limit).map((r) => ({
-    id: r.id,
-    title: makeTitle(r.category_label, r.location_label, r.id),
-    status: r.status,
-    category_label: r.category_label,
-    location_label: r.location_label,
-    description: r.description, // v1.1.13：卡片顯示維修內容
-    // G4：與詳情端一致，停用廠商後綴「（已停用）」
-    vendor_name: r.vendor_name
-      ? (r.vendor_active === 0 ? `${r.vendor_name}（已停用）` : r.vendor_name)
-      : null,
-    created_at: r.created_at,
-    last_activity_at: r.last_activity_at,
-  }))
+    const items = rows.results.slice(0, limit).map((r) => ({
+      id: r.id,
+      title: makeTitle(r.category_label, r.location_label, r.id),
+      status: r.status,
+      category_label: r.category_label,
+      location_label: r.location_label,
+      description: r.description, // v1.1.13：卡片顯示維修內容
+      // G4：與詳情端一致，停用廠商後綴「（已停用）」
+      vendor_name: r.vendor_name
+        ? r.vendor_active === 0
+          ? `${r.vendor_name}（已停用）`
+          : r.vendor_name
+        : null,
+      created_at: r.created_at,
+      last_activity_at: r.last_activity_at,
+    }));
 
-  const has_more = rows.results.length > limit
-  return ok(c, { items, page, limit, has_more })
-})
+    const has_more = rows.results.length > limit;
+    return ok(c, { items, page, limit, has_more });
+  },
+);
 
 // GET /api/tickets/:id — 三角色（§4.3）
-ticketRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')   // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
+ticketRoutes.get("/:id", requireAuth(), zv("param", idParam), async (c) => {
+  const { id } = c.req.valid("param");
+  const user = c.get("user"); // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
 
   // A1（v1.1.14）：ticket 本體 + 主照片一次查詢（json_group_array），減少 roundtrip
   // 坑：LEFT JOIN 無照片時 json_group_array 產 [{"id":null}]，用 CASE WHEN COUNT 空陣列防
@@ -158,18 +212,32 @@ ticketRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
      LEFT JOIN photos p ON p.target_type = 'ticket' AND p.target_id = t.id
      WHERE t.id = ?
      GROUP BY t.id`,
-  ).bind(id).first<{
-    id: number; category_id: number | null; category_label: string
-    location_id: number | null; location_label: string; description: string | null
-    status: string; vendor_id: number | null; created_by: number; vendor_name: string | null; vendor_active: number | null
-    created_at: string; last_activity_at: string; closed_at: string | null; share_token: string
-    amount: number | null; amount_at: string | null
-    photos_json: string
-  }>()
+  )
+    .bind(id)
+    .first<{
+      id: number;
+      category_id: number | null;
+      category_label: string;
+      location_id: number | null;
+      location_label: string;
+      description: string | null;
+      status: string;
+      vendor_id: number | null;
+      created_by: number;
+      vendor_name: string | null;
+      vendor_active: number | null;
+      created_at: string;
+      last_activity_at: string;
+      closed_at: string | null;
+      share_token: string;
+      amount: number | null;
+      amount_at: string | null;
+      photos_json: string;
+    }>();
 
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+  if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  const photos = JSON.parse(ticket.photos_json) as { id: number }[]
+  const photos = JSON.parse(ticket.photos_json) as { id: number }[];
 
   // A1（v1.1.14）：updates + 每筆 update 的照片一次查詢（json_group_array）
   // LEFT JOIN 無照片時 CASE WHEN 防 [{"id":null}]
@@ -184,27 +252,39 @@ ticketRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
      WHERE u.ticket_id = ?
      GROUP BY u.id
      ORDER BY u.created_at, u.id`,
-  ).bind(id).all<{
-    id: number; kind: string; status: string | null; note: string | null; amount: number | null
-    created_at: string; display_name: string | null; photo_urls_json: string
-  }>()
+  )
+    .bind(id)
+    .all<{
+      id: number;
+      kind: string;
+      status: string | null;
+      note: string | null;
+      amount: number | null;
+      created_at: string;
+      display_name: string | null;
+      photo_urls_json: string;
+    }>();
   const updates = updatesRes.results.map((u) => ({
     ...u,
-    photo_urls: JSON.parse(u.photo_urls_json).map((p: { photo_url: string }) => p.photo_url),
-  }))
+    photo_urls: JSON.parse(u.photo_urls_json).map(
+      (p: { photo_url: string }) => p.photo_url,
+    ),
+  }));
 
   const vendorName = ticket.vendor_name
     ? ticket.vendor_active === 0
       ? `${ticket.vendor_name}（已停用）`
       : ticket.vendor_name
-    : null
+    : null;
 
   return ok(c, {
     id: ticket.id,
     title: makeTitle(ticket.category_label, ticket.location_label, ticket.id),
     // E1 方案B：由後端算 can_edit，不回傳 created_by（更封閉）
-    can_edit: user.role === 'manager' || user.role === 'admin' ||
-              (user.role === 'committee' && ticket.created_by === user.id),
+    can_edit:
+      user.role === "manager" ||
+      user.role === "admin" ||
+      (user.role === "committee" && ticket.created_by === user.id),
     category_id: ticket.category_id,
     category_label: ticket.category_label,
     location_id: ticket.location_id,
@@ -229,375 +309,531 @@ ticketRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
       created_at: u.created_at,
       photo_urls: u.photo_urls,
     })),
-  })
-})
+  });
+});
 
 // PATCH /api/tickets/:id — D7：committee 僅自己建的單；manager/admin 全部（§4.3）
-ticketRoutes.patch('/:id', requireAuth(), zv('param', idParam), zv('json', updateTicketSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.patch(
+  "/:id",
+  requireAuth(),
+  zv("param", idParam),
+  zv("json", updateTicketSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  const ticket = await c.env.DB.prepare(
-    `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label,
+    const ticket = await c.env.DB.prepare(
+      `SELECT t.id, t.category_id, t.category_label, t.location_id, t.location_label,
             t.description, t.status, t.created_by, t.vendor_id,
             v.name AS vendor_name
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      WHERE t.id = ?`,
-  ).bind(id).first<{
-    id: number; category_id: number | null; category_label: string
-    location_id: number | null; location_label: string; description: string | null
-    status: string; created_by: number; vendor_id: number | null; vendor_name: string | null
-  }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    )
+      .bind(id)
+      .first<{
+        id: number;
+        category_id: number | null;
+        category_label: string;
+        location_id: number | null;
+        location_label: string;
+        description: string | null;
+        status: string;
+        created_by: number;
+        vendor_id: number | null;
+        vendor_name: string | null;
+      }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // D7：committee 僅自己建的單；manager/admin 全部
-  if (user.role === 'committee' && ticket.created_by !== user.id) {
-    return fail(c, 403, 'FORBIDDEN', '權限不足')
-  }
-
-  // 僅 open / in_progress 可編輯（已結案/作廢不可改）
-  if (ticket.status !== 'open' && ticket.status !== 'in_progress') {
-    return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可編輯')
-  }
-
-  // committee 即使編自己的單也不可改 vendor_id（§4.3）
-  if (user.role === 'committee' && body.vendor_id !== undefined) {
-    return fail(c, 403, 'FORBIDDEN', '管委會不可指派廠商')
-  }
-
-  // 收集變更欄位（before→after 摘要）
-  const changes: string[] = []
-
-  let newCategoryId = ticket.category_id
-  let newCategoryLabel = ticket.category_label
-  if (body.category_id !== undefined && body.category_id !== ticket.category_id) {
-    const label = await activeOptionLabel(c, 'category', body.category_id)
-    if (!label) return fail(c, 400, 'VALIDATION_ERROR', '類別無效')
-    changes.push(`類別 ${ticket.category_label}→${label}`)
-    newCategoryId = body.category_id
-    newCategoryLabel = label
-  }
-
-  let newLocationId: number | null = ticket.location_id
-  let newLocationLabel: string | null = ticket.location_label
-  if (body.location_id !== undefined && body.location_id !== ticket.location_id) {
-    const label = await activeOptionLabel(c, 'location', body.location_id)
-    if (!label) return fail(c, 400, 'VALIDATION_ERROR', '地點無效')
-    // v1.1.7：location 變動時驗證屬於 category（或通用）
-    const newCatId = body.category_id !== undefined ? body.category_id : (ticket.category_id ?? 0)
-    const allowed = await optionAllowedInCategory(c, body.location_id, newCatId)
-    if (!allowed) return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於所選類別')
-    changes.push(`地點 ${ticket.location_label}→${label}`)
-    newLocationId = body.location_id
-    newLocationLabel = label
-  } else if (body.category_id !== undefined && body.category_id !== ticket.category_id) {
-    // 只改 category、不動 location → 若 location 不屬於新 category 且非通用，回 400 要求重選（A1）
-    const locAllowed = await optionAllowedInCategory(c, ticket.location_id ?? 0, body.category_id)
-    if (!locAllowed) {
-      return fail(c, 400, 'VALIDATION_ERROR', '此地點不屬於新類別，請重新選擇地點')
-    }
-  }
-
-  let newDescription = ticket.description
-  if (body.description !== undefined && body.description !== (ticket.description ?? '')) {
-    changes.push('說明')
-    // H1：空字串/null 正規化為 null，保持 DB 欄位一致
-    newDescription = body.description === null || body.description.trim() === '' ? null : body.description
-  }
-
-  let newVendorId: number | null | undefined
-  if (body.vendor_id !== undefined && body.vendor_id !== ticket.vendor_id) {
-    let newVendorName: string | null = null
-    if (body.vendor_id !== null) {
-      const vendor = await activeVendor(c, body.vendor_id)
-      if (!vendor) return fail(c, 400, 'VALIDATION_ERROR', '廠商無效')
-      newVendorName = vendor.name
-    }
-    newVendorId = body.vendor_id
-    // G5：留痕帶舊→新廠商名（null 表示清空指派）
-  const oldName = ticket.vendor_name ?? '未指派'
-    changes.push(`廠商 ${oldName}→${newVendorName ?? '未指派'}`)
-  }
-
-  // 照片全量覆寫（v1.1.13）：body.photo_ids 提供時＝最終要保留的案件主照片清單
-  // 新增：未綁定且本人的 → 綁定到 ticket；移除：此 ticket 既有但不在新清單 → 解綁（target_id=NULL，R2 不刪）
-  let photoStmts: D1PreparedStatement[] = []
-  if (body.photo_ids !== undefined) {
-    const curRes = await c.env.DB.prepare(
-      "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ?",
-    ).bind(id).all<{ id: number }>()
-    const curIds = curRes.results.map((r) => r.id)
-
-    const newOnes = body.photo_ids.filter((pid) => !curIds.includes(pid))
-    const removed = curIds.filter((cid) => !body.photo_ids!.includes(cid))
-
-    // 新增的照片必須是本人上傳且未綁定
-    if (newOnes.length > 0) {
-      const valid = await validateOwnUnboundPhotos(c, newOnes, user.id)
-      if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '無效的照片')
+    // D7：committee 僅自己建的單；manager/admin 全部
+    if (user.role === "committee" && ticket.created_by !== user.id) {
+      return fail(c, 403, "FORBIDDEN", "權限不足");
     }
 
-    if (newOnes.length > 0) {
-      for (const pid of newOnes) {
-        photoStmts.push(c.env.DB.prepare(
-          'UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL',
-        ).bind('ticket', id, pid))
+    // 僅 open / in_progress 可編輯（已結案/作廢不可改）
+    if (ticket.status !== "open" && ticket.status !== "in_progress") {
+      return fail(c, 400, "VALIDATION_ERROR", "已結案或已作廢的案件不可編輯");
+    }
+
+    // committee 即使編自己的單也不可改 vendor_id（§4.3）
+    if (user.role === "committee" && body.vendor_id !== undefined) {
+      return fail(c, 403, "FORBIDDEN", "管委會不可指派廠商");
+    }
+
+    // 收集變更欄位（before→after 摘要）
+    const changes: string[] = [];
+
+    let newCategoryId = ticket.category_id;
+    let newCategoryLabel = ticket.category_label;
+    if (
+      body.category_id !== undefined &&
+      body.category_id !== ticket.category_id
+    ) {
+      const label = await activeOptionLabel(c, "category", body.category_id);
+      if (!label) return fail(c, 400, "VALIDATION_ERROR", "類別無效");
+      changes.push(`類別 ${ticket.category_label}→${label}`);
+      newCategoryId = body.category_id;
+      newCategoryLabel = label;
+    }
+
+    let newLocationId: number | null = ticket.location_id;
+    let newLocationLabel: string | null = ticket.location_label;
+    if (
+      body.location_id !== undefined &&
+      body.location_id !== ticket.location_id
+    ) {
+      const label = await activeOptionLabel(c, "location", body.location_id);
+      if (!label) return fail(c, 400, "VALIDATION_ERROR", "地點無效");
+      // v1.1.7：location 變動時驗證屬於 category（或通用）
+      const newCatId =
+        body.category_id !== undefined
+          ? body.category_id
+          : (ticket.category_id ?? 0);
+      const allowed = await optionAllowedInCategory(
+        c,
+        body.location_id,
+        newCatId,
+      );
+      if (!allowed)
+        return fail(c, 400, "VALIDATION_ERROR", "此地點不屬於所選類別");
+      changes.push(`地點 ${ticket.location_label}→${label}`);
+      newLocationId = body.location_id;
+      newLocationLabel = label;
+    } else if (
+      body.category_id !== undefined &&
+      body.category_id !== ticket.category_id
+    ) {
+      // 只改 category、不動 location → 若 location 不屬於新 category 且非通用，回 400 要求重選（A1）
+      const locAllowed = await optionAllowedInCategory(
+        c,
+        ticket.location_id ?? 0,
+        body.category_id,
+      );
+      if (!locAllowed) {
+        return fail(
+          c,
+          400,
+          "VALIDATION_ERROR",
+          "此地點不屬於新類別，請重新選擇地點",
+        );
       }
-      changes.push(`新增 ${newOnes.length} 張照片`)
     }
-    if (removed.length > 0) {
-      for (const pid of removed) {
-        photoStmts.push(c.env.DB.prepare(
-          'UPDATE photos SET target_type = NULL, target_id = NULL WHERE id = ? AND target_type = ? AND target_id = ?',
-        ).bind(pid, 'ticket', id))
+
+    let newDescription = ticket.description;
+    if (
+      body.description !== undefined &&
+      body.description !== (ticket.description ?? "")
+    ) {
+      changes.push("說明");
+      // H1：空字串/null 正規化為 null，保持 DB 欄位一致
+      newDescription =
+        body.description === null || body.description.trim() === ""
+          ? null
+          : body.description;
+    }
+
+    let newVendorId: number | null | undefined;
+    if (body.vendor_id !== undefined && body.vendor_id !== ticket.vendor_id) {
+      let newVendorName: string | null = null;
+      if (body.vendor_id !== null) {
+        const vendor = await activeVendor(c, body.vendor_id);
+        if (!vendor) return fail(c, 400, "VALIDATION_ERROR", "廠商無效");
+        newVendorName = vendor.name;
       }
-      changes.push(`移除 ${removed.length} 張照片`)
+      newVendorId = body.vendor_id;
+      // G5：留痕帶舊→新廠商名（null 表示清空指派）
+      const oldName = ticket.vendor_name ?? "未指派";
+      changes.push(`廠商 ${oldName}→${newVendorName ?? "未指派"}`);
     }
-  }
 
-  if (changes.length === 0) {
-    return ok(c, { id, updated: false, message: '無變更' })
-  }
+    // 照片全量覆寫（v1.1.13）：body.photo_ids 提供時＝最終要保留的案件主照片清單
+    // 新增：未綁定且本人的 → 綁定到 ticket；移除：此 ticket 既有但不在新清單 → 解綁（target_id=NULL，R2 不刪）
+    let photoStmts: D1PreparedStatement[] = [];
+    if (body.photo_ids !== undefined) {
+      const curRes = await c.env.DB.prepare(
+        "SELECT id FROM photos WHERE target_type = 'ticket' AND target_id = ?",
+      )
+        .bind(id)
+        .all<{ id: number }>();
+      const curIds = curRes.results.map((r) => r.id);
 
-  const now = nowIso()
-  const batchRes = await c.env.DB.batch([
-    c.env.DB.prepare(
-      `UPDATE tickets SET category_id = ?, category_label = ?, location_id = ?,
+      const newOnes = body.photo_ids.filter((pid) => !curIds.includes(pid));
+      const removed = curIds.filter((cid) => !body.photo_ids!.includes(cid));
+
+      // 新增的照片必須是本人上傳且未綁定
+      if (newOnes.length > 0) {
+        const valid = await validateOwnUnboundPhotos(c, newOnes, user.id);
+        if (!valid) return fail(c, 400, "VALIDATION_ERROR", "無效的照片");
+      }
+
+      if (newOnes.length > 0) {
+        for (const pid of newOnes) {
+          photoStmts.push(
+            c.env.DB.prepare(
+              "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
+            ).bind("ticket", id, pid),
+          );
+        }
+        changes.push(`新增 ${newOnes.length} 張照片`);
+      }
+      if (removed.length > 0) {
+        for (const pid of removed) {
+          photoStmts.push(
+            c.env.DB.prepare(
+              "UPDATE photos SET target_type = NULL, target_id = NULL WHERE id = ? AND target_type = ? AND target_id = ?",
+            ).bind(pid, "ticket", id),
+          );
+        }
+        changes.push(`移除 ${removed.length} 張照片`);
+      }
+    }
+
+    if (changes.length === 0) {
+      return ok(c, { id, updated: false, message: "無變更" });
+    }
+
+    const now = nowIso();
+    const batchRes = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE tickets SET category_id = ?, category_label = ?, location_id = ?,
          location_label = ?, description = ?, vendor_id = ?, last_activity_at = ?
        WHERE id = ?`,
-    ).bind(
-      newCategoryId, newCategoryLabel, newLocationId, newLocationLabel,
-      newDescription, newVendorId === undefined ? ticket.vendor_id : newVendorId, now, id,
-    ),
-    // system 時間軸留痕
-    c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+      ).bind(
+        newCategoryId,
+        newCategoryLabel,
+        newLocationId,
+        newLocationLabel,
+        newDescription,
+        newVendorId === undefined ? ticket.vendor_id : newVendorId,
+        now,
+        id,
+      ),
+      // system 時間軸留痕
+      c.env.DB.prepare(
+        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
        VALUES (?, ?, 'system', NULL, ?, ?)`,
-    ).bind(id, user.id, `已修改：${changes.join('；')}`, now),
-    ...photoStmts,
-  ])
-  // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-  // batch 順序：[ticketUpdate, systemInsert, ...photoStmts]，photo 在 index 2 起
-  const photoBatchResults = batchRes.slice(2)
-  if (photoBatchResults.some((r) => r.meta.changes === 0)) {
-    return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
-  }
+      ).bind(id, user.id, `已修改：${changes.join("；")}`, now),
+      ...photoStmts,
+    ]);
+    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+    // batch 順序：[ticketUpdate, systemInsert, ...photoStmts]，photo 在 index 2 起
+    const photoBatchResults = batchRes.slice(2);
+    if (photoBatchResults.some((r) => r.meta.changes === 0)) {
+      return fail(
+        c,
+        400,
+        "VALIDATION_ERROR",
+        "部分照片已被其他案件綁定，請重新整理",
+      );
+    }
 
-  return ok(c, { id, updated: true, changes })
-})
+    return ok(c, { id, updated: true, changes });
+  },
+);
 
 // POST /api/tickets/:id/updates — manager/admin（§4.3）
-ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', createUpdateSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.post(
+  "/:id/updates",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  zv("json", createUpdateSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  const ticket = await c.env.DB.prepare(
-    'SELECT id, status FROM tickets WHERE id = ?',
-  ).bind(id).first<{ id: number; status: string }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    const ticket = await c.env.DB.prepare(
+      "SELECT id, status FROM tickets WHERE id = ?",
+    )
+      .bind(id)
+      .first<{ id: number; status: string }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // 已結案（done）或作廢（void）不可回報（§4.3）
-  if (ticket.status === 'done' || ticket.status === 'void') {
-    return fail(c, 400, 'VALIDATION_ERROR', '已結案或已作廢的案件不可回報')
-  }
-
-  // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）；允許 open→done 直接結案。
-  //   in_progress→in_progress 允許（多次發包覆寫 amount，v1.1.13 語意鎖死，勿禁）。
-  const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-    open: ['in_progress', 'done'],
-    in_progress: ['in_progress', 'done'],
-  }
-  if (!(ALLOWED_TRANSITIONS[ticket.status] || []).includes(body.status)) {
-    return fail(c, 400, 'VALIDATION_ERROR', `狀態不可從 ${ticket.status} 轉為 ${body.status}`)
-  }
-
-  // 驗證照片
-  const photoIds = body.photo_ids ?? []
-  if (photoIds.length > 0) {
-    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id)
-    if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '照片無效或已被使用')
-  }
-
-  const now = nowIso()
-  const isDone = body.status === 'done'
-  // v1.1.13：發包金額只在 in_progress（已發包）時更新；done/其他狀態保留既有金額，不覆寫、不清空
-  // （done 若清空 amount，結案後發包金額消失；統計 month 基準也消失——語意鎖死，勿改回）
-  const isContracted = body.status === 'in_progress'
-  const amount = isContracted ? body.amount : null
-  const amountAt = isContracted ? now : null
-
-  // 多步驟寫入用 env.DB.batch()
-  const stmts = [
-    // 更新 ticket status（含金額/發包時間）
-    c.env.DB.prepare(
-      `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ?,
-         amount = COALESCE(?, amount), amount_at = COALESCE(?, amount_at) WHERE id = ?`,
-    ).bind(body.status, now, isDone ? now : null, isDone ? user.id : null, amount, amountAt, id),
-    // 寫入時間軸（kind=status），含發包金額
-    c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at, amount)
-       VALUES (?, ?, 'status', ?, ?, ?, ?)`,
-    ).bind(id, user.id, body.status, body.note ?? null, now, isContracted ? body.amount : null),
-  ]
-
-  // 多步驟寫入用 env.DB.batch()（原子），從 batch 回傳結果拿 last_row_id（避免並發回報時 ORDER BY DESC 抓錯）
-  const batchRes = await c.env.DB.batch(stmts)
-  const inserted = batchRes[1].meta.last_row_id as number | undefined
-  if (photoIds.length > 0 && inserted) {
-    const photoRes = await c.env.DB.batch(photoIds.map((pid) =>
-      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
-        .bind('update', inserted, pid),
-    ))
-    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-    if (photoRes.some((r) => r.meta.changes === 0)) {
-      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+    // 已結案（done）或作廢（void）不可回報（§4.3）
+    if (ticket.status === "done" || ticket.status === "void") {
+      return fail(c, 400, "VALIDATION_ERROR", "已結案或已作廢的案件不可回報");
     }
-  }
 
-  return ok(c, { updated: true, status: body.status })
-})
+    // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）；允許 open→done 直接結案。
+    //   in_progress→in_progress 允許（多次發包覆寫 amount，v1.1.13 語意鎖死，勿禁）。
+    const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+      open: ["in_progress", "done"],
+      in_progress: ["in_progress", "done"],
+    };
+    if (!(ALLOWED_TRANSITIONS[ticket.status] || []).includes(body.status)) {
+      return fail(
+        c,
+        400,
+        "VALIDATION_ERROR",
+        `狀態不可從 ${ticket.status} 轉為 ${body.status}`,
+      );
+    }
+
+    // 驗證照片
+    const photoIds = body.photo_ids ?? [];
+    if (photoIds.length > 0) {
+      const valid = await validateOwnUnboundPhotos(c, photoIds, user.id);
+      if (!valid) return fail(c, 400, "VALIDATION_ERROR", "照片無效或已被使用");
+    }
+
+    const now = nowIso();
+    const isDone = body.status === "done";
+    // v1.1.13：發包金額只在 in_progress（已發包）時更新；done/其他狀態保留既有金額，不覆寫、不清空
+    // （done 若清空 amount，結案後發包金額消失；統計 month 基準也消失——語意鎖死，勿改回）
+    const isContracted = body.status === "in_progress";
+    const amount = isContracted ? body.amount : null;
+    const amountAt = isContracted ? now : null;
+
+    // 多步驟寫入用 env.DB.batch()
+    const stmts = [
+      // 更新 ticket status（含金額/發包時間）
+      c.env.DB.prepare(
+        `UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, closed_by = ?,
+         amount = COALESCE(?, amount), amount_at = COALESCE(?, amount_at) WHERE id = ?`,
+      ).bind(
+        body.status,
+        now,
+        isDone ? now : null,
+        isDone ? user.id : null,
+        amount,
+        amountAt,
+        id,
+      ),
+      // 寫入時間軸（kind=status），含發包金額
+      c.env.DB.prepare(
+        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at, amount)
+       VALUES (?, ?, 'status', ?, ?, ?, ?)`,
+      ).bind(
+        id,
+        user.id,
+        body.status,
+        body.note ?? null,
+        now,
+        isContracted ? body.amount : null,
+      ),
+    ];
+
+    // 多步驟寫入用 env.DB.batch()（原子），從 batch 回傳結果拿 last_row_id（避免並發回報時 ORDER BY DESC 抓錯）
+    const batchRes = await c.env.DB.batch(stmts);
+    const inserted = batchRes[1].meta.last_row_id as number | undefined;
+    if (photoIds.length > 0 && inserted) {
+      const photoRes = await c.env.DB.batch(
+        photoIds.map((pid) =>
+          c.env.DB.prepare(
+            "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
+          ).bind("update", inserted, pid),
+        ),
+      );
+      // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+      if (photoRes.some((r) => r.meta.changes === 0)) {
+        return fail(
+          c,
+          400,
+          "VALIDATION_ERROR",
+          "部分照片已被其他案件綁定，請重新整理",
+        );
+      }
+    }
+
+    return ok(c, { updated: true, status: body.status });
+  },
+);
 
 // POST /api/tickets/:id/comments — 三角色（D1，§4.3）
-ticketRoutes.post('/:id/comments', requireAuth(), zv('param', idParam), zv('json', createCommentSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.post(
+  "/:id/comments",
+  requireAuth(),
+  zv("param", idParam),
+  zv("json", createCommentSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  const ticket = await c.env.DB.prepare(
-    'SELECT id, status FROM tickets WHERE id = ?',
-  ).bind(id).first<{ id: number; status: string }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    const ticket = await c.env.DB.prepare(
+      "SELECT id, status FROM tickets WHERE id = ?",
+    )
+      .bind(id)
+      .first<{ id: number; status: string }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // void 不可留言（§4.3）
-  if (ticket.status === 'void') {
-    return fail(c, 400, 'VALIDATION_ERROR', '已作廢的案件不可留言')
-  }
-
-  // 驗證照片
-  const photoIds = body.photo_ids ?? []
-  if (photoIds.length > 0) {
-    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id)
-    if (!valid) return fail(c, 400, 'VALIDATION_ERROR', '照片無效或已被使用')
-  }
-
-  const now = nowIso()
-
-  // D9：INSERT + UPDATE last_activity_at 用 env.DB.batch() 一次包住（原子，符合 CLAUDE 規則 2）
-  const batchRes = await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'comment', NULL, ?, ?)`,
-    ).bind(id, user.id, body.note, now),
-    c.env.DB.prepare(
-      'UPDATE tickets SET last_activity_at = ? WHERE id = ?',
-    ).bind(now, id),
-  ])
-  const updateId = batchRes[0].meta.last_row_id as number
-
-  // 留言照片一律 target_type='update' + target_id=留言 id
-  if (photoIds.length > 0) {
-    const photoRes = await c.env.DB.batch(photoIds.map((pid) =>
-      c.env.DB.prepare('UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL')
-        .bind('update', updateId, pid),
-    ))
-    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-    if (photoRes.some((r) => r.meta.changes === 0)) {
-      return fail(c, 400, 'VALIDATION_ERROR', '部分照片已被其他案件綁定，請重新整理')
+    // void 不可留言（§4.3）
+    if (ticket.status === "void") {
+      return fail(c, 400, "VALIDATION_ERROR", "已作廢的案件不可留言");
     }
-  }
 
-  return ok(c, { id: updateId, kind: 'comment' }, 201)
-})
+    // 驗證照片
+    const photoIds = body.photo_ids ?? [];
+    if (photoIds.length > 0) {
+      const valid = await validateOwnUnboundPhotos(c, photoIds, user.id);
+      if (!valid) return fail(c, 400, "VALIDATION_ERROR", "照片無效或已被使用");
+    }
+
+    const now = nowIso();
+
+    // D9：INSERT + UPDATE last_activity_at 用 env.DB.batch() 一次包住（原子，符合 CLAUDE 規則 2）
+    const batchRes = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+       VALUES (?, ?, 'comment', NULL, ?, ?)`,
+      ).bind(id, user.id, body.note, now),
+      c.env.DB.prepare(
+        "UPDATE tickets SET last_activity_at = ? WHERE id = ?",
+      ).bind(now, id),
+    ]);
+    const updateId = batchRes[0].meta.last_row_id as number;
+
+    // 留言照片一律 target_type='update' + target_id=留言 id
+    if (photoIds.length > 0) {
+      const photoRes = await c.env.DB.batch(
+        photoIds.map((pid) =>
+          c.env.DB.prepare(
+            "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
+          ).bind("update", updateId, pid),
+        ),
+      );
+      // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
+      if (photoRes.some((r) => r.meta.changes === 0)) {
+        return fail(
+          c,
+          400,
+          "VALIDATION_ERROR",
+          "部分照片已被其他案件綁定，請重新整理",
+        );
+      }
+    }
+
+    return ok(c, { id: updateId, kind: "comment" }, 201);
+  },
+);
 
 // POST /api/tickets/:id/void — manager/admin（§4.3）
-ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', voidTicketSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.post(
+  "/:id/void",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  zv("json", voidTicketSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  const ticket = await c.env.DB.prepare(
-    'SELECT id, status FROM tickets WHERE id = ?',
-  ).bind(id).first<{ id: number; status: string }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    const ticket = await c.env.DB.prepare(
+      "SELECT id, status FROM tickets WHERE id = ?",
+    )
+      .bind(id)
+      .first<{ id: number; status: string }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // 已結案或已作廢不可再作廢
-  if (ticket.status === 'done' || ticket.status === 'void') {
-    return fail(c, 400, 'VALIDATION_ERROR', '僅 open/in_progress 可作廢')
-  }
+    // 已結案或已作廢不可再作廢
+    if (ticket.status === "done" || ticket.status === "void") {
+      return fail(c, 400, "VALIDATION_ERROR", "僅 open/in_progress 可作廢");
+    }
 
-  const now = nowIso()
-  // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
-  // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT。
-  //   不能用 batch + INSERT...WHERE EXISTS：batch 內依序執行，UPDATE 先改狀態後 EXISTS 已讀到新狀態→永遠 false。
-  const upd = await c.env.DB.prepare(
-    "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
-  ).bind('void', now, user.id, now, id).run()
-  if (upd.meta.changes === 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
-  }
-  // 狀態確已變更，寫入時間軸（此處不再有競態——上一步已原子變更）
-  await c.env.DB.prepare(
-    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+    const now = nowIso();
+    // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
+    // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT。
+    //   不能用 batch + INSERT...WHERE EXISTS：batch 內依序執行，UPDATE 先改狀態後 EXISTS 已讀到新狀態→永遠 false。
+    const upd = await c.env.DB.prepare(
+      "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
+    )
+      .bind("void", now, user.id, now, id)
+      .run();
+    if (upd.meta.changes === 0) {
+      return fail(c, 400, "VALIDATION_ERROR", "案件狀態已變更，請重新整理");
+    }
+    // 狀態確已變更，寫入時間軸（此處不再有競態——上一步已原子變更）
+    await c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
      VALUES (?, ?, 'status', 'void', ?, ?)`,
-  ).bind(id, user.id, body.note ?? null, now).run()
+    )
+      .bind(id, user.id, body.note ?? null, now)
+      .run();
 
-  return ok(c, { status: 'void' })
-})
+    return ok(c, { status: "void" });
+  },
+);
 
 // POST /api/tickets/:id/reopen — 僅 admin（D2，§3）
-ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zv('param', idParam), zv('json', reopenTicketSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const user = c.get('user')
-  const body = c.req.valid('json')
+ticketRoutes.post(
+  "/:id/reopen",
+  requireAuth({ roles: ["admin"] }),
+  zv("param", idParam),
+  zv("json", reopenTicketSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const user = c.get("user");
+    const body = c.req.valid("json");
 
-  const ticket = await c.env.DB.prepare(
-    'SELECT id, status FROM tickets WHERE id = ?',
-  ).bind(id).first<{ id: number; status: string }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    const ticket = await c.env.DB.prepare(
+      "SELECT id, status FROM tickets WHERE id = ?",
+    )
+      .bind(id)
+      .first<{ id: number; status: string }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // 僅限 done / void 的案件
-  if (ticket.status !== 'done' && ticket.status !== 'void') {
-    return fail(c, 400, 'VALIDATION_ERROR', '僅已結案或已作廢的案件可重新開啟')
-  }
+    // 僅限 done / void 的案件
+    if (ticket.status !== "done" && ticket.status !== "void") {
+      return fail(
+        c,
+        400,
+        "VALIDATION_ERROR",
+        "僅已結案或已作廢的案件可重新開啟",
+      );
+    }
 
-  const now = nowIso()
-  const targetStatus = body.status ?? 'in_progress'
-  const prevStatusLabel = ticket.status === 'done' ? '已完成' : '已作廢'
+    const now = nowIso();
+    const targetStatus = body.status ?? "in_progress";
+    const prevStatusLabel = ticket.status === "done" ? "已完成" : "已作廢";
 
-  // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
-  // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT（理由同 void）
-  const upd = await c.env.DB.prepare(
-    "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
-  ).bind(targetStatus, now, id).run()
-  if (upd.meta.changes === 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '案件狀態已變更，請重新整理')
-  }
-  // 狀態確已變更，寫入時間軸
-  await c.env.DB.prepare(
-    `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
+    // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
+    // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT（理由同 void）
+    const upd = await c.env.DB.prepare(
+      "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
+    )
+      .bind(targetStatus, now, id)
+      .run();
+    if (upd.meta.changes === 0) {
+      return fail(c, 400, "VALIDATION_ERROR", "案件狀態已變更，請重新整理");
+    }
+    // 狀態確已變更，寫入時間軸
+    await c.env.DB.prepare(
+      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
      VALUES (?, ?, 'status', ?, ?, ?)`,
-  ).bind(id, user.id, targetStatus, `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ''}`, now).run()
+    )
+      .bind(
+        id,
+        user.id,
+        targetStatus,
+        `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ""}`,
+        now,
+      )
+      .run();
 
-  return ok(c, { status: targetStatus })
-})
+    return ok(c, { status: targetStatus });
+  },
+);
 
 // POST /api/tickets/:id/share-token — manager/admin（§4.3）
-ticketRoutes.post('/:id/share-token', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), async (c) => {
-  const { id } = c.req.valid('param')
+ticketRoutes.post(
+  "/:id/share-token",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  async (c) => {
+    const { id } = c.req.valid("param");
 
-  const ticket = await c.env.DB.prepare(
-    'SELECT id FROM tickets WHERE id = ?',
-  ).bind(id).first<{ id: number }>()
-  if (!ticket) return fail(c, 404, 'NOT_FOUND', '案件不存在')
+    const ticket = await c.env.DB.prepare("SELECT id FROM tickets WHERE id = ?")
+      .bind(id)
+      .first<{ id: number }>();
+    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-  // 重新產生 share_token，舊連結立即失效（§4.3）
-  const newToken = crypto.randomUUID()
-  await c.env.DB.prepare(
-    'UPDATE tickets SET share_token = ? WHERE id = ?',
-  ).bind(newToken, id).run()
+    // 重新產生 share_token，舊連結立即失效（§4.3）
+    const newToken = crypto.randomUUID();
+    await c.env.DB.prepare("UPDATE tickets SET share_token = ? WHERE id = ?")
+      .bind(newToken, id)
+      .run();
 
-  return ok(c, { share_url: `/share.html?token=${newToken}` })
-})
+    return ok(c, { share_url: `/share.html?token=${newToken}` });
+  },
+);

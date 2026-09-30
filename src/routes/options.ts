@@ -1,32 +1,43 @@
 // src/routes/options.ts — 選項管理（§4.6，D5：manager/admin）
 // 註冊於全域 requireAuth() 之下
 
-import { Hono } from 'hono'
-import { z } from 'zod'
-import { ok, fail, zv } from '../lib/respond'
-import { requireAuth } from '../lib/auth'
-import { createOptionSchema, updateOptionSchema, listOptionsQuerySchema, idParam } from '../lib/validate'
-import { nowIso } from '../lib/time'
-import { assertValidAssoc, assertCategoryIds, buildPatch } from '../lib/db'
-import type { Env } from '../lib/env'
+import { Hono } from "hono";
+import { z } from "zod";
+import { ok, fail, zv } from "../lib/respond";
+import { requireAuth } from "../lib/auth";
+import {
+  createOptionSchema,
+  updateOptionSchema,
+  listOptionsQuerySchema,
+  idParam,
+} from "../lib/validate";
+import { nowIso } from "../lib/time";
+import { assertValidAssoc, assertCategoryIds, buildPatch } from "../lib/db";
+import type { Env } from "../lib/env";
 
 // E5：D1 batch 對單次語句數有上限（約 100 條），把 INSERT OR IGNORE 分批（每批 ≤50），避免超出
-const ASSOC_BATCH_SIZE = 50
+const ASSOC_BATCH_SIZE = 50;
 async function writeOptionAssociations(
-  c: import('../lib/env').AppContext,
+  c: import("../lib/env").AppContext,
   optionId: number,
   categoryIds: number[],
 ): Promise<void> {
-  await c.env.DB.prepare('DELETE FROM option_categories WHERE option_id = ?').bind(optionId).run()
+  await c.env.DB.prepare("DELETE FROM option_categories WHERE option_id = ?")
+    .bind(optionId)
+    .run();
   for (let i = 0; i < categoryIds.length; i += ASSOC_BATCH_SIZE) {
-    const chunk = categoryIds.slice(i, i + ASSOC_BATCH_SIZE)
-    await c.env.DB.batch(chunk.map(cid => c.env.DB.prepare(
-      'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
-    ).bind(optionId, cid)))
+    const chunk = categoryIds.slice(i, i + ASSOC_BATCH_SIZE);
+    await c.env.DB.batch(
+      chunk.map((cid) =>
+        c.env.DB.prepare(
+          "INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)",
+        ).bind(optionId, cid),
+      ),
+    );
   }
 }
 
-export const optionRoutes = new Hono<Env>()
+export const optionRoutes = new Hono<Env>();
 
 // GET /api/options — 三種模式（§4.6 v1.1.7）
 // ?type=X                     → 僅 active（建單用，不附 category_ids）
@@ -34,21 +45,29 @@ export const optionRoutes = new Hono<Env>()
 // ?type=X&include_inactive=1  → 含停用，附 category_ids（P7 用，限 manager/admin）
 //   type=category             → 每個類別附 location_count/description_count（P7 類別列表）
 //   type=location|description & category_id=N → 回該類別所有項附 associated（P7 modal）
-optionRoutes.get('/', requireAuth(), zv('query', listOptionsQuerySchema), async (c) => {
-  const q = c.req.valid('query')
-  const user = c.get('user')
+optionRoutes.get(
+  "/",
+  requireAuth(),
+  zv("query", listOptionsQuerySchema),
+  async (c) => {
+    const q = c.req.valid("query");
+    const user = c.get("user");
 
-  // include_inactive 限 manager/admin（同路由雙權限，handler 內判）
-  if (q.include_inactive && user.role !== 'manager' && user.role !== 'admin') {
-    return fail(c, 403, 'FORBIDDEN', '權限不足')
-  }
+    // include_inactive 限 manager/admin（同路由雙權限，handler 內判）
+    if (
+      q.include_inactive &&
+      user.role !== "manager" &&
+      user.role !== "admin"
+    ) {
+      return fail(c, 403, "FORBIDDEN", "權限不足");
+    }
 
-  const activeClause = q.include_inactive ? '' : ' AND o.active = 1'
+    const activeClause = q.include_inactive ? "" : " AND o.active = 1";
 
-  // 模式一：type=category 且 include_inactive → 類別列表附關聯計數（P7）
-  if (q.type === 'category' && q.include_inactive) {
-    const rows = await c.env.DB.prepare(
-      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+    // 模式一：type=category 且 include_inactive → 類別列表附關聯計數（P7）
+    if (q.type === "category" && q.include_inactive) {
+      const rows = await c.env.DB.prepare(
+        `SELECT o.id, o.type, o.label, o.sort_order, o.active,
         (SELECT COUNT(*) FROM option_categories oc
           JOIN options oo ON oo.id = oc.option_id
          WHERE oc.category_id = o.id AND oo.type = 'location') AS location_count,
@@ -57,37 +76,62 @@ optionRoutes.get('/', requireAuth(), zv('query', listOptionsQuerySchema), async 
          WHERE oc.category_id = o.id AND oo.type = 'description') AS description_count
        FROM options o WHERE o.type = 'category'${activeClause}
        ORDER BY o.sort_order, o.id`,
-    ).all<{ id: number; type: string; label: string; sort_order: number; active: number; location_count: number; description_count: number }>()
-    return ok(c, rows.results)
-  }
+      ).all<{
+        id: number;
+        type: string;
+        label: string;
+        sort_order: number;
+        active: number;
+        location_count: number;
+        description_count: number;
+      }>();
+      return ok(c, rows.results);
+    }
 
-  // 模式二：type=location|description & category_id & include_inactive → 該類別所有項附 associated（P7 modal）
-  if (q.type !== 'category' && q.category_id !== undefined && q.include_inactive) {
-    // 驗證類別存在
-    const cat = await c.env.DB.prepare(
-      "SELECT id FROM options WHERE id = ? AND type = 'category'",
-    ).bind(q.category_id).first()
-    if (!cat) return fail(c, 400, 'VALIDATION_ERROR', '類別不存在')
-    const rows = await c.env.DB.prepare(
-      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+    // 模式二：type=location|description & category_id & include_inactive → 該類別所有項附 associated（P7 modal）
+    if (
+      q.type !== "category" &&
+      q.category_id !== undefined &&
+      q.include_inactive
+    ) {
+      // 驗證類別存在
+      const cat = await c.env.DB.prepare(
+        "SELECT id FROM options WHERE id = ? AND type = 'category'",
+      )
+        .bind(q.category_id)
+        .first();
+      if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
+      const rows = await c.env.DB.prepare(
+        `SELECT o.id, o.type, o.label, o.sort_order, o.active,
         EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?) AS associated
        FROM options o WHERE o.type = ?${activeClause}
        ORDER BY o.sort_order, o.id`,
-    ).bind(q.category_id, q.type).all<{ id: number; type: string; label: string; sort_order: number; active: number; associated: number }>()
-    return ok(c, rows.results)
-  }
+      )
+        .bind(q.category_id, q.type)
+        .all<{
+          id: number;
+          type: string;
+          label: string;
+          sort_order: number;
+          active: number;
+          associated: number;
+        }>();
+      return ok(c, rows.results);
+    }
 
-  // 模式三：建單用過濾（category_id 關聯＋通用）
-  let sql: string
-  let binds: unknown[]
-  if (q.category_id !== undefined) {
-    // 驗證 category_id 存在且 type=category（不存在 → 400 非回空）
-    const cat = await c.env.DB.prepare(
-      "SELECT id FROM options WHERE id = ? AND type = 'category'",
-    ).bind(q.category_id).first()
-    if (!cat) return fail(c, 400, 'VALIDATION_ERROR', '類別不存在')
-    // 該類別關聯＋通用（EXISTS/NOT EXISTS 防重複列）
-    sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
+    // 模式三：建單用過濾（category_id 關聯＋通用）
+    let sql: string;
+    let binds: unknown[];
+    if (q.category_id !== undefined) {
+      // 驗證 category_id 存在且 type=category（不存在 → 400 非回空）
+      const cat = await c.env.DB.prepare(
+        "SELECT id FROM options WHERE id = ? AND type = 'category'",
+      )
+        .bind(q.category_id)
+        .first();
+      if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
+      // 該類別關聯＋通用（EXISTS/NOT EXISTS 防重複列）
+      sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
       FROM options o
       WHERE o.type = ? AND o.active = 1
         AND (
@@ -96,182 +140,275 @@ optionRoutes.get('/', requireAuth(), zv('query', listOptionsQuerySchema), async 
           OR NOT EXISTS (SELECT 1 FROM option_categories oc2
                          WHERE oc2.option_id = o.id)
         )
-      ORDER BY o.sort_order, o.id`
-    binds = [q.type, q.category_id]
-  } else {
-    sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
+      ORDER BY o.sort_order, o.id`;
+      binds = [q.type, q.category_id];
+    } else {
+      sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
       FROM options o
       WHERE o.type = ?${activeClause}
-      ORDER BY o.sort_order, o.id`
-    binds = [q.type]
-  }
-
-  const rows = await c.env.DB.prepare(sql).bind(...binds).all<{ id: number; type: string; label: string; sort_order: number; active: number }>()
-
-  // include_inactive 模式附 category_ids（P7 預先勾選）
-  if (q.include_inactive) {
-    const ids = rows.results.map(r => r.id)
-    const assoc = new Map<number, number[]>()
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',')
-      const assocRows = await c.env.DB.prepare(
-        `SELECT option_id, category_id FROM option_categories WHERE option_id IN (${placeholders})`,
-      ).bind(...ids).all<{ option_id: number; category_id: number }>()
-      for (const a of assocRows.results) {
-        if (!assoc.has(a.option_id)) assoc.set(a.option_id, [])
-        assoc.get(a.option_id)!.push(a.category_id)
-      }
+      ORDER BY o.sort_order, o.id`;
+      binds = [q.type];
     }
-    return ok(c, rows.results.map(r => ({ ...r, category_ids: assoc.get(r.id) ?? [] })))
-  }
 
-  return ok(c, rows.results)
-})
+    const rows = await c.env.DB.prepare(sql)
+      .bind(...binds)
+      .all<{
+        id: number;
+        type: string;
+        label: string;
+        sort_order: number;
+        active: number;
+      }>();
+
+    // include_inactive 模式附 category_ids（P7 預先勾選）
+    if (q.include_inactive) {
+      const ids = rows.results.map((r) => r.id);
+      const assoc = new Map<number, number[]>();
+      if (ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(",");
+        const assocRows = await c.env.DB.prepare(
+          `SELECT option_id, category_id FROM option_categories WHERE option_id IN (${placeholders})`,
+        )
+          .bind(...ids)
+          .all<{ option_id: number; category_id: number }>();
+        for (const a of assocRows.results) {
+          if (!assoc.has(a.option_id)) assoc.set(a.option_id, []);
+          assoc.get(a.option_id)!.push(a.category_id);
+        }
+      }
+      return ok(
+        c,
+        rows.results.map((r) => ({
+          ...r,
+          category_ids: assoc.get(r.id) ?? [],
+        })),
+      );
+    }
+
+    return ok(c, rows.results);
+  },
+);
 
 // GET /api/options/catalog — 建單用：一次抓完所有選項＋關聯（v1.1.7）
 // 回傳 { categories:[], locations:[{id,label,category_ids}], descriptions:[{id,label,category_ids}] }
 // 前端本地過濾，避免每次換類別都重新請求
-optionRoutes.get('/catalog', requireAuth(), async (c) => {
-  const options = (await c.env.DB.prepare(
-    "SELECT id, type, label, sort_order FROM options WHERE active = 1 ORDER BY type, sort_order, id",
-  ).all<{ id: number; type: string; label: string; sort_order: number }>()).results
+optionRoutes.get("/catalog", requireAuth(), async (c) => {
+  const options = (
+    await c.env.DB.prepare(
+      "SELECT id, type, label, sort_order FROM options WHERE active = 1 ORDER BY type, sort_order, id",
+    ).all<{ id: number; type: string; label: string; sort_order: number }>()
+  ).results;
 
-  const assoc = new Map<number, number[]>()
+  const assoc = new Map<number, number[]>();
   const assocRows = await c.env.DB.prepare(
-    'SELECT option_id, category_id FROM option_categories',
-  ).all<{ option_id: number; category_id: number }>()
+    "SELECT option_id, category_id FROM option_categories",
+  ).all<{ option_id: number; category_id: number }>();
   for (const a of assocRows.results) {
-    if (!assoc.has(a.option_id)) assoc.set(a.option_id, [])
-    assoc.get(a.option_id)!.push(a.category_id)
+    if (!assoc.has(a.option_id)) assoc.set(a.option_id, []);
+    assoc.get(a.option_id)!.push(a.category_id);
   }
 
-  const categories = options.filter(o => o.type === 'category').map(o => ({ id: o.id, label: o.label }))
-  const locations = options.filter(o => o.type === 'location').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
-  const descriptions = options.filter(o => o.type === 'description').map(o => ({ id: o.id, label: o.label, category_ids: assoc.get(o.id) ?? [] }))
-  const comment_descs = options.filter(o => o.type === 'comment_desc').map(o => ({ id: o.id, label: o.label }))
+  const categories = options
+    .filter((o) => o.type === "category")
+    .map((o) => ({ id: o.id, label: o.label }));
+  const locations = options
+    .filter((o) => o.type === "location")
+    .map((o) => ({
+      id: o.id,
+      label: o.label,
+      category_ids: assoc.get(o.id) ?? [],
+    }));
+  const descriptions = options
+    .filter((o) => o.type === "description")
+    .map((o) => ({
+      id: o.id,
+      label: o.label,
+      category_ids: assoc.get(o.id) ?? [],
+    }));
+  const comment_descs = options
+    .filter((o) => o.type === "comment_desc")
+    .map((o) => ({ id: o.id, label: o.label }));
 
-  return ok(c, { categories, locations, descriptions, comment_descs })
-})
+  return ok(c, { categories, locations, descriptions, comment_descs });
+});
 
 // POST /api/options — manager/admin（§4.6）
 // upsert：兩階段寫入（先取 id 再寫關聯），為 CLAUDE.md 規則 2 明文例外
-optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zv('json', createOptionSchema), async (c) => {
-  const body = c.req.valid('json')
-  const now = nowIso()
-  const categoryIds = body.category_ids !== undefined ? [...new Set(body.category_ids)] : undefined
+optionRoutes.post(
+  "/",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("json", createOptionSchema),
+  async (c) => {
+    const body = c.req.valid("json");
+    const now = nowIso();
+    const categoryIds =
+      body.category_ids !== undefined
+        ? [...new Set(body.category_ids)]
+        : undefined;
 
-  // 第 0 趟：assertCategoryIds（純讀，任何寫入之前）——POST 的 option 是新增，type 由 createOptionSchema 保證
-  if (categoryIds !== undefined && categoryIds.length > 0) {
-    const check = await assertCategoryIds(c, categoryIds)
-    if (!check.ok) return fail(c, 400, 'VALIDATION_ERROR', check.reason)
-  }
+    // 第 0 趟：assertCategoryIds（純讀，任何寫入之前）——POST 的 option 是新增，type 由 createOptionSchema 保證
+    if (categoryIds !== undefined && categoryIds.length > 0) {
+      const check = await assertCategoryIds(c, categoryIds);
+      if (!check.ok) return fail(c, 400, "VALIDATION_ERROR", check.reason);
+    }
 
-  // 第 1 趟：先查是否已存在（決定 reactivated）
-  const existing = await c.env.DB.prepare(
-    'SELECT id FROM options WHERE type = ? AND label = ?',
-  ).bind(body.type, body.label).first<{ id: number }>()
-  const reactivated = !!existing
+    // 第 1 趟：先查是否已存在（決定 reactivated）
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM options WHERE type = ? AND label = ?",
+    )
+      .bind(body.type, body.label)
+      .first<{ id: number }>();
+    const reactivated = !!existing;
 
-  // upsert 取 id（RETURNING，upsert 命中既有列時 meta.last_row_id 不可靠）
-  const inserted = await c.env.DB.prepare(
-    `INSERT INTO options (type, label, sort_order, active, created_at) VALUES (?, ?, ?, 1, ?)
+    // upsert 取 id（RETURNING，upsert 命中既有列時 meta.last_row_id 不可靠）
+    const inserted = await c.env.DB.prepare(
+      `INSERT INTO options (type, label, sort_order, active, created_at) VALUES (?, ?, ?, 1, ?)
      ON CONFLICT(type, label) DO UPDATE SET active = 1, sort_order = excluded.sort_order
      RETURNING id`,
-  ).bind(body.type, body.label, body.sort_order, now).first<{ id: number }>()
-  const optionId = inserted!.id
+    )
+      .bind(body.type, body.label, body.sort_order, now)
+      .first<{ id: number }>();
+    const optionId = inserted!.id;
 
-  // 第 2 趟：寫關聯（僅當 category_ids 有值或 []）
-  if (categoryIds !== undefined) {
-    await writeOptionAssociations(c, optionId, categoryIds)
-  }
+    // 第 2 趟：寫關聯（僅當 category_ids 有值或 []）
+    if (categoryIds !== undefined) {
+      await writeOptionAssociations(c, optionId, categoryIds);
+    }
 
-  return ok(c, { id: optionId, reactivated }, reactivated ? 200 : 201)
-})
+    return ok(c, { id: optionId, reactivated }, reactivated ? 200 : 201);
+  },
+);
 
 // POST /api/options/:id/assoc — 以類別為中心設定關聯（v1.1.7）
 // :id 是 category，body { type: 'location'|'description', option_ids: number[] }
 // 全量覆寫該類別對該 type 的關聯（P7 類別 modal 用）
-optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', z.object({
-  type: z.enum(['location', 'description']),
-  option_ids: z.array(z.number().int().positive()).max(200),
-})), async (c) => {
-  const { id } = c.req.valid('param')
-  const body = c.req.valid('json')
+optionRoutes.post(
+  "/:id/assoc",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  zv(
+    "json",
+    z.object({
+      type: z.enum(["location", "description"]),
+      option_ids: z.array(z.number().int().positive()).max(200),
+    }),
+  ),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
 
-  // 驗證 :id 是 category
-  const cat = await c.env.DB.prepare(
-    "SELECT id FROM options WHERE id = ? AND type = 'category'",
-  ).bind(id).first()
-  if (!cat) return fail(c, 404, 'NOT_FOUND', '類別不存在')
+    // 驗證 :id 是 category
+    const cat = await c.env.DB.prepare(
+      "SELECT id FROM options WHERE id = ? AND type = 'category'",
+    )
+      .bind(id)
+      .first();
+    if (!cat) return fail(c, 404, "NOT_FOUND", "類別不存在");
 
-  const optionIds = [...new Set(body.option_ids)]
+    const optionIds = [...new Set(body.option_ids)];
 
-  // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前；B4：IN 分塊避免超綁定上限）
-  if (optionIds.length > 0) {
-    const IN_CHUNK = 50
-    for (let i = 0; i < optionIds.length; i += IN_CHUNK) {
-      const chunk = optionIds.slice(i, i + IN_CHUNK)
-      const placeholders = chunk.map(() => '?').join(',')
-      const opts = await c.env.DB.prepare(
-        `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
-      ).bind(...chunk, body.type).all<{ id: number }>()
-      if (opts.results.length !== chunk.length) return fail(c, 400, 'VALIDATION_ERROR', `option_ids 含非${body.type}`)
+    // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前；B4：IN 分塊避免超綁定上限）
+    if (optionIds.length > 0) {
+      const IN_CHUNK = 50;
+      for (let i = 0; i < optionIds.length; i += IN_CHUNK) {
+        const chunk = optionIds.slice(i, i + IN_CHUNK);
+        const placeholders = chunk.map(() => "?").join(",");
+        const opts = await c.env.DB.prepare(
+          `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
+        )
+          .bind(...chunk, body.type)
+          .all<{ id: number }>();
+        if (opts.results.length !== chunk.length)
+          return fail(
+            c,
+            400,
+            "VALIDATION_ERROR",
+            `option_ids 含非${body.type}`,
+          );
+      }
     }
-  }
 
-  // 全量覆寫：先刪該類別對該 type 的所有關聯，再分批插入（E5：避免超過 D1 batch 語句上限）
-  await c.env.DB.prepare(
-    `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
+    // 全量覆寫：先刪該類別對該 type 的所有關聯，再分批插入（E5：避免超過 D1 batch 語句上限）
+    await c.env.DB.prepare(
+      `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
       (SELECT id FROM options WHERE type = ?)`,
-  ).bind(id, body.type).run()
-  for (let i = 0; i < optionIds.length; i += ASSOC_BATCH_SIZE) {
-    const chunk = optionIds.slice(i, i + ASSOC_BATCH_SIZE)
-    await c.env.DB.batch(chunk.map(oid => c.env.DB.prepare(
-      'INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)',
-    ).bind(oid, id)))
-  }
+    )
+      .bind(id, body.type)
+      .run();
+    for (let i = 0; i < optionIds.length; i += ASSOC_BATCH_SIZE) {
+      const chunk = optionIds.slice(i, i + ASSOC_BATCH_SIZE);
+      await c.env.DB.batch(
+        chunk.map((oid) =>
+          c.env.DB.prepare(
+            "INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)",
+          ).bind(oid, id),
+        ),
+      );
+    }
 
-  return ok(c, { category_id: id, type: body.type, count: optionIds.length })
-})
+    return ok(c, { category_id: id, type: body.type, count: optionIds.length });
+  },
+);
 
 // PATCH /api/options/:id — manager/admin（§4.6）
-optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', updateOptionSchema), async (c) => {
-  const { id } = c.req.valid('param')
-  const body = c.req.valid('json')
+optionRoutes.patch(
+  "/:id",
+  requireAuth({ roles: ["manager", "admin"] }),
+  zv("param", idParam),
+  zv("json", updateOptionSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
 
-  const existing = await c.env.DB.prepare(
-    'SELECT id, type, label FROM options WHERE id = ?',
-  ).bind(id).first<{ id: number; type: string; label: string }>()
-  if (!existing) return fail(c, 404, 'NOT_FOUND', '選項不存在')
+    const existing = await c.env.DB.prepare(
+      "SELECT id, type, label FROM options WHERE id = ?",
+    )
+      .bind(id)
+      .first<{ id: number; type: string; label: string }>();
+    if (!existing) return fail(c, 404, "NOT_FOUND", "選項不存在");
 
-  const categoryIds = body.category_ids !== undefined ? [...new Set(body.category_ids)] : undefined
+    const categoryIds =
+      body.category_ids !== undefined
+        ? [...new Set(body.category_ids)]
+        : undefined;
 
-  // D4：改 label 前檢查是否被其他 id 占用（options 有 UNIQUE(type,label) 約束），避免 500
-  if (body.label !== undefined && body.label !== existing.label) {
-    const dup = await c.env.DB.prepare(
-      'SELECT id FROM options WHERE type = ? AND label = ? AND id != ?',
-    ).bind(existing.type, body.label, id).first<{ id: number }>()
-    if (dup) return fail(c, 400, 'VALIDATION_ERROR', '標籤已存在')
-  }
+    // D4：改 label 前檢查是否被其他 id 占用（options 有 UNIQUE(type,label) 約束），避免 500
+    if (body.label !== undefined && body.label !== existing.label) {
+      const dup = await c.env.DB.prepare(
+        "SELECT id FROM options WHERE type = ? AND label = ? AND id != ?",
+      )
+        .bind(existing.type, body.label, id)
+        .first<{ id: number }>();
+      if (dup) return fail(c, 400, "VALIDATION_ERROR", "標籤已存在");
+    }
 
-  // 動態組 UPDATE（只更新提供的欄位）
-  const { sets, binds } = buildPatch({ label: body.label, sort_order: body.sort_order, active: body.active })
+    // 動態組 UPDATE（只更新提供的欄位）
+    const { sets, binds } = buildPatch({
+      label: body.label,
+      sort_order: body.sort_order,
+      active: body.active,
+    });
 
-  // 關聯寫入（先刪後插，僅當 category_ids 有值或 []）
-  if (categoryIds !== undefined) {
-    // assertValidAssoc 在任何寫入之前（PATCH 靠它擋 category 帶 category_ids）
-    const check = await assertValidAssoc(c, id, categoryIds)
-    if (!check.ok) return fail(c, 400, 'VALIDATION_ERROR', check.reason)
-  }
+    // 關聯寫入（先刪後插，僅當 category_ids 有值或 []）
+    if (categoryIds !== undefined) {
+      // assertValidAssoc 在任何寫入之前（PATCH 靠它擋 category 帶 category_ids）
+      const check = await assertValidAssoc(c, id, categoryIds);
+      if (!check.ok) return fail(c, 400, "VALIDATION_ERROR", check.reason);
+    }
 
-  if (sets.length > 0) {
-    binds.push(id)
-    await c.env.DB.prepare(`UPDATE options SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
-  }
+    if (sets.length > 0) {
+      binds.push(id);
+      await c.env.DB.prepare(
+        `UPDATE options SET ${sets.join(", ")} WHERE id = ?`,
+      )
+        .bind(...binds)
+        .run();
+    }
 
-  if (categoryIds !== undefined) {
-    await writeOptionAssociations(c, id, categoryIds)
-  }
+    if (categoryIds !== undefined) {
+      await writeOptionAssociations(c, id, categoryIds);
+    }
 
-  return ok(c, { id, updated: sets.length > 0 || categoryIds !== undefined })
-})
+    return ok(c, { id, updated: sets.length > 0 || categoryIds !== undefined });
+  },
+);

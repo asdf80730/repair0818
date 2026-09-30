@@ -15,32 +15,32 @@
 //    top-level 求值會立即拋 ReferenceError: process is not defined，導致整支 Function 發布失敗。
 
 export interface Env {
-  DB: D1Database
-  PHOTOS: R2Bucket
-  LINE_CHANNEL_ID: string
-  JWT_SECRET: string
-  CF_PAGES_COMMIT_SHA?: string // Pages 部署注入；optional（dev 環境無此變數 → fallback 'dev'）
+  DB: D1Database;
+  PHOTOS: R2Bucket;
+  LINE_CHANNEL_ID: string;
+  JWT_SECRET: string;
+  CF_PAGES_COMMIT_SHA?: string; // Pages 部署注入；optional（dev 環境無此變數 → fallback 'dev'）
 }
 
 // 安全標頭固定，於模組層定型
 const INDEX_HEADERS = {
-  'Content-Type': 'text/html; charset=utf-8',
+  "Content-Type": "text/html; charset=utf-8",
   // 與 public/_headers 對 /index.html、/* 的設定保持一致
-  'Cache-Control': 'no-cache',
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
-}
+  "Cache-Control": "no-cache",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+};
 
 // C1：模板依 version 快取（同一部署僅組裝一次）
-let cachedVersion = ''
-let cachedHtml = ''
+let cachedVersion = "";
+let cachedHtml = "";
 
 export function serveDynamicIndex(env: Env): Response {
   // 執行時從 Env 讀 SHA（dev 環境無此變數 → fallback 'dev'）
-  const version = (env.CF_PAGES_COMMIT_SHA || 'dev').slice(0, 12)
+  const version = (env.CF_PAGES_COMMIT_SHA || "dev").slice(0, 12);
 
   if (!cachedHtml || cachedVersion !== version) {
-    cachedVersion = version
+    cachedVersion = version;
     cachedHtml = `<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -70,8 +70,8 @@ export function serveDynamicIndex(env: Env): Response {
   <!-- 主系統邏輯 -->
   <script src="/app.js?v=${version}"></script>
 </body>
-</html>`
+</html>`;
   }
 
-  return new Response(cachedHtml, { headers: INDEX_HEADERS })
+  return new Response(cachedHtml, { headers: INDEX_HEADERS });
 }
