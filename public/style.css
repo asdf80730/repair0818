@@ -9,6 +9,11 @@
   --border: #e4e4e7;
   --bg: #fafafa;
   --card: #fff;
+  /* v1.1.26：補齊 previously-fallback-only 變數 */
+  --muted: #6f6f6f;
+  --primary: #0091ff;
+  --gray-light: #e0e0e0;
+  --text: #222;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -207,6 +212,10 @@ button { cursor: pointer; }
   font-size: 14px;
   min-height: 44px;
 }
+.nav-item.active {
+  color: var(--blue);
+  font-weight: 600;
+}
 /* 其他 */
 .loading, .error { text-align: center; padding: 40px 16px; color: var(--gray); }
 
@@ -271,6 +280,17 @@ button { cursor: pointer; }
 
 /* 空狀態（Empty State）：列表無資料統一提示 */
 .empty-state { text-align: center; color: var(--gray); padding: 32px 16px; font-size: 14px; }
+.empty {
+  text-align: center;
+  color: var(--gray);
+  padding: 32px 16px;
+  font-size: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-wrap .spinner {
+    animation-duration: 1.6s;
+  }
+}
 
 /* v1.1.12：各類別金額統計 */
 .amount-box { margin: 8px 0 16px; }

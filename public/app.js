@@ -256,7 +256,7 @@ function merr(code, message) {
 }
 // 狀態→顯示 label 單一定義
 const STATUS_LABEL = {
-  open: "待處理",
+  open: "詢價中", // SPEC §4.7.1 example
   in_progress: "已發包",
   done: "已完成",
   void: "已作廢",
@@ -1015,6 +1015,7 @@ function attachPhotoPicker(photos, initialPhotos = []) {
       el("button", {
         class: "thumb-del",
         text: "✕",
+        "aria-label": "刪除照片",
         onclick: () => {
           const idx = photos.indexOf(pid);
           if (idx >= 0) photos.splice(idx, 1);
@@ -1062,6 +1063,37 @@ function attachPhotoPicker(photos, initialPhotos = []) {
 function hasSegment(cur, label) {
   if (!cur) return false;
   return cur.split("、").some((s) => s.trim() === label);
+}
+
+// v1.1.26：modal 通用行為 — ESC 關閉 + Tab 循環
+function initModal(mask, firstFocusable, closeFn) {
+  document.body.appendChild(mask);
+  mask.setAttribute("role", "dialog");
+  mask.setAttribute("aria-modal", "true");
+  mask.tabIndex = -1;
+  mask.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (closeFn) closeFn();
+      else mask.remove();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const nodes = [
+      ...mask.querySelectorAll("input, textarea, select, button, [tabindex]"),
+    ].filter((n) => !n.disabled);
+    if (nodes.length === 0) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    const act = document.activeElement;
+    if (e.shiftKey && (act === first || !mask.contains(act))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && act === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+  setTimeout(() => firstFocusable && firstFocusable.focus(), 0);
 }
 
 // A4（v1.1.15）：el() 事件名白名單——拼錯事件名（如 onfoo）開發期 console.warn 提示
@@ -1205,7 +1237,7 @@ function copyText(text) {
 function toast(msg) {
   let t = document.querySelector(".toast");
   if (!t) {
-    t = el("div", { class: "toast" });
+    t = el("div", { class: "toast", "aria-live": "polite" });
     document.body.appendChild(t);
   }
   t.textContent = msg;
@@ -1742,6 +1774,7 @@ pages.new = function () {
       }),
     ]),
   );
+  setTimeout(() => catSelect.focus(), 0); // v1.1.26：P2 autofocus
 };
 
 // P3 案件詳情（§5.3）
@@ -1786,6 +1819,7 @@ pages.ticket = async function (id) {
     const menuBtn = el("button", {
       class: "btn btn-ghost btn-icon",
       text: "⋮",
+      "aria-label": "更多操作",
     });
     menuBtn.addEventListener("click", () => {
       const overlay = el("div", {
@@ -1901,7 +1935,7 @@ pages.ticket = async function (id) {
                   ]),
                 ]),
               ]);
-              document.body.appendChild(modal);
+              initModal(modal, sel);
             },
           }),
         );
@@ -3126,11 +3160,8 @@ pages.messageTemplates = async function () {
     function close() {
       mask.remove();
     }
-    document.body.appendChild(mask);
-    setTimeout(() => {
-      bodyArea.focus();
-      renderPreview();
-    }, 100);
+    initModal(mask, bodyArea, close);
+    renderPreview();
   }
 
   loadList();
@@ -3413,7 +3444,7 @@ pages.admin = function () {
       ]),
     );
     mask.appendChild(modal);
-    document.body.appendChild(mask);
+    initModal(mask, saveBtn);
 
     // 載入該類別的地點（含 associated）；兩區都載完才啟用儲存（F1）
     let locLoaded = false;
@@ -3543,8 +3574,23 @@ function renderNav() {
     items.push(["#/admin", "⚙ 管理"]);
   // F11-1：訊息模板從 admin 內 tab 進，不放 nav（committee 不該看到入口）
   if (me && me.role === "admin") items.push(["#/users", "👥 成員"]);
+  // v1.1.26：以 hash 前綴匹配作為 active 判準，補 aria-current
+  const curHash = (location.hash || "#/").split("?")[0];
+  const matchPrefix = (href) => {
+    if (href === "#/")
+      return curHash === "#/" || curHash === "#" || curHash === "";
+    return curHash === href || curHash.startsWith(href + "/");
+  };
   for (const [href, label] of items) {
-    nav.appendChild(el("a", { href, class: "nav-item", text: label }));
+    const active = matchPrefix(href);
+    nav.appendChild(
+      el("a", {
+        href,
+        class: "nav-item" + (active ? " active" : ""),
+        text: label,
+        "aria-current": active ? "page" : null,
+      }),
+    );
   }
   // v1.1.21：移除「登出」按鈕——LINE 憑證在 LIFF 快取而非 cookie，登出無法真正登出（重載後無感自動重登），
   // 且憑證過期時 boot 已自動走 forceFreshLogin()（liff.logout + 重導 OAuth，受 C1 重登上限保護）。
