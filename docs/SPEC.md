@@ -168,7 +168,7 @@ repair-system/
 │   └── 0001_initial.sql           # 單一 squash migration（淨最終態；原 0001~0013 已壓平，見 §2）
 ├── scripts/
 │   └── check-migration-drift.py   # 直查 production D1 比對 migrations（v1.1.19 守門，見 §8.7）
-├── tests/                         # 單元測試（11 檔 157 tests）
+├── tests/                         # 單元測試（11 檔 166 tests）
 │   ├── *.test.ts                  # app/assoc/boundary/coverage/messageTemplates/share-html/share/stats/ticket-actions/tickets/time
 │   ├── worker.ts / env.d.ts       # workers pool 入口與型別
 │   ├── apply-migrations.ts
@@ -1124,7 +1124,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **本地單元測試快速迴圈 `npm run test:local`（v1.1.15 新增，不用 workerd）**：
 
-- **用途**：本機立即驗證單元測試（11 檔 157 tests，約 10–60 秒視環境），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
+- **用途**：本機立即驗證單元測試（11 檔 166 tests，約 10–60 秒視環境），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
 - **原理**：`vitest.node.config.ts` 以 `resolve.alias` 把 `cloudflare:test` 指向 `tests/node/cloudflare-test-shim.ts`，**測試檔零改動**：
   - `SELF.fetch()` → Hono `app.request()`（不起 HTTP server）
   - `env.DB` → `tests/node/d1.ts`：以 Node 內建 `node:sqlite` 實作的 D1 shim（prepare/bind/run/all/first/raw/batch/exec；batch 經 `__execForBatch` 保留 INSERT 的 `meta.last_row_id`）
