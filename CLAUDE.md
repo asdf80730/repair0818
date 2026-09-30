@@ -2,6 +2,14 @@
 
 > 完整規格見 `docs/SPEC.md`（v1.1.25 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
+## 環境備註（本專案前後交互使用多種環境）
+- **Minis App**：根在 `/var/minis/workspace/`，連結用 `minis://workspace/...`（見 §12.2）。
+- **omp 沙箱**：根在 `/work`；只有 `bun`、`python3`（無 npm/gh）→ script 以 `bun run <script>` 執行（如 `bun run typecheck`、`bun run test:local`）。
+- **本機（glibc）**：npm 全套可用（`npm ci` / `npm test`）。
+- script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check），哪種 package 執行器存在就用哪種。
+- CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。
+- 編輯慣例：同檔多個行段一次 read 帶齊（`;` 分隔）再發 edit；eval kernel 的工作目錄＝工作區根，檔名需帶目錄前綴（如 `repair0818/public/app.js`）。
+
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
   （export const onRequest = handle(app)）；路由在 src/routes/，共用層在 src/lib/。
@@ -59,7 +67,7 @@
     lib-spec.md / page-api-map.md / test-cases.md 等正式規格檔。只有當業主明確指示
     「寫進規格」「這個定了」「這樣改」「動 SPEC」並點出具體內容時，才視為拍板；
     其他情況一律先在清單中討論。
-12.2 **每輪審查意見必附可達連結**（v1.1.15 起）：當使用者提供審查意見、要求「整合進變更
+12.2 **每輪審查意見必附可達連結**（v1.1.15 起，Minis App 環境）：當使用者提供審查意見、要求「整合進變更
     報告」「幫我加進去」「參考這份審查」等情境時，回覆**必須**在文末附上受影響變更文件的
     `minis://workspace/repair-system/...` Markdown 連結，讓使用者可直接點選預覽。
     不只給檔名、不只給 shell 路徑——給的是 Markdown 連結語法（App 會渲染為可點選）。
@@ -70,7 +78,7 @@
 13. 不確定的 LINE / Cloudflare API 一律留 // TODO: verify against official docs，禁止猜測。
 
 ## 工作區與檔案結構（v1.1.15 起，硬性規則）
-14. **所有原始碼、規格、測試、開發工具**一律放在 `/var/minis/workspace/` 之下；
+14. **所有原始碼、規格、測試、開發工具**一律放在 `/var/minis/workspace/` 之下（Minis App 環境；omp 沙箱根為 `/work`，同規應用實際根）；
     禁止使用 `/tmp` 或其他位置當正式施工目錄。`/tmp` 只允許當一次性搬遷/驗證的中繼站。
 15. **專案根目錄單層**：放在 `workspace/repair-system/`（單層），不要再加深層次
     （不要 `workspace/repair-system/repo/`、`workspace/repair-system/src/myapp/`）。
