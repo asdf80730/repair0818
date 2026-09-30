@@ -7,6 +7,7 @@ import { requireAuth } from '../lib/auth'
 import { taipeiMonthRangeUtc, taipeiDayRangeUtc, isValidDate, toTaipeiDisplay, taipeiToday } from '../lib/time'
 import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
+import { getPreferredTemplate } from '../lib/messageTemplates'
 
 // F1（v1.1.15）：status 字串 → 顯示用 label
 // 與前端 app.js:480 的 STATUS_COLOR_MAP 對齊
@@ -257,24 +258,9 @@ statsRoutes.get('/daily-report', requireAuth(), async (c) => {
   // 6. 抓兩種模板內容（v1.1.20：type 欄當鍵、label 欄存內容；v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
   //    回應形狀不變：{ id, body }，body 現在取自 label 欄（內容），key 由 type 導出
   //    v1.1.22：all 時 categoryId=-1 → 無任何 option_categories 匹配 → 固定取全域預設模板
-  const fetchTmpl = async (label: 'new_case' | 'timeline') => {
-    const row = await c.env.DB.prepare(
-      `SELECT o.id, o.label AS body
-       FROM options o
-       WHERE o.type = ? AND o.active = 1
-         AND (
-           o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)
-           OR o.id NOT IN (SELECT option_id FROM option_categories)
-         )
-       ORDER BY (o.id IN (SELECT option_id FROM option_categories WHERE category_id = ?)) DESC,
-                o.sort_order ASC
-       LIMIT 1`,
-    ).bind('message_template_' + label, categoryId, categoryId).first<{ id: number; body: string }>()
-    return row ? { id: row.id, body: row.body } : null
-  }
   const [new_case_tpl, timeline_tpl] = await Promise.all([
-    fetchTmpl('new_case'),
-    fetchTmpl('timeline'),
+    getPreferredTemplate(c, categoryId, 'new_case'),
+    getPreferredTemplate(c, categoryId, 'timeline'),
   ])
 
   return ok(c, {

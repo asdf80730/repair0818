@@ -14,6 +14,13 @@ import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import type { Env } from '../lib/env'
 import { idParam } from '../lib/validate'
+import {
+  listTemplates,
+  getTemplateById,
+  findTemplateKey,
+  isKeyTaken,
+  writeTemplate,
+} from '../lib/messageTemplates'
 
 export const messageTemplateRoutes = new Hono<Env>()
 
@@ -40,34 +47,16 @@ messageTemplateRoutes.get('/', requireAuth(), async (c) => {
 
   // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）
   // v1.1.20：type 欄當鍵（'message_template_'+label）、label 欄即內容 → 回應 body 取自 label 欄
-  const rows = await c.env.DB.prepare(
-    `SELECT o.id,
-       REPLACE(o.type, 'message_template_', '') AS label,
-       o.label AS body, o.active, o.sort_order,
-       CASE WHEN EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?)
-         THEN 1 ELSE 0 END AS is_category_specific
-     FROM options o
-     WHERE o.type = ? AND o.active = 1
-     ORDER BY is_category_specific DESC, o.sort_order ASC, o.id ASC`,
-  ).bind(categoryId, 'message_template_' + label).all<{
-    id: number; label: string; body: string; active: number;
-    sort_order: number;
-    is_category_specific: number;
-  }>()
+  const templates = await listTemplates(c, categoryId, label)
 
-  return ok(c, { category_id: categoryId, label, templates: rows.results })
+  return ok(c, { category_id: categoryId, label, templates })
 })
 
 // GET /api/message-templates/:id — 三角色可讀
 messageTemplateRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
   const { id } = c.req.valid('param')
   // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
-  const row = await c.env.DB.prepare(
-    `SELECT id,
-       REPLACE(type, 'message_template_', '') AS label,
-       label AS body, active, sort_order
-     FROM options WHERE id = ? AND type LIKE 'message_template_%'`,
-  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number }>()
+  const row = await getTemplateById(c, id)
   if (!row) return fail(c, 404, 'NOT_FOUND', '模板不存在')
   return ok(c, row)
 })
@@ -86,34 +75,19 @@ messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), 
   const { id } = c.req.valid('param')
   const body = c.req.valid('json')
 
-  const existing = await c.env.DB.prepare(
-    `SELECT id, type FROM options WHERE id = ? AND type LIKE 'message_template_%'`,
-  ).bind(id).first<{ id: number; type: string }>()
-  if (!existing) return fail(c, 404, 'NOT_FOUND', '模板不存在')
-  const existingKey = existing.type.replace('message_template_', '')
+  const existingKey = await findTemplateKey(c, id)
+  if (existingKey === null) return fail(c, 404, 'NOT_FOUND', '模板不存在')
 
-  // 動態組 UPDATE（options 無 updated_at 欄，0001 刻意不設；覆寫即生效）
-  // v1.1.20：body→label 欄（內容）、label→type 欄（鍵，加前綴）
-  const sets: string[] = []
-  const binds: unknown[] = []
-  if (body.body !== undefined) { sets.push('label = ?'); binds.push(body.body) }
-  if (body.label !== undefined && body.label !== existingKey) {
-    // 檢查新鍵是否被另一列占用（UNIQUE(type,label)：同鍵已有其他 id）
-    const dup = await c.env.DB.prepare(
-      `SELECT id FROM options WHERE type = ? AND id != ?`,
-    ).bind('message_template_' + body.label, id).first<{ id: number }>()
-    if (dup) return fail(c, 400, 'VALIDATION_ERROR', '同 label 已存在')
-    sets.push('type = ?'); binds.push('message_template_' + body.label)
+  // 就地覆寫（欄位映射見 lib/messageTemplates）
+  if (body.label !== undefined && body.label !== existingKey
+    && await isKeyTaken(c, body.label, id)) {
+    return fail(c, 400, 'VALIDATION_ERROR', '同 label 已存在')
   }
-  binds.push(id)
-  await c.env.DB.prepare(`UPDATE options SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  await writeTemplate(c, id, {
+    body: body.body,
+    key: body.label !== undefined && body.label !== existingKey ? body.label : undefined,
+  })
 
-  // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
-  const after = await c.env.DB.prepare(
-    `SELECT id,
-       REPLACE(type, 'message_template_', '') AS label,
-       label AS body, active, sort_order
-     FROM options WHERE id = ?`,
-  ).bind(id).first<{ id: number; label: string; body: string | null; active: number; sort_order: number }>()
+  const after = await getTemplateById(c, id)
   return ok(c, after)
 })
