@@ -2556,18 +2556,12 @@ pages.stats = function () {
   const reportBox = el("div", { class: "report-box" });
   reportPanel.appendChild(reportBox);
 
-  // 工具：今天台灣日期 YYYY-MM-DD
-  function todayTaipeiStr() {
-    // v1.1.21：改用頂層 taipeiDateStr()（formatToParts，locale 無關；<input type=date> 需 YYYY-MM-DD）
-    return taipeiDateStr();
-  }
-
   // 日期選擇器
   const dateInput = el("input", {
     type: "date",
     class: "select",
-    max: todayTaipeiStr(),
-    value: todayTaipeiStr(),
+    max: taipeiDateStr(),
+    value: taipeiDateStr(),
   });
 
   // 類別下拉（從 ensureCatalog() 拿 categories）
@@ -2763,19 +2757,15 @@ pages.users = function () {
     .then((b) => {
       const allUsers = b.data;
       const list = el("div", { class: "user-list" });
-      const roleLabel = {
-        pending: "待開通",
-        committee: "委員",
-        manager: "保全/秘書",
-        admin: "主管",
-      };
-      // 權限層級：主管(admin) > 保全/秘書(manager) > 委員(committee)
+      // 權限層級：主管(admin) > 保全/秘書(manager) > 委員(committee) > 待開通(pending)
+      // v1.1.26：roleLabel 由 roleOrder 派生，省一份重複的 label
       const roleOrder = [
-        ["pending", "待開通"],
-        ["committee", "委員"],
-        ["manager", "保全/秘書"],
         ["admin", "主管"],
+        ["manager", "保全/秘書"],
+        ["committee", "委員"],
+        ["pending", "待開通"],
       ];
+      const roleLabel = Object.fromEntries(roleOrder);
 
       // 篩選（問題14：可依狀態篩選）
       const filterSelect = el("select", { class: "select" });
@@ -2892,12 +2882,6 @@ const VARIABLE_HINT = {
   new_case: "可用變數：{{id}} {{location_label}} {{status}} {{description}}",
   timeline: "可用變數：{{id}} {{location_label}} {{status}} {{note}}",
 };
-
-// 預設抓哪個 category 的模板（這頁只需要一個類別的模板列表）
-const TEMPLATE_PAGE_DEFAULT_CAT = (() => {
-  // 從 catalog 拿第一個 active category
-  return null;
-})();
 
 async function getFirstCategoryId() {
   const cat = await ensureCatalog();
