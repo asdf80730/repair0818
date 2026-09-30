@@ -60,7 +60,7 @@ export function serveDynamicIndex(env: Env): Response {
   <!-- LIFF SDK（LINE 官方 CDN，平台 SDK） -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <!-- liff-mock（測試用，僅 ?mock=true 時啟用，§1.2 vendored） -->
-  <script src="/vendor/heic2any.js?v=${version}"></script>
+  <script src="/vendor/liff-mock.js?v=${version}"></script>
   <!-- browser-image-compression（vendored，§1.2） -->
   <script src="/vendor/browser-image-compression.js?v=${version}"></script>
   <!-- heic2any（vendored，§1.2；v1.1.23 HEIC/HEIF → JPEG，需先於 app.js） -->
