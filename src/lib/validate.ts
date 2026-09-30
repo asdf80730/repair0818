@@ -4,11 +4,10 @@
 import { z } from 'zod'
 
 // 通用
-const id = z.number().int().positive()
-// :id 路徑參數（param target 值為字串，故用 coerce；對齊 listTicketsQuerySchema 慣例）
-export const idParam = z.object({
-  id: z.coerce.number().int().positive({ message: '無效的 id' }),
-})
+// id 規則——單一定義（param 值為字串故 coerce；JSON 字串數字同獲，判準両階層一致）
+const id = z.coerce.number({ message: '無效的 id' }).int({ message: '無效的 id' }).positive({ message: '無效的 id' })
+// :id 路徑參數（§4.1）：復用上列 id 單一定義，400 訊息經 §4.0 統一信封
+export const idParam = z.object({ id })
 // G8：optionalText 允許 null（標準 REST 語意），null 視同未填
 const optionalText = (max: number) => z.string().trim().max(max).optional().nullable().or(z.literal(''))
 
@@ -63,7 +62,7 @@ export const reopenTicketSchema = z.object({
 })
 
 // 選項（§4.6）
-const categoryIds = z.array(z.number().int().positive()).max(20).optional()
+const categoryIds = z.array(id).max(20).optional()
 export const createOptionSchema = z.object({
   type: z.enum(['category', 'location', 'description', 'comment_desc']),
   label: z.string().trim().min(1).max(30),

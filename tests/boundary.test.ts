@@ -147,6 +147,55 @@ describe('zod 欄位驗證邊界（§4.1）', () => {
   })
 })
 
+describe(':id param 校驗（v1.1.25，C1）', () => {
+  it('有效 :id → 200 且 data.id 為數字', async () => {
+    const { cookie } = await loginAs('U-bd-p1', '參數1', 'committee')
+    const ticketId = await createTicket(cookie)
+    const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, { headers: { Cookie: cookie } })
+    expect(r.status).toBe(200)
+    const body = await r.json()
+    expect(body.data.id).toBe(ticketId)
+  })
+
+  it(':id=0 → 400 VALIDATION_ERROR『無效的 id』', async () => {
+    const { cookie } = await loginAs('U-bd-p2', '參數2', 'committee')
+    const r = await worker.fetch('http://example.com/api/tickets/0', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.message).toBe('無效的 id')
+  })
+
+  it(':id=3.5（非整數）→ 400 同共享訊息', async () => {
+    const { cookie } = await loginAs('U-bd-p3', '參數3', 'committee')
+    const r = await worker.fetch('http://example.com/api/tickets/3.5', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.message).toBe('無效的 id')
+  })
+
+  it(':id=abc（非數字）→ 400 同共享訊息', async () => {
+    const { cookie } = await loginAs('U-bd-p4', '參數4', 'committee')
+    const r = await worker.fetch('http://example.com/api/tickets/abc', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.message).toBe('無效的 id')
+  })
+
+  it(':id 空段（尾斜線）→ 404 不落 0 綁定', async () => {
+    const { cookie } = await loginAs('U-bd-p5', '參數5', 'committee')
+    const r = await worker.fetch('http://example.com/api/tickets/', { headers: { Cookie: cookie } })
+    expect(r.status).toBe(404)
+  })
+
+  it('auth 先於 param 校驗：無 cookie 打 :id=abc → 401', async () => {
+    const r = await worker.fetch('http://example.com/api/tickets/abc')
+    expect(r.status).toBe(401)
+  })
+})
+
 describe('D7 編輯權限（§4.3）', () => {
   it('committee 改別人建的單 → 403', async () => {
     const owner = await loginAs('U-bd-d7a', '建單者', 'committee')

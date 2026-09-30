@@ -61,7 +61,7 @@
 - `_icu-polyfill.ts` 採**特徵探測**：`needsPolyfill()` 以 `en-CA` 直出是否為 `YYYY-MM-DD` 判斷——完整 ICU 自動 no-op、精簡 ICU 才補 `format`/`formatToParts`；故兩套環境同形。
 
 ### E2 14 支 `:id` handler 各別內聯同一份校驗 —— 已理（v1.1.25，C1）
-- `lib/validate.ts` 單一 `idParam`（`z.coerce.number().int().positive()`，param 值為字串故用 `z.coerce`）；14 個 `:id` 端點改掛 `zv('param', idParam)`，handler 讀 `c.req.valid('param')`；id 的 400 訊息統一為『無效的 id』（§4.0 統一信封、§4.1 規則表已列）。
+- `lib/validate.ts` id 規則**單一定義**（`z.coerce`→`int`→`positive`，三步各掛同一訊息），`idParam` 與 JSON 欄位同指此定義；14 個 `:id` 端點改掛 `zv('param', idParam)`，handler 讀 `c.req.valid('param')`；id 全失敗路徑（`0`／小數／非數字）400 訊息統一『無效的 id』（§4.0 統一信封、§4.1 規則表已列）；邊界單測＋9 條（boundary 6＋tickets 3）。
 
 ## 稽核覆蓋邊界（誠實）
 - 只跑 node shim（`test:local`）；`npm test`（workerd）本沙箱跑不起（musl/glibc），那側舆 workers runtime 的 Intl 差異未證。

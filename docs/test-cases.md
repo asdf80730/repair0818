@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.23（test:local 157 條，本版未加單測——HEIC 轉換為純前端行為，單測層無法模擬 wasm；以 E2E 覆蓋）｜v1.1.23：`e2e/app.spec.js` 加 1 條「建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）」（真實 HEIC fixture、`application/octet-stream` MIME 走 magic-bytes 偵測、heic2any 轉 JPEG → 壓縮 → mock 上傳 → 縮圖）；`e2e/cache-busting.spec.js` asset 數 ≥3 → ≥4（多一個 heic2any.js）｜v1.1.22（test:local 157 條＝v1.1.20 的 155 條＋v1.1.22 加 `category_id=all` 2 條；v1.1.16 起 SPEC 所載 12 條 `tests/templateEngine.test.js` 隨砍後端引擎而刪，計數以本行 test:local 為準）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
+> 版本：v1.1.25（test:local 166 條＝v1.1.23 的 157 條＋`:id` 邊界 9 條〔`boundary` 6：有效／0／3.5／abc／空段／auth 順序；`tickets` 3：param 分項／json 分項／雙分項 precedence〕）｜v1.1.23（test:local 157 條，本版未加單測——HEIC 轉換為純前端行為，單測層無法模擬 wasm；以 E2E 覆蓋）｜v1.1.23：`e2e/app.spec.js` 加 1 條「建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）」（真實 HEIC fixture、`application/octet-stream` MIME 走 magic-bytes 偵測、heic2any 轉 JPEG → 壓縮 → mock 上傳 → 縮圖）；`e2e/cache-busting.spec.js` asset 數 ≥3 → ≥4（多一個 heic2any.js）｜v1.1.22（test:local 157 條＝v1.1.20 的 155 條＋v1.1.22 加 `category_id=all` 2 條；v1.1.16 起 SPEC 所載 12 條 `tests/templateEngine.test.js` 隨砍後端引擎而刪，計數以本行 test:local 為準）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
 > v1.1.21：`e2e/daily-report.spec.js`（4 條，v1.1.15 既有、本版對齊 stats 拆 sub-tab：先點「案件動態」tab 才載入、日期 max/預設值＝今日台灣（`formatToParts` 組 YYYY-MM-DD）、mock daily-render 前端拼裝、複製鈕）＋ `e2e/message-templates.spec.js`（5 條，v1.1.15 既有、本版對齊模板頁重構：管理頁 tab、完整簡報預覽＋模板來源兩行、點模板名稱超連結開 modal-mask 置中彈窗、即時預覽、G7 重置移入 modal 內）
 > v1.1.22：`category_id=all`（全部類別合併）unit 測試 2 條（多類別當日案件合併＋`category_label=全部類別`/`category_id=null`；非正整數且非 all 的 `abc/0/1.5` → 400 `VALIDATION_ERROR`）＋ E2E 加 1 條（`e2e/daily-report.spec.js` 共 5 條：類別下拉預設 `all`、預設預覽同時含當日新建與既有案件時間軸）
 
@@ -25,16 +25,16 @@ npm test   # 等於 vitest run
 
 > 斷言 1–4 均已實作並通過（見 `tests/app.test.ts` 對應案例）；不再有 `it.skip` 或 501。
 
-## 測試檔結構（v1.1.23 現況，157 單元測試）
+## 測試檔結構（v1.1.25 現況，166 單元測試）
 
 ```
 tests/
 ├── app.test.ts            # app 組裝 + middleware 掛載順序 + §10 回歸斷言 + CSV header（A2）（18）
-├── tickets.test.ts        # M3 案件核心（建單/列表/詳情）（3）
+├── tickets.test.ts        # M3 案件核心（建單/列表/詳情）＋param/json 分項（6）
 ├── ticket-actions.test.ts # M4 案件動作（回報/留言/作廢/reopen）＋F3 狀態流＋E3 雙寫（8）
 ├── share.test.ts          # M6 share 公開頁 + token 重發（4）
 ├── coverage.test.ts       # 覆蓋補齊（photos/users防呆/options/vendors/logout/void/篩選/share photos/編輯照片）（32）
-├── boundary.test.ts       # 邊界與例外（權限/欄位/D7/reopen/comments/分頁/auth/session/404/已發包金額）＋A10（32）
+├── boundary.test.ts       # 邊界與例外（權限/欄位/D7/reopen/comments/分頁/auth/session/404/已發包金額）＋A10＋:id param（38）
 ├── assoc.test.ts          # v1.1.7 類別關聯（join 表/三模式/category_ids 三態/assoc 端點/catalog）（20）
 ├── share-html.test.ts     # v1.1.13 分享頁動態標題 + og 標籤（5）
 ├── stats.test.ts          # A1 統計完成率 + F1 daily-report（date/category 必填、空態、半開區間、v1.1.22 全部類別）（17）

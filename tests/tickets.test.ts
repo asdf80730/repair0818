@@ -110,4 +110,50 @@ describe('M3 案件核心（§4.3）', () => {
     })
     expect(r.status).toBe(401)
   })
+
+  it('PATCH param 無效 → 400『無效的 id』（param 分項）', async () => {
+    const { cookie } = await loginAs('U-m3-p1', '分項1', 'manager')
+    const r = await worker.fetch('http://example.com/api/tickets/abc', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ description: 'x'.repeat(501) }),
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.message).toBe('無效的 id')
+  })
+
+  it('PATCH param 有效、body 無效 → 400（json 分項，訊息非 id 共享）', async () => {
+    const { cookie } = await loginAs('U-m3-p2', '分項2', 'manager')
+    const categoryId = await getOptionId('category')
+    const locationId = await getOptionId('location')
+    const create = await worker.fetch('http://example.com/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ category_id: categoryId, location_id: locationId, description: '分項單' }),
+    })
+    const created = await create.json()
+    const r = await worker.fetch(`http://example.com/api/tickets/${created.data.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ description: 'x'.repeat(501) }),
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+    expect(body.error.message).not.toBe('無效的 id')
+  })
+
+  it('PATCH 雙分項皆無效 → param 分項先落 400『無效的 id』', async () => {
+    const { cookie } = await loginAs('U-m3-p3', '分項3', 'manager')
+    const r = await worker.fetch('http://example.com/api/tickets/abc', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: cookie },
+      body: JSON.stringify({ description: 'x'.repeat(501) }),
+    })
+    expect(r.status).toBe(400)
+    const body = await r.json()
+    expect(body.error.message).toBe('無效的 id')
+  })
 })
