@@ -1682,6 +1682,8 @@ pages.new = function () {
         /* 保持原資料 */
       }
     }
+    // 首次偵測到零關聯 → 提示並已重抓 catalog（§5.2 契約）
+    toast("此類別目前無可用地點或說明");
     renderLoc(selectedCat);
     renderDesc(selectedCat);
   });
