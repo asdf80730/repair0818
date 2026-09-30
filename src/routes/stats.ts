@@ -30,18 +30,7 @@ export const statsRoutes = new Hono<Env>()
 // 支援 ?month=YYYY-MM（缺省為當月）——A4 月份切換（v1.1.14）
 statsRoutes.get('/summary', requireAuth(), async (c) => {
   const month = c.req.query('month') // YYYY-MM，缺省為當月
-  const { startMs, endMs } = month
-    ? (() => {
-        // 與 amount-by-category 相同驗證（F4）：嚴格 YYYY-MM 且真月份
-        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { startMs: 0, endMs: 0 }
-        const [y, m] = month.split('-').map(Number)
-        const start = new Date(Date.UTC(y, m - 1, 1))
-        const end = new Date(Date.UTC(y, m, 1))
-        const startIso = new Date(start.getTime() - 8 * 3600 * 1000).toISOString()
-        const endIso = new Date(end.getTime() - 8 * 3600 * 1000).toISOString()
-        return { startMs: Date.parse(startIso), endMs: Date.parse(endIso) }
-      })()
-    : taipeiMonthRangeUtc()
+  const { startMs, endMs } = taipeiMonthRangeUtc(month)
   if (startMs === 0) return fail(c, 400, 'VALIDATION_ERROR', '月份格式需為 YYYY-MM')
   const startIso = new Date(startMs).toISOString()
   const endIso = new Date(endMs).toISOString()
@@ -81,19 +70,7 @@ statsRoutes.get('/summary', requireAuth(), async (c) => {
 // 例：?month=2026-08 → 2026-08 台灣當月發包的案件，各類別 amount 加總
 statsRoutes.get('/amount-by-category', requireAuth(), async (c) => {
   const month = c.req.query('month') // YYYY-MM，缺省為當月
-  const { startMs, endMs } = month
-    ? (() => {
-        // F4（v1.1.14）：嚴格驗證月份格式為 YYYY-MM 且為真月份（擋 2026-8、2026-0008、2026-08-extra、2026-13）
-        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { startMs: 0, endMs: 0 }
-        const [y, m] = month.split('-').map(Number)
-        const start = new Date(Date.UTC(y, m - 1, 1))
-        const end = new Date(Date.UTC(y, m, 1))
-        // 換算台灣時區當月邊界
-        const startIso = new Date(start.getTime() - 8 * 3600 * 1000).toISOString()
-        const endIso = new Date(end.getTime() - 8 * 3600 * 1000).toISOString()
-        return { startMs: Date.parse(startIso), endMs: Date.parse(endIso) }
-      })()
-    : taipeiMonthRangeUtc()
+  const { startMs, endMs } = taipeiMonthRangeUtc(month)
   if (startMs === 0) return fail(c, 400, 'VALIDATION_ERROR', '月份格式需為 YYYY-MM')
 
   const startIso = new Date(startMs).toISOString()

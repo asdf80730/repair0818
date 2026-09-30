@@ -10,12 +10,21 @@ export function nowIso(): string {
 }
 
 /**
- * 台灣當月邊界（UTC 毫秒秒數），供 SQL 帶入。
- * 回傳 { startMs, endMs }：startMs 為當月 1 日 00:00（台灣）的 UTC 值，
+ * 台灣月邊界（UTC 毫秒數），供 SQL 帶入。
+ * 回傳 { startMs, endMs }：startMs 為該月 1 日 00:00（台灣）的 UTC 值，
  * endMs 為下月 1 日 00:00（台灣）的 UTC 值（不含）。
- * 以「台灣當下日期」決定月份。
+ * month 帶入時採嚴格 YYYY-MM＋真月份校驗（非法＝startMs 0 sentinel）；
+ * 未帶入時以「台灣當下日期」決定月份。
  */
-export function taipeiMonthRangeUtc(): { startMs: number; endMs: number } {
+export function taipeiMonthRangeUtc(month?: string): { startMs: number; endMs: number } {
+  if (month !== undefined) {
+    // F4（v1.1.14）：嚴格格式＋真月份（擋 2026-8、2026-0008、2026-13）
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { startMs: 0, endMs: 0 }
+    const [y, m] = month.split('-').map(Number)
+    const nextYear = m === 12 ? y + 1 : y
+    const nextMonth = m === 12 ? 1 : m + 1
+    return { startMs: toUtcMs(y, m, 1), endMs: toUtcMs(nextYear, nextMonth, 1) }
+  }
   const now = new Date()
   // 台灣當下年／月（用 Intl 依時區取得）
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -25,13 +34,13 @@ export function taipeiMonthRangeUtc(): { startMs: number; endMs: number } {
   }).formatToParts(now)
 
   const year = Number(parts.find((p) => p.type === 'year')!.value)
-  const month = Number(parts.find((p) => p.type === 'month')!.value)
+  const monthNo = Number(parts.find((p) => p.type === 'month')!.value)
 
   // 當月 1 日 00:00 台灣時間 → 換算 UTC
-  const start = toUtcMs(year, month, 1)
+  const start = toUtcMs(year, monthNo, 1)
   // 下月 1 日（月份 +1，跨年時進位）
-  const nextMonth = month === 12 ? 1 : month + 1
-  const nextYear = month === 12 ? year + 1 : year
+  const nextMonth = monthNo === 12 ? 1 : monthNo + 1
+  const nextYear = monthNo === 12 ? year + 1 : year
   const end = toUtcMs(nextYear, nextMonth, 1)
 
   return { startMs: start, endMs: end }

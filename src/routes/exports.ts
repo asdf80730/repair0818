@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { ok, fail, zv } from '../lib/respond'
 import { requireAuth, resolveUser } from '../lib/auth'
 import { exportQuerySchema } from '../lib/validate'
-import { toTaipeiDisplay, taipeiDate } from '../lib/time'
+import { toTaipeiDisplay, taipeiDate, taipeiDayRangeUtc } from '../lib/time'
 import { ticketNo } from '../lib/db'
 import type { AppContext, Env } from '../lib/env'
 
@@ -135,13 +135,11 @@ async function buildCsv(c: AppContext) {
   } else if (status === 'active') {
     sql += " AND t.status IN ('open','in_progress')"
   }
-  if (from) { sql += ' AND t.created_at >= ?'; binds.push(new Date(from + 'T00:00:00+08:00').toISOString()) }
+  if (from) { sql += ' AND t.created_at >= ?'; binds.push(new Date(taipeiDayRangeUtc(from).startMs).toISOString()) }
   if (to) {
     // F1（v1.1.14）：視 to 為「隔天 00:00 前」，避免漏掉 to 當天 23:59:59.999 的資料
-    const end = new Date(to + 'T00:00:00+08:00')
-    end.setUTCDate(end.getUTCDate() + 1)
     sql += ' AND t.created_at < ?'
-    binds.push(end.toISOString())
+    binds.push(new Date(taipeiDayRangeUtc(to).endMs).toISOString())
   }
   sql += ' ORDER BY t.id'
 
