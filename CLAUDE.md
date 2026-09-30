@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.23 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.25 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -14,7 +14,7 @@
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
-- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒 157 tests；本專案 11 支 `tests/*.test.ts`）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒 166 tests；本專案 11 支 `tests/*.test.ts`）。
   - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
     `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
     `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
@@ -80,7 +80,7 @@
 ## 產品規則（見 SPEC §0.3 為主，本段僅補 §0.3 未列的 AI 動作相關細則）
 - **產品契約**（狀態流、回報/留言權限、時間軸 append-only、廠商不刪除只停用、權限中文對照、指派廠商只編輯頁、編輯權限等）→ **見 SPEC §0.3**，本檔不重複。
 - `month_done` 從 `ticket_updates` 計算（見 SPEC §4.7），**禁止用 `tickets.closed_at`**——這是計算「本月完成」的權威來源。
-- **廠商排序（v1.1.13）**：`GET /api/vendors` 依 `active DESC, sort_order, id`；後台直接改資料庫、無前端排序介面。**`vendors.phone` 欄位已移除（0008），勿再引用**。
+- **廠商排序（v1.1.13）**：`GET /api/vendors` 依 `active DESC, sort_order, id`；後台直接改資料庫、無前端排序介面。**`vendors.phone` 欄位已移除（歷史 0008，已 squash 入 0001），勿再引用**。
 - **統計頁三角色皆可（D6）**；**CSV 匯出限 manager/admin（D3）**。
 - **vendor_name 刻意外露**：committee 在詳情頁/列表看得到 `vendor_name`，但 `GET /api/vendors` 限 manager/admin——刻意設計，**勿「順手」開放 list 端點**。
 
@@ -110,8 +110,8 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 5. token **值**不寫進 memory / CLAUDE.md / commit message（可能 rotate；每次 push 前重新讀 env）；變數名（`GITHUB_TOKEN_REPAIR0818`）可寫，方便未來 AI 知道要用哪個
 
 ## 類別關聯（v1.1.7 起，AI 動作約束；設計契約見 SPEC §P7 與 §4.x API）
-- **0002_seed.sql 一字不可改**（已套用到 production，D1 d1_migrations 只套未套用）。任何關聯變更一律寫新的 migration。
-- **`option_categories` 的 INSERT/DELETE 只允許出現在 `POST` / `PATCH /api/options` 兩處**（兩階段 batch：先 RETURNING id 再寫關聯）；DELETE WHERE 只能是 `option_id = ?`。**禁止**在其他端點動關聯。
+- **`migrations/0001_initial.sql`（squash，含全部 schema＋seed）一字不可改**（已套用到 production，D1 `d1_migrations` 只套未套用）。任何變更一律寫新的 migration（0002 起）。
+- **`option_categories` 的 INSERT/DELETE 只允許出現在 `POST` / `PATCH /api/options` 兩處**（兩階段：先 `RETURNING id` 再 batch 寫關聯；禁用 `meta.last_row_id` 當 upsert 後 id）；DELETE WHERE 只能是 `option_id = ?`。**禁止**在其他端點動關聯。
 - **`category_ids` 三態**：未帶 = 不動關聯、`[]` = 清空、有值 = 全量覆寫。zod schema 用 `.optional()` 不用 `.default([])`。
 - **`include_inactive`** 用 `z.enum(['0','1']).transform()`，**不可用 `z.coerce.boolean()`**（`"false"` 也是 true）。
 - **join 表 `type` 由應用層強制**（`assertValidAssoc` / `assertCategoryIds`）：SQLite CHECK 不能跨表。
@@ -121,10 +121,6 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 ## 登入（硬性規則，勿再犯）
 - **`cleanUrlParams()` 只能在登入成功（取 me）之後呼叫**，絕不可放 boot 開頭或 `liff.init()` 之前——LIFF 的 OAuth 授權需要 URL 上的 `code`/`state`，提前清掉會讓一般瀏覽器無法跳 LINE 登入頁（時好時壞的 bug）。
 - 一般瀏覽器 `liff.init()` 其實會成功、`liff.login()` 能跳 LINE 登入頁（已實測），**不需**做網頁 OAuth。
-- `option_categories` 的 INSERT/DELETE 只允許出現在 `POST`/`PATCH /api/options` 兩處；DELETE WHERE 只能是 `option_id = ?`。
-- POST upsert 為「規則 2」明文例外（兩階段：先 `RETURNING id` 再 batch 寫關聯）；禁用 `meta.last_row_id` 當 upsert 後 id。
-- join 表 type 由應用層強制（`assertValidAssoc`/`assertCategoryIds`），SQLite CHECK 不能跨表。
-- 類別停用 → 僅下拉消失，`option_categories` 列保留（不 DELETE）。
 
 ## Agent skills
 

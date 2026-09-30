@@ -1,7 +1,7 @@
 # src/lib/ 共用層介面規格
 
 > 對應開發文件 §10「下一批文件」第 1 項。§3.2 已定案 auth 介面，本文件補齊其餘模組與細節，作為施工正確實作範本。
-> 版本：v1.1.14 對應
+> 版本：v1.1.25 對應
 
 ## 總覽
 
@@ -45,6 +45,8 @@ export type AppContext = Context<Env>
 ```ts
 ok<T>(c, data, status = 200)          // → { ok: true, data }
 fail(c, status, code, message)        // → { ok: false, error: { code, message } }
+zv(target, schema)                   // zValidator 共用包裝（v1.1.24）；驗證失敗經 hook → 統一 400 信封：
+                                      // { ok:false, error:{ code:'VALIDATION_ERROR', message:issues[0].message } }
 ```
 
 **規則**：`status` 用 Hono 的 `ContentfulStatusCode` 型別（非 `number`），確保型別安全。所有路由一律用 `fail()` 回錯誤（無 `errors` 速記物件，避免死碼）。
@@ -70,7 +72,7 @@ taipeiToday(): string                  // v1.1.15：今天台灣日期 YYYY-MM-D
 
 ## 4. validate.ts — zod schemas（§4.1）
 
-schema 即 API 契約唯一真相來源。每個 mutation 端點用 `zValidator('json', schema)` 驗證，查詢用 `zValidator('query', schema)`。
+schema 即 API 契約唯一真相來源。端點一律用 `zv(target, schema)`（`respond.ts` 包裝）驗證：JSON 體 `'json'`、查詢 `'query'`、`:id` 路徑參數 `'param'`（`idParam`）。
 
 ```ts
 createTicketSchema      // POST /api/tickets
@@ -86,6 +88,7 @@ updateVendorSchema      // PATCH /api/vendors/:id
 updateUserSchema        // PATCH /api/users/:id
 exportQuerySchema       // POST /api/exports/sign + GET /api/exports/tickets.csv 共用
 listTicketsQuerySchema  // GET /api/tickets
+idParam                 // :id 路徑參數——zv('param', idParam)；id 規則單一定義（coerce→int→positive，三步同訊息『無效的 id』）
 ```
 
 **規則**：欄位規則嚴格對照 §4.1 規則表（長度、必填、枚舉、`photo_ids ≤ 5`）。

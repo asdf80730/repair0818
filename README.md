@@ -3,7 +3,7 @@
 社區管委會用的修繕案件管理 LINE 應用：住戶／委員透過 LINE LIFF 報修，管理公司派單給廠商，廠商透過公開分享連結接收派工單。
 
 - **正式網域**：https://repair-system-4re.pages.dev
-- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.23 定稿，單一真相來源）
+- **完整規格**：[docs/SPEC.md](docs/SPEC.md)（v1.1.25 定稿，單一真相來源）
 - **施工規則**：[CLAUDE.md](CLAUDE.md)
 
 ## 技術棧
@@ -20,9 +20,9 @@
 ```
 functions/api/[[path]].ts   # Pages Functions 唯一入口
 src/                        # Hono 後端（app.ts + routes/ + lib/）
-migrations/                 # D1 migrations（0001–0013，含 seed）
+migrations/                 # D1 migrations（單一 squash `0001_initial.sql`，含 schema＋seed；後續改動另檔 0002 起）
 public/                     # 前端靜態檔（app.js SPA + share.js + style.css + templateEngine.js + vendor/）
-tests/                      # 單元測試（11 檔 157 tests；CI workerd，本地 npm run test:local 用 node:sqlite）
+tests/                      # 單元測試（11 檔 166 tests；CI workerd，本地 npm run test:local 用 node:sqlite）
 e2e/                        # Playwright E2E（4 spec 33 條；fixtures/ 含 HEIC 樣本）
 scripts/                    # check-migration-drift.py（CI 直查 production D1）
 docs/                       # SPEC / lib-spec / test-cases / page-api-map / archive/
