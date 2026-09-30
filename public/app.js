@@ -90,6 +90,12 @@ const mockUsers = [
 ]
 const mockVendors = [{ id: 1, name: '測試廠商', sort_order: 0, active: 1 }]
 
+// §4.0 統一信封單一定義（mock 層专用，與後端 lib/respond 同形）
+function mok(data) { return { ok: true, data } }
+function merr(code, message) { return { ok: false, error: { code, message } } }
+// 狀態→顯示 label 單一定義
+const STATUS_LABEL = { open: '待處理', in_progress: '已發包', done: '已完成', void: '已作廢' }
+
 function mockApi(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase()
   const url = new URL(path, window.location.origin)
@@ -97,7 +103,7 @@ function mockApi(path, options = {}) {
 
   // auth/me
   if (pathname === '/api/auth/me') {
-    return { ok: true, data: { id: 1, display_name: '測試用戶', role: 'admin' } }
+    return mok({ id: 1, display_name: '測試用戶', role: 'admin' })
   }
   // 建單 catalog：一次抓完（v1.1.7）
   if (pathname === '/api/options/catalog') {
@@ -112,7 +118,7 @@ function mockApi(path, options = {}) {
       category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === d.id).map(a => a.category_id),
     }))
     const commentDescs = (mockOptions.comment_desc || []).map(d => ({ id: d.id, label: d.label }))
-    return { ok: true, data: { categories: cats, locations: locs, descriptions: descs, comment_descs: commentDescs } }
+    return mok({ categories: cats, locations: locs, descriptions: descs, comment_descs: commentDescs })
   }
   // options（v1.1.7：支援 category_id 過濾、include_inactive、assoc=0 零關聯）
   if (pathname === '/api/options') {
@@ -128,7 +134,7 @@ function mockApi(path, options = {}) {
         const descs = mockAssoc.filter(a => a.category_id === c.id && mockOptions.description.some(d => d.id === a.option_id))
         return { ...c, active: 1, location_count: locs.length, description_count: descs.length }
       })
-      return { ok: true, data: cats }
+      return mok(cats)
     }
     // 該類別所有項附 associated（P7 modal）
     if (type !== 'category' && categoryId && includeInactive) {
@@ -137,7 +143,7 @@ function mockApi(path, options = {}) {
         ...o, active: 1,
         associated: noAssoc ? 0 : (mockAssoc.some(a => a.option_id === o.id && a.category_id === cid) ? 1 : 0),
       }))
-      return { ok: true, data: items2 }
+      return mok(items2)
     }
     // category_id 過濾：該類別關聯＋通用（無關聯者）
     if (categoryId && type !== 'category') {
@@ -160,12 +166,12 @@ function mockApi(path, options = {}) {
         category_ids: noAssoc ? [] : mockAssoc.filter(a => a.option_id === o.id).map(a => a.category_id),
       }))
     }
-    return { ok: true, data: items }
+    return mok(items)
   }
   // 以類別為中心設定關聯（P7 modal，v1.1.7）
   const assocMatch = pathname.match(/^\/api\/options\/(\d+)\/assoc$/)
   if (assocMatch && method === 'POST') {
-    return { ok: true, data: { category_id: Number(assocMatch[1]), count: 0 } }
+    return mok({ category_id: Number(assocMatch[1]), count: 0 })
   }
   // tickets 列表
   if (pathname === '/api/tickets' && method === 'GET') {
@@ -173,7 +179,7 @@ function mockApi(path, options = {}) {
     let items = mockTickets
     if (status === 'active') items = mockTickets.filter(t => t.status === 'open' || t.status === 'in_progress')
     else if (status !== 'all') items = mockTickets.filter(t => t.status === status)
-    return { ok: true, data: { items, page: 1, limit: 20, has_more: false } }
+    return mok({ items, page: 1, limit: 20, has_more: false })
   }
   // 建單
   if (pathname === '/api/tickets' && method === 'POST') {
@@ -187,28 +193,28 @@ function mockApi(path, options = {}) {
       created_at: new Date().toISOString(), last_activity_at: new Date().toISOString(),
     }
     mockTickets.unshift(t)
-    return { ok: true, data: { id: t.id, title: t.title, share_token: 'mock-token-' + t.id } }
+    return mok({ id: t.id, title: t.title, share_token: 'mock-token-' + t.id })
   }
   // 詳情
   const detailMatch = pathname.match(/^\/api\/tickets\/(\d+)$/)
   if (detailMatch && method === 'GET') {
     const t = mockTickets.find(x => x.id === Number(detailMatch[1]))
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (!t) return merr('NOT_FOUND', '案件不存在')
     // v1.1.12：詳情帶 amount/amount_at + 時間軸（測金額顯示）
     const updates = mockUpdates.filter(u => u.ticket_id === t.id).map(u => ({
       id: u.id, kind: u.kind, status: u.status, note: u.note, amount: u.amount,
       display_name: u.display_name, created_at: u.created_at, photo_urls: u.photo_urls || [],
     }))
-    return { ok: true, data: { ...t, description: '測試說明', photos: [{ id: 1, url: '/api/photos/1' }], share_url: '/share.html?token=mock-token-' + t.id, can_edit: true, updates } }
+    return mok({ ...t, description: '測試說明', photos: [{ id: 1, url: '/api/photos/1' }], share_url: '/share.html?token=mock-token-' + t.id, can_edit: true, updates })
   }
   // v1.1.12：回報/留言（測已發包必填金額）
   const updatesMatch = pathname.match(/^\/api\/tickets\/(\d+)\/updates$/)
   if (updatesMatch && method === 'POST') {
     const body = JSON.parse(options.body || '{}')
     const t = mockTickets.find(x => x.id === Number(updatesMatch[1]))
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (!t) return merr('NOT_FOUND', '案件不存在')
     if (body.status === 'in_progress' && !body.amount) {
-      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '已發包需填寫金額' } }
+      return merr('VALIDATION_ERROR', '已發包需填寫金額')
     }
     const now = new Date().toISOString()
     if (body.status === 'in_progress') {
@@ -222,16 +228,16 @@ function mockApi(path, options = {}) {
       mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'open', note: body.note || '', amount: null, display_name: '測試用戶', created_at: now, photo_urls: [] })
     }
     t.last_activity_at = now
-    return { ok: true, data: { updated: true, status: body.status } }
+    return mok({ updated: true, status: body.status })
   }
   // v1.1.12：留言（測留言時間軸）
   const commentsMatch = pathname.match(/^\/api\/tickets\/(\d+)\/comments$/)
   if (commentsMatch && method === 'POST') {
     const body = JSON.parse(options.body || '{}')
     const t = mockTickets.find(x => x.id === Number(commentsMatch[1]))
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (!t) return merr('NOT_FOUND', '案件不存在')
     mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'comment', status: null, note: body.note || '', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
-    return { ok: true, data: { id: mockUpdates.length, kind: 'comment' } }
+    return mok({ id: mockUpdates.length, kind: 'comment' })
   }
   // 統計（A4：mock 依月份回不同 month_new/month_done，讓 E2E 驗證切月份生效）
   if (pathname === '/api/stats/summary') {
@@ -240,7 +246,7 @@ function mockApi(path, options = {}) {
     const month = url.searchParams.get('month') || taipeiMonth()
     // mock 用月份末兩碼當 month_new，讓不同月份回不同值
     const mm = Number(month.slice(5, 7))
-    return { ok: true, data: { open_count, in_progress_count, month_new: mm, month_done: mm >= 20 ? 5 : 0, month_initial_open: 10 } }
+    return mok({ open_count, in_progress_count, month_new: mm, month_done: mm >= 20 ? 5 : 0, month_initial_open: 10 })
   }
   // v1.1.12：各類別金額統計（mock，從 mockTickets 動態算，測金額統計）
   if (pathname === '/api/stats/amount-by-category') {
@@ -253,25 +259,25 @@ function mockApi(path, options = {}) {
       }
     }
     const items = Object.entries(byCat).map(([category_label, v]) => ({ category_label, total_amount: v.total_amount, count: v.count }))
-    return { ok: true, data: { items } }
+    return mok({ items })
   }
   // F1（v1.1.15）：daily-report mock — 依 date 過濾今天 tickets，回純資料 + template
   if (pathname === '/api/stats/daily-report') {
     const date = url.searchParams.get('date')
-    if (!date) return { ok: false, error: { code: 'MISSING_DATE', message: 'date 必填' } }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: { code: 'INVALID_DATE', message: 'date 格式錯' } }
+    if (!date) return merr('MISSING_DATE', 'date 必填')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return merr('INVALID_DATE', 'date 格式錯')
     // 用台灣時區當天（與前端 dateInput 的 taipeiDateStr() 一致），避免 UTC 前一天 16:00~24:00 誤判為未來日期
     // v1.1.21：改用 formatToParts 組 YYYY-MM-DD（locale 無關；en-CA 字串格式非 spec 保證，受限 ICU 環境會回 ISO 而非 MM/DD/YYYY）
     const today = taipeiDateStr()
-    if (date > today) return { ok: false, error: { code: 'DATE_FUTURE', message: 'date 不可晚於今天' } }
+    if (date > today) return merr('DATE_FUTURE', 'date 不可晚於今天')
     const catParam = url.searchParams.get('category_id') // v1.1.22：'all'（全部類別）或正整數字串
-    if (!catParam) return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 必填' } }
+    if (!catParam) return merr('VALIDATION_ERROR', 'category_id 必填')
     const isAll = catParam === 'all'
     if (!isAll && (!Number.isInteger(Number(catParam)) || Number(catParam) <= 0)) {
-      return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'category_id 需為正整數或 "all"' } }
+      return merr('VALIDATION_ERROR', 'category_id 需為正整數或 "all"')
     }
     const cat = isAll ? null : mockOptions.category.find(c => c.id === Number(catParam))
-    if (!isAll && !cat) return { ok: false, error: { code: 'NOT_FOUND', message: '類別不存在' } }
+    if (!isAll && !cat) return merr('NOT_FOUND', '類別不存在')
     // 撈台灣當天屬於該類別的 tickets（all：不限類別；start/end = 台灣當天 00:00 的 UTC 對應，與後端 taipeiDayRangeUtc 一致）
     // 台灣當天 00:00 = UTC 前一日 16:00；end = 台灣隔天 00:00 = 當天 16:00 UTC（半開區間）
     const [yy, mm, dd] = date.split('-').map(Number)
@@ -295,7 +301,7 @@ function mockApi(path, options = {}) {
         timeline_updates.push({
           id: t.id,
           location_label: t.location_label,
-          status: ({ open: '待處理', in_progress: '已發包', done: '已完成', void: '已作廢' }[t.status] || t.status),
+          status: STATUS_LABEL[t.status] || t.status,
           note: u.note ?? '',
         })
       }
@@ -305,14 +311,11 @@ function mockApi(path, options = {}) {
       const f = mockOptions.message_template.find(x => x.type === 'message_template_' + label)
       return f ? { id: f.id, body: f.label } : null
     }
-    return {
-      ok: true,
-      data: {
-        date, category_id: isAll ? null : Number(catParam), category_label: isAll ? '全部類別' : cat.label,
-        new_cases, timeline_updates,
-        templates: { new_case: tpl('new_case'), timeline: tpl('timeline') },
-      },
-    }
+    return mok({
+      date, category_id: isAll ? null : Number(catParam), category_label: isAll ? '全部類別' : cat.label,
+      new_cases, timeline_updates,
+      templates: { new_case: tpl('new_case'), timeline: tpl('timeline') },
+    })
   }
   // F6（v1.1.15）：message-templates 列表 + 單筆 GET
   // v1.1.20：mock 對齊新 schema——type 欄當鍵、label 欄存內容；對外回應照後端形狀 { label: 鍵, body: 內容 }
@@ -322,64 +325,64 @@ function mockApi(path, options = {}) {
     const items = mockOptions.message_template
       .filter(t => t.type === 'message_template_' + label || !label)
       .map(tmplView)
-    return { ok: true, data: { templates: items } }
+    return mok({ templates: items })
   }
   const tmplMatch = pathname.match(/^\/api\/message-templates\/(\d+)$/)
   if (tmplMatch && method === 'GET') {
     const id = Number(tmplMatch[1])
     const t = mockOptions.message_template.find(x => x.id === id)
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '模板不存在' } }
-    return { ok: true, data: tmplView(t) }
+    if (!t) return merr('NOT_FOUND', '模板不存在')
+    return mok(tmplView(t))
   }
   if (tmplMatch && method === 'PUT') {
     const id = Number(tmplMatch[1])
     const idx = mockOptions.message_template.findIndex(x => x.id === id)
-    if (idx < 0) return { ok: false, error: { code: 'NOT_FOUND', message: '模板不存在' } }
+    if (idx < 0) return merr('NOT_FOUND', '模板不存在')
     const body = JSON.parse(options.body || '{}')
-    if (body.body !== undefined && body.body.trim() === '') return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'body 不可為空' } }
+    if (body.body !== undefined && body.body.trim() === '') return merr('VALIDATION_ERROR', 'body 不可為空')
     const cur = mockOptions.message_template[idx]
     // v1.1.20：內容寫 label 欄、鍵寫 type 欄（與後端 PUT 一致）
     if (body.body !== undefined) cur.label = body.body
     if (body.label !== undefined) cur.type = 'message_template_' + body.label
     const updated = cur
     mockOptions.message_template[idx] = updated
-    return { ok: true, data: tmplView(updated) }
+    return mok(tmplView(updated))
   }
   // users
   if (pathname === '/api/users' && method === 'GET') {
-    return { ok: true, data: mockUsers }
+    return mok(mockUsers)
   }
   // vendors
   if (pathname === '/api/vendors' && method === 'GET') {
-    return { ok: true, data: mockVendors }
+    return mok(mockVendors)
   }
   // 重新產生分享連結（v1.1.5：回傳新 share_url）
   const reshareMatch = pathname.match(/^\/api\/tickets\/(\d+)\/share-token$/)
   if (reshareMatch && method === 'POST') {
     const t = mockTickets.find(x => x.id === Number(reshareMatch[1]))
     const token = 'mock-token-' + (t ? t.id : 'new')
-    return { ok: true, data: { share_url: '/share.html?token=' + token } }
+    return mok({ share_url: '/share.html?token=' + token })
   }
   // A9（v1.1.14）：作廢 mock——更新 mockTickets 狀態 + 加時間軸（E2E 驗證狀態/時間軸變化）
   const voidMatch = pathname.match(/^\/api\/tickets\/(\d+)\/void$/)
   if (voidMatch && method === 'POST') {
     const t = mockTickets.find(x => x.id === Number(voidMatch[1]))
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (!t) return merr('NOT_FOUND', '案件不存在')
     if (t.status !== 'open' && t.status !== 'in_progress') {
-      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '案件狀態已變更，請重新整理' } }
+      return merr('VALIDATION_ERROR', '案件狀態已變更，請重新整理')
     }
     t.status = 'void'
     t.last_activity_at = new Date().toISOString()
     mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: 'void', note: '', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
-    return { ok: true, data: { status: 'void' } }
+    return mok({ status: 'void' })
   }
   // A9（v1.1.14）：重新開啟 mock——更新狀態 + 時間軸
   const reopenMatch = pathname.match(/^\/api\/tickets\/(\d+)\/reopen$/)
   if (reopenMatch && method === 'POST') {
     const t = mockTickets.find(x => x.id === Number(reopenMatch[1]))
-    if (!t) return { ok: false, error: { code: 'NOT_FOUND', message: '案件不存在' } }
+    if (!t) return merr('NOT_FOUND', '案件不存在')
     if (t.status !== 'done' && t.status !== 'void') {
-      return { ok: false, error: { code: 'VALIDATION_ERROR', message: '僅已結案或已作廢的案件可重新開啟' } }
+      return merr('VALIDATION_ERROR', '僅已結案或已作廢的案件可重新開啟')
     }
     const body = JSON.parse(options.body || '{}')
     const target = body.status || 'in_progress'
@@ -388,19 +391,19 @@ function mockApi(path, options = {}) {
     t.status = target
     t.last_activity_at = new Date().toISOString()
     mockUpdates.unshift({ id: mockUpdates.length + 1, ticket_id: t.id, kind: 'status', status: target, note: '重新開啟（原狀態：' + prevLabel + '）', amount: null, display_name: '測試用戶', created_at: new Date().toISOString(), photo_urls: [] })
-    return { ok: true, data: { status: target } }
+    return mok({ status: target })
   }
   // A8（v1.1.14）：照片上傳 mock——回傳 {id, url}（attachPhotoPicker 需拿 id）
   if (pathname === '/api/photos' && method === 'POST') {
     const id = 100 + (mockPhotosCount = (mockPhotosCount || 0) + 1)
-    return { ok: true, data: { id, url: `/api/photos/${id}` } }
+    return mok({ id, url: `/api/photos/${id}` })
   }
   // 其他 mutation 一律成功
   if (method !== 'GET') {
-    return { ok: true, data: { ok: true } }
+    return mok({ ok: true })
   }
   // 未知 GET → 空
-  return { ok: true, data: [] }
+    return mok([])
 }
 
 async function api(path, options = {}) {
