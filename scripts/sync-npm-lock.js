@@ -95,6 +95,7 @@ const newEntries = [
   "cookie",
 ];
 
+// 頂層 entries
 let added = 0;
 for (const name of newEntries) {
   const rec = byName[name];
@@ -116,6 +117,22 @@ for (const name of newEntries) {
     );
   if (rec.info?.bin) ent.bin = rec.info.bin;
   lock.packages[key] = ent;
+  added++;
+}
+// 嵌套 entries：bun.lock 用 "parent/child" key，npm lock 用 node_modules/parent/node_modules/child
+const nested = [["@csstools/css-color-parser", "rrweb-cssom", "0.8.0"]];
+for (const [parent, child, ver] of nested) {
+  const bunKey = parent + "/" + child;
+  const rec = byName[bunKey];
+  if (!rec) continue;
+  const key = `node_modules/${parent}/node_modules/${child}`;
+  if (lock.packages[key]) continue;
+  lock.packages[key] = {
+    version: ver,
+    resolved: rec.resolved,
+    integrity: rec.integrity,
+    dev: rec.dev,
+  };
   added++;
 }
 writeFileSync("package-lock.json", JSON.stringify(lock, null, 2) + "\n");
