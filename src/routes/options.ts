@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { createOptionSchema, updateOptionSchema, listOptionsQuerySchema } from '../lib/validate'
+import { createOptionSchema, updateOptionSchema, listOptionsQuerySchema, idParam } from '../lib/validate'
 import { nowIso } from '../lib/time'
 import { assertValidAssoc, assertCategoryIds } from '../lib/db'
 import type { Env } from '../lib/env'
@@ -191,12 +191,11 @@ optionRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zv('json', 
 // POST /api/options/:id/assoc — 以類別為中心設定關聯（v1.1.7）
 // :id 是 category，body { type: 'location'|'description', option_ids: number[] }
 // 全量覆寫該類別對該 type 的關聯（P7 類別 modal 用）
-optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zv('json', z.object({
+optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', z.object({
   type: z.enum(['location', 'description']),
   option_ids: z.array(z.number().int().positive()).max(200),
 })), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的類別 id')
+  const { id } = c.req.valid('param')
   const body = c.req.valid('json')
 
   // 驗證 :id 是 category
@@ -236,9 +235,8 @@ optionRoutes.post('/:id/assoc', requireAuth({ roles: ['manager', 'admin'] }), zv
 })
 
 // PATCH /api/options/:id — manager/admin（§4.6）
-optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateOptionSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的選項 id')
+optionRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', updateOptionSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const body = c.req.valid('json')
 
   const existing = await c.env.DB.prepare(

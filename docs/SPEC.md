@@ -2,9 +2,9 @@
 
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.23（定稿，可施工）** ｜ 日期：2026-09-03
+**版本：v1.1.25（定稿，可施工）** ｜ 日期：2026-09-30
 
-> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 → v1.1.19 → v1.1.20 → v1.1.21 → v1.1.22 → v1.1.23 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
+> 本文件為 v1.0 → v1.1 → v1.1.1 → v1.1.2 → v1.1.3 → v1.1.4 → v1.1.5 → v1.1.6 → v1.1.7 → v1.1.8 → v1.1.9 → v1.1.10 → v1.1.11 → v1.1.12 → v1.1.13 → v1.1.14 → v1.1.15 → v1.1.16 → v1.1.17 → v1.1.18 → v1.1.19 → v1.1.20 → v1.1.21 → v1.1.22 → v1.1.23 → v1.1.24 → v1.1.25 合併後的完整規格，單獨即可作為施工依據，無需回查舊版。
 
 ---
 
@@ -16,6 +16,7 @@
 |---|---|
 | v1.1.23 | **照片上傳支援 HEIC/HEIF 自動轉 JPEG**（2026-09-03，業主指示「手機端接受更多格式、轉成 JPG，縮小管線沿用」）：① **vendored `heic2any` 0.0.4**（MIT、UMD、wasm 已內嵌、無外部請求）→ `public/vendor/heic2any.js`，兩支 index（`public/index.html`＋`functions/lib/dynamic-index.ts`）於 browser-image-compression 之後、app.js 之前載入（全局 `window.heic2any`）。② **`compressPhoto()`（public/app.js）加前置步驟**——`isHeicBlob()` 讀前 12 bytes magic（`ftyp` ＋ HEIF brand 白名單 `heic/heix/hevc/hevx/heif/mif1/heim/heis`，**不靠 `file.type`**：部分 Android 裝置把 HEIC 報成 `application/octet-stream`）→ 是 HEIC 則 `heic2any({toType:'image/jpeg', quality:0.9})` 轉 JPEG → **再進既有壓縮管線**（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG——參數原封未動）；非 HEIC 直接照舊。轉換失敗與既有解碼失敗同路徑：toast「此照片無法處理（檔案可能損壞或不支援的格式），請改用相機拍攝或先在相簿轉存」＋`e.toasted` 防重複。③ **後端零改動**（§4.4 照片端點白名單/magic bytes/10MB 不變——到後端的幾乎一定是 JPEG）；§5.0 照片壓縮規則更新、§1.2 目錄樹補 heic2any.js。④ **E2E 加 1 條**（真實 HEIC fixture → 瀏覽器內轉換 → mock 上傳 → 縮圖；cache-busting spec asset 數 3→4）。**未新增 migration、未改 API** |
 | v1.1.24 | **後端優化**（2026-09-22）：① **A3/E1 統一 400 信封**——`lib/respond.ts` 新增 `zv`（包 `@hono/zod-validator`，第三參 hook 把 zod `issues[0].message` 轉為 `error.message`、`code='VALIDATION_ERROR'`），全站 18 個驗證點由裸 `zValidator` 改掛 `zv`，與手動 `fail()` 同形；② **A1/A2 熱路徑**——`resolveUser` 順帶 `payload.exp`（`User` 型別加選填 `exp`），`requireAuth` 續期判斷直讀 `user.exp`（免二次 `decodeJwt`）；`secretKey` 以 secret 為鍵做模組層 `CryptoKey` 快取；③ **B1/B2 查詢**——`optionAllowedInCategory` 單次 `EXISTS`/`NOT EXISTS`（既單查詢）、CSV `update_count` 由關聯子查詢改 `LEFT JOIN` 彙總表；④ **B3 索引**——`idx_tickets_list` 加尾端 tie-breaker `(status, last_activity_at DESC, id DESC)` 對齊列表 `ORDER BY`；⑤ **C1** `dynamic-index` 模板依 version 快取（同部署僅組裝一次）。单元兩阶層 `test`／`test:local` 各 11 檔 157 tests 全綠，E2E 32 實跑＋1 skip（commit 比對需 CI `GITHUB_SHA`） |
+| v1.1.25 | **`:id` 校驗下沉（C1）**（2026-09-30）：① `lib/validate.ts` 新增共用 `idParam`（`z.object({ id: z.coerce.number().int().positive({ message:'無效的 id' }) })`——param 值為字串故用 `z.coerce`，對齊 `listTicketsQuerySchema` 慣例）；② 六支 route 檔 14 個 `:id` 端點於 `requireAuth(...)` 之後插 `zv('param', idParam)`（有 body 者 param／json 雙 validator 並存，Hono 依 target 分鍵），handler 本體改 `const { id } = c.req.valid('param')`，砍掉 14 份手動 `Number(...)+Number.isInteger` guard；③ 400 形與 `error.code='VALIDATION_ERROR'` 不變，id 訊息統一為『無效的 id』；`share`（token／photo_id）與 daily-report 的 query `category_id` 維持各自判準。typecheck 0 errors、單元兩階層各 11 檔 157 tests 全綠、E2E 32 實跑＋1 skip |
 | v1.1.22 | **案件動態「全部類別」預設**（2026-09-02）：① **F1 端點加 `category_id=all`**——合併全部類別當日案件（新／既有兩組 SQL 跳過 `t.category_id` 過濾）、`category_label` 固定「全部類別」、`category_id` 回 `null`、**模板固定取全域預設**（all 無單一類別可取樣；實作以 `category_id=-1` 查 `option_categories` 必然無匹配落全域）；`category_id` 非正整數且非 `all` → `400 VALIDATION_ERROR`（錯誤訊息改「需為正整數或 "all"」）。② **前端「案件動態」類別下拉加「全部類別」列（value=`all`）並設為預設**（`localStorage.dailyReportCatId` 記憶值優先，含 `all`）。③ mock fixture 補當日既有案件（id=98 門禁）＋當日 update，讓「全部」預設模式同時有 new_cases 與 timeline_updates。**未新增 migration、未改其他端點** |
 | v1.1.21 | **前端兩頁改版＋登出鈕移除＋日期 locale 修正**（2026-09-02）：① **統計頁拆 sub-tab**——「月度統計」（六卡＋月份下拉＋各類別金額＋CSV）與「案件動態」（F2/F3 日報框）拆成 `.tabs` sub-tab，一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇；「案件動態」tab 才載入時才發 daily-report 請求（月度預設時不打）；原「案件動態」section-title 砍掉（tab 標籤已說明）。② **訊息模板管理頁重構**——進頁先組「完整簡報預覽」（兩段模板套前端 fixture 即時渲染成整篇實際發送長相，`.tmpl-full`），下方「模板來源」兩行（名稱＋範圍）；**模板名稱改超連結**、點名稱或「編輯」開 `modal-mask` 置中彈窗（textarea＋即時預覽＋重置出廠預設（G7 移入 modal 內）＋儲存），存檔後整篇簡報預覽同步刷新（不再整頁 reload）。編輯 modal 改回既有 `modal-mask` 定位（舊 `modal-bg` 非既有 class、會掉進文件流）。③ **移除底部 nav「🚪 登出」鈕**（v1.1.17 加）——LINE 憑證在 LIFF 快取而非 cookie，`POST /api/auth/logout` 清 cookie 後重載仍會用 LIFF 快取 token 無感自動重登，登出無實際效果；憑證過期時 boot 已自動 `forceFreshLogin()`（`liff.logout()`＋重導 OAuth，受 C1 重登上限保護）。**後端 `/api/auth/logout` 端點保留**（§3.5 端點契約不變）。④ **日期字串 locale 修正**——`taipeiDateStr()` 改用 `Intl.DateTimeFormat('en-US', …).formatToParts()` 組 `YYYY-MM-DD`（locale 無關）；舊法 `'en-CA'` 字串格式非 spec 保證（完整 ICU 回 `MM/DD/YYYY`、受限 ICU 環境回 ISO），餵 `<input type=date>` 會 invalid。**未新增端點、未改 API 回應格式、未動 DB** |
 | v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
@@ -535,6 +536,7 @@ export function requireAuth(opts?: {
 | 廠商 sort_order | 選填，非負整數（**僅 PATCH** 帶；POST 未帶 → DB 預設 0） |
 | 選項 label | 必填，1–30 字 |
 | 成員 display_name | 必填，1–20 字 |
+| :id（path 參數） | 正整數——`zv('param', idParam)`（coerce→int→positive）；非正整數 → 400 `VALIDATION_ERROR`，訊息『無效的 id』（§4.0 統一信封） |
 
 ### 4.2 Auth
 

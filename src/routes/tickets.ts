@@ -14,6 +14,7 @@ import {
   voidTicketSchema,
   reopenTicketSchema,
   listTicketsQuerySchema,
+  idParam,
 } from '../lib/validate'
 import type { Env } from '../lib/env'
 
@@ -139,11 +140,8 @@ ticketRoutes.get('/', requireAuth(), zv('query', listTicketsQuerySchema), async 
 })
 
 // GET /api/tickets/:id — 三角色（§4.3）
-ticketRoutes.get('/:id', requireAuth(), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
-  }
+ticketRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')   // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
 
   // A1（v1.1.14）：ticket 本體 + 主照片一次查詢（json_group_array），減少 roundtrip
@@ -235,9 +233,8 @@ ticketRoutes.get('/:id', requireAuth(), async (c) => {
 })
 
 // PATCH /api/tickets/:id — D7：committee 僅自己建的單；manager/admin 全部（§4.3）
-ticketRoutes.patch('/:id', requireAuth(), zv('json', updateTicketSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.patch('/:id', requireAuth(), zv('param', idParam), zv('json', updateTicketSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -392,9 +389,8 @@ ticketRoutes.patch('/:id', requireAuth(), zv('json', updateTicketSchema), async 
 })
 
 // POST /api/tickets/:id/updates — manager/admin（§4.3）
-ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zv('json', createUpdateSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', createUpdateSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -465,9 +461,8 @@ ticketRoutes.post('/:id/updates', requireAuth({ roles: ['manager', 'admin'] }), 
 })
 
 // POST /api/tickets/:id/comments — 三角色（D1，§4.3）
-ticketRoutes.post('/:id/comments', requireAuth(), zv('json', createCommentSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.post('/:id/comments', requireAuth(), zv('param', idParam), zv('json', createCommentSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -518,9 +513,8 @@ ticketRoutes.post('/:id/comments', requireAuth(), zv('json', createCommentSchema
 })
 
 // POST /api/tickets/:id/void — manager/admin（§4.3）
-ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zv('json', voidTicketSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', voidTicketSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -554,9 +548,8 @@ ticketRoutes.post('/:id/void', requireAuth({ roles: ['manager', 'admin'] }), zv(
 })
 
 // POST /api/tickets/:id/reopen — 僅 admin（D2，§3）
-ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zv('json', reopenTicketSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zv('param', idParam), zv('json', reopenTicketSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
   const body = c.req.valid('json')
 
@@ -592,9 +585,8 @@ ticketRoutes.post('/:id/reopen', requireAuth({ roles: ['admin'] }), zv('json', r
 })
 
 // POST /api/tickets/:id/share-token — manager/admin（§4.3）
-ticketRoutes.post('/:id/share-token', requireAuth({ roles: ['manager', 'admin'] }), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的案件 id')
+ticketRoutes.post('/:id/share-token', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), async (c) => {
+  const { id } = c.req.valid('param')
 
   const ticket = await c.env.DB.prepare(
     'SELECT id FROM tickets WHERE id = ?',

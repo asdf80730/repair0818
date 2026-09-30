@@ -2,10 +2,11 @@
 // 註冊於全域 requireAuth() 之下（已開通使用者）
 
 import { Hono } from 'hono'
-import { ok, fail } from '../lib/respond'
+import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
+import { idParam } from '../lib/validate'
 
 export const photoRoutes = new Hono<Env>()
 
@@ -88,11 +89,8 @@ photoRoutes.post('/', requireAuth(), async (c) => {
 })
 
 // GET /api/photos/:id — 已開通使用者（§4.4）
-photoRoutes.get('/:id', requireAuth(), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '無效的照片 id')
-  }
+photoRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
+  const { id } = c.req.valid('param')
   const user = c.get('user')
 
   const photo = await c.env.DB.prepare(

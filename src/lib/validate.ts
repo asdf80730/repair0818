@@ -5,6 +5,10 @@ import { z } from 'zod'
 
 // 通用
 const id = z.number().int().positive()
+// :id 路徑參數（param target 值為字串，故用 coerce；對齊 listTicketsQuerySchema 慣例）
+export const idParam = z.object({
+  id: z.coerce.number().int().positive({ message: '無效的 id' }),
+})
 // G8：optionalText 允許 null（標準 REST 語意），null 視同未填
 const optionalText = (max: number) => z.string().trim().max(max).optional().nullable().or(z.literal(''))
 

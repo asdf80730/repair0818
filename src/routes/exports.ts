@@ -3,7 +3,6 @@
 // 僅 POST /sign 走標準 Cookie＋CSRF 流程（掛在 requireAuth 之下）
 
 import { Hono } from 'hono'
-import { z } from 'zod'
 import { ok, fail, zv } from '../lib/respond'
 import { requireAuth, resolveUser } from '../lib/auth'
 import { exportQuerySchema } from '../lib/validate'
@@ -53,7 +52,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 // POST /api/exports/sign — manager/admin，標準 Cookie＋CSRF（§4.8）
 exportRoutes.post('/sign', requireAuth({ roles: ['manager', 'admin'] }), zv('json', exportQuerySchema), async (c) => {
   const user = c.get('user')
-  const body = c.req.valid('json') as z.infer<typeof exportQuerySchema>
+  const body = c.req.valid("json")
   const { status = '', from = '', to = '' } = body
   const exp = Math.floor(Date.now() / 1000) + SIGN_TTL_SEC
   const sig = await signExportUrl(c.env.JWT_SECRET, user.id, exp, status, from, to)

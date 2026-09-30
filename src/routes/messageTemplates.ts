@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
 import type { Env } from '../lib/env'
+import { idParam } from '../lib/validate'
 
 export const messageTemplateRoutes = new Hono<Env>()
 
@@ -58,11 +59,8 @@ messageTemplateRoutes.get('/', requireAuth(), async (c) => {
 })
 
 // GET /api/message-templates/:id — 三角色可讀
-messageTemplateRoutes.get('/:id', requireAuth(), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '無效的模板 id')
-  }
+messageTemplateRoutes.get('/:id', requireAuth(), zv('param', idParam), async (c) => {
+  const { id } = c.req.valid('param')
   // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
   const row = await c.env.DB.prepare(
     `SELECT id,
@@ -84,11 +82,8 @@ const updateTemplateSchema = z.object({
   message: '至少需提供 body 或 label',
 })
 
-messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateTemplateSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) {
-    return fail(c, 400, 'VALIDATION_ERROR', '無效的模板 id')
-  }
+messageTemplateRoutes.put('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', updateTemplateSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const body = c.req.valid('json')
 
   const existing = await c.env.DB.prepare(

@@ -4,7 +4,7 @@
 import { Hono } from 'hono'
 import { ok, fail, zv } from '../lib/respond'
 import { requireAuth } from '../lib/auth'
-import { createVendorSchema, updateVendorSchema } from '../lib/validate'
+import { createVendorSchema, updateVendorSchema, idParam } from '../lib/validate'
 import { nowIso } from '../lib/time'
 import type { Env } from '../lib/env'
 
@@ -29,9 +29,8 @@ vendorRoutes.post('/', requireAuth({ roles: ['manager', 'admin'] }), zv('json', 
 })
 
 // PATCH /api/vendors/:id — manager/admin（§4.6）
-vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('json', updateVendorSchema), async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id) || id <= 0) return fail(c, 400, 'VALIDATION_ERROR', '無效的廠商 id')
+vendorRoutes.patch('/:id', requireAuth({ roles: ['manager', 'admin'] }), zv('param', idParam), zv('json', updateVendorSchema), async (c) => {
+  const { id } = c.req.valid('param')
   const body = c.req.valid('json')
 
   const existing = await c.env.DB.prepare(

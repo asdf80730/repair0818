@@ -125,3 +125,14 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 - POST upsert 為「規則 2」明文例外（兩階段：先 `RETURNING id` 再 batch 寫關聯）；禁用 `meta.last_row_id` 當 upsert 後 id。
 - join 表 type 由應用層強制（`assertValidAssoc`/`assertCategoryIds`），SQLite CHECK 不能跨表。
 - 類別停用 → 僅下拉消失，`option_categories` 列保留（不 DELETE）。
+
+## Agent skills
+
+### Issue tracker
+本 repo 的 GitHub Issues，經 `gh` CLI 操作。見 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+五個正規角色，標籤字串＝名稱（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）。見 `docs/agents/triage-labels.md`。
+
+### Domain docs
+single-context：根目錄一份 `GLOSSARY.md` ＋ `docs/adr/`。見 `docs/agents/domain.md`。
