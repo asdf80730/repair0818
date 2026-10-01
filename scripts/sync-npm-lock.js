@@ -22,11 +22,12 @@ for (const [name, val] of Object.entries(bunPkgs)) {
   const at = tag.lastIndexOf("@");
   const nm = tag.slice(0, at);
   const ver = tag.slice(at + 1);
-  const rec = {
+  const fname = nm.startsWith("@") ? nm.slice(nm.indexOf("/") + 1) : nm;
+  const ent = {
     version: ver,
     resolved:
       resolved ||
-      "https://registry.npmjs.org/" + nm + "/-/" + nm + "-" + ver + ".tgz",
+      "https://registry.npmjs.org/" + nm + "/-/" + fname + "-" + ver + ".tgz",
     integrity: integrity || "",
     dev: !allRootDeps[nm],
     info,
