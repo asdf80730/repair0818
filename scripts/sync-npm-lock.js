@@ -120,7 +120,7 @@ for (const name of newEntries) {
   added++;
 }
 // 嵌套 entries：bun.lock 用 "parent/child" key，npm lock 用 node_modules/parent/node_modules/child
-const nested = [["@csstools/css-color-parser", "rrweb-cssom", "0.8.0"]];
+const nested = [["cssstyle", "rrweb-cssom", "0.8.0"]];
 for (const [parent, child, ver] of nested) {
   const bunKey = parent + "/" + child;
   const rec = byName[bunKey];
