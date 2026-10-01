@@ -38,45 +38,56 @@ function toEntry(nm, ver, resolved, info, integrity, isDev) {
   return ent;
 }
 
-// 1. 頂層：key = 套件名
+// 頂層：key = 套件名
 for (const [name, val] of Object.entries(bunPkgs)) {
+  if (
+    !Array.isArray(val) ||
+    name.includes("/") ||
+    !name.startsWith("@") === false
+  ) {
+    // 頂層與 nested 都用同一個 name；nested 的 key 含 "/"，下面處理
+  }
   if (!Array.isArray(val)) continue;
   const [tag, resolved, info, integrity] = val;
   const at = tag.lastIndexOf("@");
   const nm = tag.slice(0, at);
   const ver = tag.slice(at + 1);
-  newPkgs["node_modules/" + name] = toEntry(
-    nm,
-    ver,
-    resolved,
-    info,
-    integrity,
-    !allRootDeps[nm],
-  );
+  const key = name.includes("/")
+    ? bunToNpmNestedKey(name, nm)
+    : "node_modules/" + name;
+  if (key)
+    newPkgs[key] = toEntry(
+      nm,
+      ver,
+      resolved,
+      info,
+      integrity,
+      !allRootDeps[nm],
+    );
 }
 
-// 2. 嵌套：key = "parent/child" → node_modules/parent/node_modules/child
-for (const [name, val] of Object.entries(bunPkgs)) {
-  if (!Array.isArray(val) || !name.includes("/")) continue;
-  const [tag, resolved, info, integrity] = val;
-  const at = tag.lastIndexOf("@");
-  const nm = tag.slice(0, at);
-  const ver = tag.slice(at + 1);
-  // 依 bun key 推 npm nested key：
-  //   "a/b" → node_modules/a/node_modules/b
-  //   "a/b/c" → node_modules/a/node_modules/b/node_modules/c
-  const segs = name.split("/");
-  const last = segs.pop(); // child 名
-  const parentPath = "node_modules/" + segs.join("/node_modules/");
-  const npmKey = parentPath + "/node_modules/" + last;
-  newPkgs[npmKey] = toEntry(
-    nm,
-    ver,
-    resolved,
-    info,
-    integrity,
-    !allRootDeps[nm],
-  );
+// 將 bun 的 nested key 轉 npm 格式
+function bunToNpmNestedKey(bunKey, nm) {
+  const segs = bunKey.split("/");
+  // 還原為「完整」段：@scope/pkg 在 bun 用 @scope/pkg 寫，但 split 後是 ["@scope","pkg"]
+  // 需把 @scope 接回 pkg 前綴
+  const merged = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i].startsWith("@") && i + 1 < segs.length) {
+      merged.push(segs[i] + "/" + segs[i + 1]);
+      i++;
+    } else {
+      merged.push(segs[i]);
+    }
+  }
+  // 用 nm 取代最後一段，因 nm 已含 scope（@x/y）；merged 的最後段是 nm 的 bare
+  if (nm.startsWith("@")) {
+    const bare = nm.slice(nm.indexOf("/") + 1);
+    if (merged.length >= 1 && merged[merged.length - 1] === bare) {
+      // 已經對上
+    }
+  }
+  return "node_modules/" + merged.join("/node_modules/");
 }
 
 oldLock.packages = newPkgs;
