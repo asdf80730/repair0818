@@ -92,6 +92,7 @@ const newEntries = [
   "agent-base",
   "mime-db",
   "entities",
+  "happy-dom",
   "xmlchars",
   "tldts",
   "tldts-core",
