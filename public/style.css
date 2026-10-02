@@ -184,6 +184,16 @@ button { cursor: pointer; }
 .ticket-meta { color: var(--gray); font-size: var(--fs-base); margin-top: var(--sp-1); }
 .stale { color: #b45309; font-size: var(--fs-base); margin-top: var(--sp-1); }
 
+/* v1.1.28（選定 B）：標籤頁 pill＋編號對齊雙欄行 */
+.seg { display: flex; gap: var(--sp-1); padding: var(--sp-2) var(--sp-4); flex-wrap: wrap; }
+.seg button { padding: 6px var(--sp-3); border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-size: var(--fs-md); }
+.seg button.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+.rows { background: var(--card); }
+.row { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2) var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); cursor: pointer; }
+.row .no { color: var(--gray); font-size: var(--fs-xs); font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+.row .t { font-weight: 600; font-size: var(--fs-md); }
+.num { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+
 /* 表單 */
 .form { padding: var(--sp-4); }
 .form label { display: block; font-weight: 600; margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-base); }
@@ -197,11 +207,18 @@ button { cursor: pointer; }
   min-height: 44px;
   line-height: 1.4;
 }
-.input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-bg); }
+.input:focus-visible, .textarea:focus-visible, .select:focus-visible, .tab:focus-visible, .btn:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-bg); }
+input:disabled, select:disabled, textarea:disabled { background: #f5f5f5; color: var(--gray); }
 .select { padding-right: 32px; text-overflow: ellipsis; }
 .textarea { min-height: 80px; resize: vertical; }
 /* 送出/主操作按鈕滿寬，方便手指點擊 */
 .form .btn-primary { width: 100%; margin-top: var(--sp-4); }
+/* v1.1.28（選定 A→C 同一 DOM）：窄帶單欄，桌面雙欄 */
+.defrow label { display: block; font-weight: 600; margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-base); }
+@media (min-width: 641px) {
+  .defrow { display: grid; grid-template-columns: 96px 1fr; gap: var(--sp-1) var(--sp-3); align-items: start; }
+  .defrow label { margin: 0; }
+}
 
 /* 照片 */
 .photo-preview, .photo-wall { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0; }

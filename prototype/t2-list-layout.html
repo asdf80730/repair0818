@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway). Q: 列表頁該用哪種版面？ 4 variants switchable via ?variant=A|B|C|D, offline mock data.
+     A=緊湊卡片式(現 v1.1.27) | B=標籤頁+列表 | C=雙欄網格(桌面) | D=緊湊表格式 -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 · 列表版面</title>
+<style>
+:root{
+--red:#e5484d;--yellow:#f5a524;--green:#30a46c;--blue:#0091ff;--gray:#6f6f6f;
+--border:#e4e4e7;--bg:#fafafa;--card:#fff;--muted:#6f6f6f;--primary:#0091ff;--text:#222;
+--success-bg:#dcfce7;--success-text:#166534;--warning-bg:#fef3c7;--warning-text:#92400e;
+--danger-bg:#fee2e2;--danger-text:#991b1b;--info-bg:#e5e7eb;--info-text:#4b5563;
+--fs-xs:12px;--fs-sm:13px;--fs-base:14px;--fs-md:16px;--fs-lg:20px;--fs-xl:24px;
+--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC",sans-serif;background:var(--bg);color:var(--text);font-size:var(--fs-md);line-height:1.5;padding-bottom:70px}
+.topbar{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.06);position:sticky;top:0;z-index:5}
+.topbar h1{margin:0;font-size:var(--fs-lg);flex:1;font-weight:600}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:var(--fs-xs);font-weight:600;line-height:1.6}
+.badge-red{background:var(--danger-bg);color:var(--danger-text)}
+.badge-yellow{background:var(--warning-bg);color:var(--warning-text)}
+.badge-green{background:var(--success-bg);color:var(--success-text)}
+.badge-gray{background:var(--info-bg);color:var(--info-text)}
+input,select,button{font-size:var(--fs-md)}
+.tabs{display:flex;overflow-x:auto;border-bottom:1px solid var(--border);background:var(--card)}
+.tab{flex:0 0 auto;padding:var(--sp-3) var(--sp-4);background:none;border:none;border-bottom:2px solid transparent;color:var(--gray);white-space:nowrap}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.filter-row{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-4)}
+.filter-row select{flex:1;max-width:220px}
+.num{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+.ticket-list{padding:var(--sp-2)}
+.card{background:var(--card);border-radius:8px;padding:var(--sp-3);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.ticket-card{cursor:pointer;margin-bottom:var(--sp-2)}
+.ticket-title{display:flex;align-items:center;gap:var(--sp-2);font-weight:600;font-size:var(--fs-md)}
+.ticket-desc{font-size:var(--fs-base);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:var(--sp-1)}
+.ticket-meta{color:var(--gray);font-size:var(--fs-base);margin-top:var(--sp-1)}
+.seg{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-4);flex-wrap:wrap}
+.seg button{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--card)}
+.seg button.active{border-color:var(--primary);background:var(--primary);color:#fff}
+.rows{background:var(--card)}
+.row{display:grid;grid-template-columns:auto 1fr;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border)}
+.row .no{color:var(--gray);font-size:var(--fs-xs)}
+.row .t{font-weight:600}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);padding:var(--sp-3)}
+@media (min-width:641px){.grid{grid-template-columns:repeat(3,1fr)}}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-base)}
+th,td{text-align:left;padding:6px var(--sp-3);border-bottom:1px solid var(--border)}
+th{color:var(--gray);font-size:var(--fs-xs);font-weight:600}
+</style>
+<div id="app"></div>
+<div id="bar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#222;color:#fff;padding:8px 14px;border-radius:999px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:99"></div>
+<script>
+function hdr(){return `<header class="topbar"><h1>🏢️ 社區修繕系統</h1></header>`}
+const mock=[
+ {id:101,title:'3 樓走廊燈不亮 (7 天)',desc:'天花板燈管閃爍，需更換 LED 燈管',status:'in_progress',vendor:'大明水電',created:'2026-09-24',act:'2026-10-01'},
+ {id:98,title:'門禁卡片讀取無效 (3 天)',desc:'刷卡後無反應',status:'open',vendor:'未指派',created:'2026-09-28',act:'2026-09-30'},
+ {id:95,title:'地下室積水 (12 天)',desc:'泵房積水約 5cm',status:'done',vendor:'大明水電',created:'2026-09-19',act:'2026-09-29'},
+ {id:88,title:'電梯異響 (21 天)',desc:'上行時有金屬摩擦聲',status:'in_progress',vendor:'華達電梯',created:'2026-09-10',act:'2026-09-12'},
+ {id:80,title:'圍牆傾斜補強 (30 天)',desc:'北側圍牆約 3 度傾斜',status:'void',vendor:'未指派',created:'2026-09-01',act:'2026-09-01'},
+];
+const st={in_progress:['處理中','yellow'],open:['詢價中','red'],done:['已完成','green'],void:['作廢','gray']};
+function badge(s){const[l,c]=st[s];return `<span class="badge badge-${c}">${l}</span>`}
+const tabs=['active','open','in_progress','done','void','all'];
+const tmap={active:'未結',open:'詢價',in_progress:'處理',done:'完成',void:'作廢',all:'全部'};
+function cat(){return `<div class="filter-row"><label>分類：</label><select><option>全部類別</option><option>機電</option><option>土木</option></select></div>`}
+function tabbar(){return `<div class="tabs">`+tabs.map(t=>`<button class="tab${t==='active'?' active':''}">${tmap[t]}</button>`).join('')+`</div>`}
+const A=()=>hdr()+tabbar()+cat()+`<div class="ticket-list">`+mock.map(t=>
+ `<div class="card ticket-card"><div class="ticket-title">${badge(t.status)}<span>${t.title}</span></div>${t.desc?`<div class="ticket-desc">${t.desc}</div>`:''}<div class="ticket-meta">廠商：${t.vendor}</div><div class="ticket-meta">建立 ${t.created} · 最後活動 ${t.act}</div></div>`).join('')+`</div>`;
+const B=()=>hdr()+`<div class="seg">`+tabs.map(t=>`<button class="${t==='active'?'active':''}">${tmap[t]}</button>`).join('')+`</div>`+cat()+`<div class="rows">`+mock.map(t=>
+ `<div class="row"><div class="no num">#${String(t.id).padStart(4,'0')}</div><div><div class="t">${t.title}</div><div class="ticket-meta">${badge(t.status)} · ${t.vendor} · ${t.act}</div></div></div>`).join('')+`</div>`;
+const C=()=>hdr()+tabbar()+cat()+`<div class="grid">`+mock.map(t=>
+ `<div class="card"><div class="ticket-title">${badge(t.status)}</div><div style="font-weight:600;font-size:var(--fs-md);margin-top:6px">${t.title}</div><div class="ticket-meta">廠商：${t.vendor}</div><div class="ticket-meta">活動 ${t.act}</div></div>`).join('')+`</div>`;
+const D=()=>hdr()+tabbar()+cat()+`<div style="padding:0 var(--sp-2)"><table><thead><tr><th>#</th><th>標題</th><th>狀態</th><th>廠商</th><th>活動</th></tr></thead><tbody>`+mock.map(t=>
+ `<tr><td class="num">${t.id}</td><td>${t.title}</td><td>${badge(t.status)}</td><td>${t.vendor}</td><td class="num">${t.act}</td></tr>`).join('')+`</tbody></table></div>`;
+const V={A,B,C,D},names={A:'緊湊卡片式',B:'標籤頁+列表',C:'雙欄網格',D:'緊湊表格'};
+function key(){const p=new URLSearchParams(location.search);let k=(p.get('variant')||'A').toUppercase();return V[k]?k:'A'}
+function render(){const k=key();document.getelementbyid('app').innerhtml=V[k]();
+ document.getelementbyid('bar').innerhtml=`<button style="border:0;background:#0091ff;color:#fff;border-radius:50%;width:28px;height:28px" onclick="go(-1)">‹</button><span>${k} (${names[k]})</span><button style="border:0;background:#0091ff;color:#fff;border-radius:50%;width:28px;height:28px" onclick="go(1)">›</button>`}
+function go(d){const ks=Object.keys(V);let i=(ks.indexof(key())+d+ks.length)%ks.length;const p=new URLSearchParams(location.search);p.set('variant',ks[i]);history.replacestate(null,'','?'+p.tostring());render()}
+document.addeventlistener('keydown',e=>{const tn=document.activeelement&&document.activeelement.tagname;if(tn==='input'||tn==='textarea')return;if(e.key==='ArrowLeft')go(-1);if(e.key==='ArrowRight')go(1)});
+render();
+</script>

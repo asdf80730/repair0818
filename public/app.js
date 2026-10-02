@@ -1377,7 +1377,7 @@ pages.list = function () {
   let page = 1;
   let hasMore = false;
 
-  const listEl = el("div", { class: "ticket-list" });
+  const listEl = el("div", { class: "ticket-list rows" });
   const loadMoreBtn = el("button", {
     class: "btn btn-ghost",
     text: "載入更多",
@@ -1453,33 +1453,40 @@ pages.list = function () {
     };
     const createdDays = dayDiff(t.created_at);
     const age = `(${createdDays} 天)`;
+    // v1.1.28 選定 B：編號對齊雙欄行（左 #0000／右 標題＋徽章·廠商·日期）
     return el(
       "div",
       {
-        class: "card ticket-card",
+        class: "ticket-card row",
         onclick: () => {
           location.hash = "#/ticket/" + t.id;
         },
       },
       [
-        el("div", { class: "ticket-title" }, [
-          statusBadge(t.status),
-          el("span", { text: `${t.title} ${age}`.trim() }),
+        el("div", {
+          class: "no num",
+          text: `#${String(t.id).padStart(4, "0")}`,
+        }),
+        el("div", {}, [
+          el("div", { class: "t ticket-title" }, [
+            statusBadge(t.status),
+            el("span", { text: `${t.title} ${age}`.trim() }),
+          ]),
+          t.description
+            ? el("div", { class: "ticket-desc", text: t.description })
+            : null,
+          el("div", {
+            class: "ticket-meta",
+            text: `廠商：${t.vendor_name || "未指派"}`,
+          }),
+          el("div", {
+            class: "ticket-meta",
+            text: `建立 ${dateOnly(t.created_at)} · 最後活動 ${dateOnly(t.last_activity_at)}`,
+          }),
+          stale
+            ? el("div", { class: "stale", text: `⚠ ${staleDays} 天未更新` })
+            : null,
         ]),
-        t.description
-          ? el("div", { class: "ticket-desc", text: t.description })
-          : null,
-        el("div", {
-          class: "ticket-meta",
-          text: `廠商：${t.vendor_name || "未指派"}`,
-        }),
-        el("div", {
-          class: "ticket-meta",
-          text: `建立 ${dateOnly(t.created_at)} · 最後活動 ${dateOnly(t.last_activity_at)}`,
-        }),
-        stale
-          ? el("div", { class: "stale", text: `⚠ ${staleDays} 天未更新` })
-          : null,
       ],
     );
   }
@@ -1507,24 +1514,24 @@ pages.list = function () {
     ]),
   );
 
-  const tabBar = el("div", { class: "tabs" });
+  const segBar = el("div", { class: "seg" });
   for (const [val, label] of tabs) {
-    tabBar.appendChild(
+    segBar.appendChild(
       el("button", {
-        class: "tab" + (val === currentStatus ? " active" : ""),
+        class: val === currentStatus ? "active" : "",
         text: label,
         onclick: (e) => {
           currentStatus = val;
           page = 1;
           listEl.innerHTML = "";
-          for (const b of tabBar.children) b.classList.remove("active");
+          for (const b of segBar.children) b.classList.remove("active");
           e.currentTarget.classList.add("active");
           load();
         },
       }),
     );
   }
-  root.appendChild(tabBar);
+  root.appendChild(segBar);
 
   // 類別篩選
   const catSelect = el("select", {
@@ -1759,16 +1766,23 @@ pages.new = function () {
 
   root.appendChild(
     el("div", { class: "form" }, [
-      el("label", { text: "類別" }),
-      catSelect,
-      el("label", { text: "地點" }),
-      locSelect,
-      el("label", { text: "說明" }),
-      descEl,
-      descRow,
-      el("label", { text: "照片" }),
-      photoInput,
-      photoPreview,
+      el("div", { class: "defrow" }, [
+        el("label", { text: "類別" }),
+        catSelect,
+      ]),
+      el("div", { class: "defrow" }, [
+        el("label", { text: "地點" }),
+        locSelect,
+      ]),
+      el("div", { class: "defrow" }, [el("label", { text: "說明" }), descEl]),
+      el("div", { class: "defrow" }, [
+        el("label", { text: "使用範本" }),
+        descRow,
+      ]),
+      el("div", { class: "defrow" }, [
+        el("label", { text: "照片" }),
+        el("div", {}, [photoInput, photoPreview]),
+      ]),
       el("button", {
         class: "btn btn-primary",
         text: "送出建單",
@@ -2370,18 +2384,25 @@ pages.edit = async function (id) {
 
   root.appendChild(
     el("div", { class: "form" }, [
-      el("label", { text: "類別" }),
-      catSelect,
-      el("label", { text: "地點" }),
-      locSelect,
-      el("label", { text: "說明" }),
-      descEl,
-      // E2（v1.1.14）：編輯頁照片 UI 補掛（v1.1.13 迴歸漏放）
-      el("label", { text: "照片" }),
-      photoInput,
-      photoPreview,
-      canAssignVendor ? el("label", { text: "指派廠商" }) : null,
-      canAssignVendor ? vendorSelect : null,
+      el("div", { class: "defrow" }, [
+        el("label", { text: "類別" }),
+        catSelect,
+      ]),
+      el("div", { class: "defrow" }, [
+        el("label", { text: "地點" }),
+        locSelect,
+      ]),
+      el("div", { class: "defrow" }, [el("label", { text: "說明" }), descEl]),
+      el("div", { class: "defrow" }, [
+        el("label", { text: "照片" }),
+        el("div", {}, [photoInput, photoPreview]),
+      ]),
+      canAssignVendor
+        ? el("div", { class: "defrow" }, [
+            el("label", { text: "指派廠商" }),
+            vendorSelect,
+          ])
+        : null,
       el("button", { class: "btn btn-primary", text: "儲存", onclick: submit }),
     ]),
   );
