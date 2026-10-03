@@ -1372,8 +1372,12 @@ pages.list = function () {
     ["void", "作廢"],
     ["all", "全部"],
   ];
-  let currentStatus = "active";
-  let currentCategory = "";
+  // v1.1.29（T9）：tab／分類態納層二（localStorage），失落落出廠預設
+  const savedStatus = localStorage.getItem("listStatus");
+  let currentStatus = tabs.some(([v]) => v === savedStatus)
+    ? savedStatus
+    : "active";
+  let currentCategory = localStorage.getItem("listCategory") || "";
   let page = 1;
   let hasMore = false;
 
@@ -1522,6 +1526,7 @@ pages.list = function () {
         text: label,
         onclick: (e) => {
           currentStatus = val;
+          localStorage.setItem("listStatus", val);
           page = 1;
           listEl.innerHTML = "";
           for (const b of segBar.children) b.classList.remove("active");
@@ -1538,6 +1543,7 @@ pages.list = function () {
     class: "select",
     onchange: (e) => {
       currentCategory = e.target.value;
+      localStorage.setItem("listCategory", e.target.value);
       page = 1;
       listEl.innerHTML = "";
       load();
@@ -3604,6 +3610,135 @@ function renderNav() {
   // 底部導覽列空間還給功能 tab（admin 6 格→5 格、manager 5→4、committee 4→3）。後端 /api/auth/logout 端點保留。
 }
 
+// ---- v1.1.29（T9）：刷新／focus／捲動 還原 ----
+// 層一＝模組級單條快照（「這一次渲染」的連續性；整頁重載即失落）
+// 層二＝localStorage（listStatus／listCategory／statsTab／dailyReportCatId）
+const VIEW_FOCUSABLE = "input, textarea, select, button, a[href]";
+let refreshPending = false;
+let lastRoute = null; // 上一次渲染的 route（判斷同 route／换 route）
+
+// 穩定鍵＝[「#page 的第幾個直屬容器」,「該容器內第幾個可聚焦元」]
+function viewFocusKey(node) {
+  const root = document.getElementById("page");
+  if (!root) return null;
+  for (let ci = 0; ci < root.children.length; ci++) {
+    const host = root.children[ci];
+    if (!host.contains(node)) continue;
+    const nodes = host.querySelectorAll(VIEW_FOCUSABLE);
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i] === node) return [ci, i];
+    }
+    return null;
+  }
+  return null;
+}
+
+function takeViewSnapshot(route) {
+  const snap = {
+    route,
+    scrollY: window.scrollY || 0,
+    focusKey: null,
+    caret: null,
+  };
+  const act = document.activeElement;
+  if (act && act !== document.body) {
+    snap.focusKey = viewFocusKey(act);
+    if (
+      snap.focusKey &&
+      typeof act.selectionStart === "number" &&
+      typeof act.selectionEnd === "number"
+    ) {
+      snap.caret = [act.selectionStart, act.selectionEnd];
+    }
+  }
+  return snap;
+}
+
+// 同 route：還原 scrollY ＋ 按穩定鍵還原 focus（同鍵已無 → 落該容器首個）＋ caret（鉗制越界）
+// 换 route／無快照：落頂，focus 不擾（由該頁自身慣例決定）
+function restoreViewSnapshot(snap, route) {
+  if (!snap) return;
+  if (snap.route !== route) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  const root = document.getElementById("page");
+  if (root && snap.focusKey) {
+    const host = root.children[snap.focusKey[0]];
+    if (host) {
+      const nodes = host.querySelectorAll(VIEW_FOCUSABLE);
+      const node = nodes[snap.focusKey[1]] || nodes[0];
+      if (node && typeof node.focus === "function") {
+        node.focus();
+        if (
+          snap.caret &&
+          typeof node.setSelectionRange === "function" &&
+          typeof node.value === "string"
+        ) {
+          const len = node.value.length;
+          node.setSelectionRange(
+            Math.min(snap.caret[0], len),
+            Math.min(snap.caret[1], len),
+          );
+        }
+      }
+    }
+  }
+  window.scrollTo(0, snap.scrollY || 0);
+}
+
+// 單一刷新入口：同 tick 去重（LIFF 回調與 pageshow／hashchange 可能疊觸發）
+function refresh() {
+  if (refreshPending) return;
+  refreshPending = true;
+  setTimeout(() => {
+    refreshPending = false;
+    router();
+  }, 0);
+}
+
+// push 刷新來源：LIFF 回調特徵偵測；缺失（含 ?mock=true 的 vendored mock）走 pageshow 兜底
+function wireRefresh(isMock) {
+  if (
+    !isMock &&
+    window.liff &&
+    typeof window.liff.onIsNewMessageCallback === "function"
+  ) {
+    try {
+      window.liff.onIsNewMessageCallback(refresh);
+      return;
+    } catch {
+      /* 未 init → 落下方兜底 */
+    }
+  }
+  window.addEventListener("pageshow", refresh);
+}
+
+// route 分派（自 router() 提出，便於取回傳值做還原）
+function dispatchPage(path, param) {
+  switch (path) {
+    case "":
+    case "list":
+      return pages.list();
+    case "new":
+      return pages.new();
+    case "ticket":
+      return pages.ticket(param);
+    case "edit":
+      return pages.edit(param);
+    case "stats":
+      return pages.stats();
+    case "users":
+      return pages.users();
+    case "message-templates":
+      return pages.messageTemplates();
+    case "admin":
+      return pages.admin();
+    default:
+      return pages.list();
+  }
+}
+
 // ---- hash router ----
 function router() {
   // B2：先 split('?') 過濾 query string，避免 #/ticket/12?ref=share 解析成 '12?ref=share'
@@ -3618,6 +3753,9 @@ function router() {
     clearInterval(root._pendingTimer);
     root._pendingTimer = null;
   }
+  // v1.1.29（T9）：清 DOM 前先記這一次渲染的連續性（層一快照；帶上一次的 route）
+  const snap = takeViewSnapshot(lastRoute);
+  lastRoute = hash;
   root.innerHTML = "";
 
   // 未登入 → 先 boot
@@ -3626,35 +3764,9 @@ function router() {
     return;
   }
 
-  switch (path) {
-    case "":
-    case "list":
-      pages.list();
-      break;
-    case "new":
-      pages.new();
-      break;
-    case "ticket":
-      pages.ticket(param);
-      break;
-    case "edit":
-      pages.edit(param);
-      break;
-    case "stats":
-      pages.stats();
-      break;
-    case "users":
-      pages.users();
-      break;
-    case "message-templates":
-      pages.messageTemplates();
-      break;
-    case "admin":
-      pages.admin();
-      break;
-    default:
-      pages.list();
-  }
+  const shown = dispatchPage(path, param);
+  // 頁內同步結構就緒 → 還原捲動／focus／caret（換 page 的異步追加不影響）
+  Promise.resolve(shown).then(() => restoreViewSnapshot(snap, hash));
   renderNav();
 }
 
@@ -3707,6 +3819,9 @@ async function boot() {
       console.warn("LIFF init failed", e);
     }
   }
+
+  // v1.1.29（T9）：push 刷新來源（LIFF 回調特徵偵測，缺失走 pageshow 兜底）
+  wireRefresh(isMock);
 
   // 取 me
   if (isMock) {

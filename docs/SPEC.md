@@ -1,8 +1,6 @@
-
-
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.28（定稿，可施工）** ｜ 日期：2026-10-02
+**版本：v1.1.29（定稿，可施工）** ｜ 日期：2026-10-03
 
 > 本文件為 v1.0～v1.1.25 各版合併後的完整規格，單獨即可作為施工依據；逐版變更見 §0.1 版本歷程，無需回查舊版。
 
@@ -12,48 +10,49 @@
 
 ### 0.1 版本歷程
 
-| 版本 | 內容 |
-|---|---|
-| v1.1.28 | **前端版面選定落地（T1–T7）**（2026-10-02）：依 wayfinder 選定——① **列表**採 B「標籤頁＋列表」：狀態列改 `.seg` pill（未結／詢價／處理／完成／作廢／全部），列表行改 `.row` 編號對齊雙欄（左 `#0000` `--fs-xs`＋tabular-nums／右 標題 `--fs-md`/600＋徽章·廠商·日期），`pages.list` 之 `renderTicketCard` 與 tab bar 同構；② **詳情**維持 A「時間軸主導」（零結構漂移）；③ **表單**採 A→C 同一 DOM——`.defrow` ≤640 單欄 label 在上、>640 以 `@media (min-width:641px)` 切雙欄（grid `96px 1fr`），`pages.new`／`pages.edit` 各欄位包成 `.defrow`；④ **代幣**：`:root` 沿用 v1.1.27 superset（6 字階／6 間距／狀態色成對），`focus` 由 `:focus` 改 `:focus-visible` 並補 `.tab`／`.btn`，ring = `0 0 0 2px var(--primary-bg)`，新增 `input/select/textarea:disabled`（底 #f5f5f5＋`--gray`）；⑤ 後端零改動；typecheck、173 單測、e2e 32 全綠 |
-| v1.1.25 | **`:id` 校驗下沉（C1）**（2026-09-30）：① `lib/validate.ts` id 規則**單一定義**——`const id = z.coerce.number(...).int(...).positive(...)`（三步各掛同一訊息『無效的 id』），`idParam = z.object({ id })` 與 JSON 欄位（`category_id`/`location_id`/`vendor_id`/`photo_ids`/`category_ids`）同指此定義（param 值為字串故用 `z.coerce`，JSON 字串數字同獲）；② 六支 route 檔 14 個 `:id` 端點於 `requireAuth(...)` 之後插 `zv('param', idParam)`（有 body 者 param／json 雙 validator 並存，Hono 依 target 分鍵），handler 本體改 `const { id } = c.req.valid('param')`，砍掉 14 份手動 `Number(...)+Number.isInteger` guard；③ 400 形與 `error.code='VALIDATION_ERROR'` 不變，id 全失敗路徑（`0`／小數／非數字）統一發『無效的 id』；`share`（token／photo_id）與 daily-report 的 query `category_id` 維持各自判準；④ 補 `:id` 邊界單測 9 條（`boundary` 6：有效／0／3.5／abc／空段／auth 順序；`tickets` 3：param 分項／json 分項／雙分項 precedence）。typecheck 0 errors、單元兩階層各 11 檔 166 tests 全綠、E2E 32 實跑＋1 skip |
-| v1.1.24 | **後端優化**（2026-09-22）：① **A3/E1 統一 400 信封**——`lib/respond.ts` 新增 `zv`（包 `@hono/zod-validator`，第三參 hook 把 zod `issues[0].message` 轉為 `error.message`、`code='VALIDATION_ERROR'`），全站 18 個驗證點由裸 `zValidator` 改掛 `zv`，與手動 `fail()` 同形；② **A1/A2 熱路徑**——`resolveUser` 順帶 `payload.exp`（`User` 型別加選填 `exp`），`requireAuth` 續期判斷直讀 `user.exp`（免二次 `decodeJwt`）；`secretKey` 以 secret 為鍵做模組層 `CryptoKey` 快取；③ **B1/B2 查詢**——`optionAllowedInCategory` 單次 `EXISTS`/`NOT EXISTS`（既單查詢）、CSV `update_count` 由關聯子查詢改 `LEFT JOIN` 彙總表；④ **B3 索引**——`idx_tickets_list` 加尾端 tie-breaker `(status, last_activity_at DESC, id DESC)` 對齊列表 `ORDER BY`；⑤ **C1** `dynamic-index` 模板依 version 快取（同部署僅組裝一次）。单元兩阶層 `test`／`test:local` 各 11 檔 157 tests 全綠，E2E 32 實跑＋1 skip（commit 比對需 CI `GITHUB_SHA`） |
-| v1.1.23 | **照片上傳支援 HEIC/HEIF 自動轉 JPEG**（2026-09-03，業主指示「手機端接受更多格式、轉成 JPG，縮小管線沿用」）：① **vendored `heic2any` 0.0.4**（MIT、UMD、wasm 已內嵌、無外部請求）→ `public/vendor/heic2any.js`，兩支 index（`public/index.html`＋`functions/lib/dynamic-index.ts`）於 browser-image-compression 之後、app.js 之前載入（全局 `window.heic2any`）。② **`compressPhoto()`（public/app.js）加前置步驟**——`isHeicBlob()` 讀前 12 bytes magic（`ftyp` ＋ HEIF brand 白名單 `heic/heix/hevc/hevx/heif/mif1/heim/heis`，**不靠 `file.type`**：部分 Android 裝置把 HEIC 報成 `application/octet-stream`）→ 是 HEIC 則 `heic2any({toType:'image/jpeg', quality:0.9})` 轉 JPEG → **再進既有壓縮管線**（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG——參數原封未動）；非 HEIC 直接照舊。轉換失敗與既有解碼失敗同路徑：toast「此照片無法處理（檔案可能損壞或不支援的格式），請改用相機拍攝或先在相簿轉存」＋`e.toasted` 防重複。③ **後端零改動**（§4.4 照片端點白名單/magic bytes/10MB 不變——到後端的幾乎一定是 JPEG）；§5.0 照片壓縮規則更新、§1.2 目錄樹補 heic2any.js。④ **E2E 加 1 條**（真實 HEIC fixture → 瀏覽器內轉換 → mock 上傳 → 縮圖；cache-busting spec asset 數 3→4）。**未新增 migration、未改 API** |
-| v1.1.22 | **案件動態「全部類別」預設**（2026-09-02）：① **F1 端點加 `category_id=all`**——合併全部類別當日案件（新／既有兩組 SQL 跳過 `t.category_id` 過濾）、`category_label` 固定「全部類別」、`category_id` 回 `null`、**模板固定取全域預設**（all 無單一類別可取樣；實作以 `category_id=-1` 查 `option_categories` 必然無匹配落全域）；`category_id` 非正整數且非 `all` → `400 VALIDATION_ERROR`（錯誤訊息改「需為正整數或 "all"」）。② **前端「案件動態」類別下拉加「全部類別」列（value=`all`）並設為預設**（`localStorage.dailyReportCatId` 記憶值優先，含 `all`）。③ mock fixture 補當日既有案件（id=98 門禁）＋當日 update，讓「全部」預設模式同時有 new_cases 與 timeline_updates。**未新增 migration、未改其他端點** |
-| v1.1.21 | **前端兩頁改版＋登出鈕移除＋日期 locale 修正**（2026-09-02）：① **統計頁拆 sub-tab**——「月度統計」（六卡＋月份下拉＋各類別金額＋CSV）與「案件動態」（F2/F3 日報框）拆成 `.tabs` sub-tab，一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇；「案件動態」tab 才載入時才發 daily-report 請求（月度預設時不打）；原「案件動態」section-title 砍掉（tab 標籤已說明）。② **訊息模板管理頁重構**——進頁先組「完整簡報預覽」（兩段模板套前端 fixture 即時渲染成整篇實際發送長相，`.tmpl-full`），下方「模板來源」兩行（名稱＋範圍）；**模板名稱改超連結**、點名稱或「編輯」開 `modal-mask` 置中彈窗（textarea＋即時預覽＋重置出廠預設（G7 移入 modal 內）＋儲存），存檔後整篇簡報預覽同步刷新（不再整頁 reload）。編輯 modal 改回既有 `modal-mask` 定位（舊 `modal-bg` 非既有 class、會掉進文件流）。③ **移除底部 nav「🚪 登出」鈕**（v1.1.17 加）——LINE 憑證在 LIFF 快取而非 cookie，`POST /api/auth/logout` 清 cookie 後重載仍會用 LIFF 快取 token 無感自動重登，登出無實際效果；憑證過期時 boot 已自動 `forceFreshLogin()`（`liff.logout()`＋重導 OAuth，受 C1 重登上限保護）。**後端 `/api/auth/logout` 端點保留**（§3.5 端點契約不變）。④ **日期字串 locale 修正**——`taipeiDateStr()` 改用 `Intl.DateTimeFormat('en-US', …).formatToParts()` 組 `YYYY-MM-DD`（locale 無關）；舊法 `'en-CA'` 字串格式非 spec 保證（完整 ICU 回 `MM/DD/YYYY`、受限 ICU 環境回 ISO），餵 `<input type=date>` 會 invalid。**未新增端點、未改 API 回應格式、未動 DB** |
-| v1.1.20 | **訊息模板欄位重新分配：type 欄當鍵、label 欄存內容、砍 body 欄**（2026-09-01 業主決策）：① **設計**——舊設計 `type='message_template'`（分類）＋`label='new_case'/'timeline'`（鍵）＋`body`（內容）三欄，`label` 被挪用成機器鍵、內容另開 `body`；新設計 `type` 欄直接當鍵（`message_template_new_case` / `message_template_timeline`）、`label` 欄回歸存內容（模板本體），**`body` 欄整個砍掉**。對外 API 形狀**不變**（`label`=鍵、`body`=內容），前端 UI／統計頁／E2E 零改動。② **migration 0013**（幂等）——`UPDATE` 把 new_case/timeline 兩行搬成新 type＋label=內容；`DELETE` 舊 report/empty（active=0、v1.1.15 遺留、無用途，業主：「沒有辦法修改的兩個不留」）；`DROP INDEX idx_options_message_template`（WHERE type='message_template' 已無匹配列，變死索引）；`ALTER TABLE options DROP COLUMN body`（SQLite ≥3.35；D1 現行 3.48+，content 已全部搬進 label、不丢資料）。③ **`UNIQUE(type,label)` 約束不動**（table 層級、所有 type 共用；新語義＝「同鍵模板內容不可重複」，現行每鍵一列、F7 禁新增故不會踩到；開放類別專用模板時再回頭處理）。④ **後端**——`fetchTmpl`（stats.ts）改 `WHERE type='message_template_'+?` 取 `label AS body`；`messageTemplates.ts` GET/GET:id/PUT 全部改由 `REPLACE(type,'message_template_','')` 導出 `label`、`label AS body`，PUT 內容寫 `label` 欄、鍵寫 `type` 欄（同鍵被其他 id 占用 → 400）。⑤ **mock**（app.js）——fixture 改新 schema（type 當鍵、label 存內容），F6 handler 照後端形狀導出回應，mock 與真實後端不漂移。⑥ **測試**——`tests/messageTemplates.test.ts` 四支 DB 查詢改 `type LIKE 'message_template_%'`；對外行為斷言（label 白名單／PUT body／權限）不變。CI typecheck＋unit＋E2E 全綠後 deployment 才生效。**部署順序：先 deploy 新 code、再 `migrations apply` 0013**——反向會 500：舊 code 讀 `o.body`，一旦先 apply 0013 砍掉 body 欄就 `no such column`；先 deploy 新 code 對舊 DB 只是查不到 `type='message_template_new_case'` → 模板回 null、前端顯示硬編空文案（不 500），風險窗口僅「模板暫空」。兩者間隔勿超過數分鐘 |
+| 版本    | 內容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.1.29 | **刷新與焦點還原（T9）**（2026-10-03，依 wayfinder 選定）：① **單一刷新入口** `refresh()` → `router()`（冪，自带 `_pendingTimer` 清理），加 `refreshPending` 布林＋`setTimeout(…, 0)` 做同 tick 去重；② **push 來源**——LIFF 回調 `liff.onIsNewMessageCallback` 走**特徵偵測**（`typeof === 'function'` 才注册），缺失（含 `?mock=true` 的 vendored mock，其面無該回調）走 `pageshow` 兜底；③ **層一＝模組級單條快照**（`{route, scrollY, focusKey, caret}`，`router()` 於清 DOM 前寫入、頁面渲染完讀取；整頁重載即失落）——同 route 還原數值 `scrollY`（`window.scrollTo`）、focus 按穩定鍵 `[containerIndex, elementIndex]`（`#page` 直屬容器序＋容器內可聚焦元序）還原，同鍵已無則落該容器首個可聚焦元，caret 以 `Math.min(saved, value.length)` 鉗制；换 route 落頂、focus 不擾；④ **層二＝`localStorage`**——列表新增 `listStatus`／`listCategory` 兩鍵（失落落出廠預設 `active`／全部分類），與既有 `statsTab`／`dailyReportCatId` 同慣例；admin／users 的 tab 與篩選、詳情 ⋮ 選單／留言框展開態**不納層二**（後兩者由層一 focus 快照帶著走）；⑤ 後端零改動                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| v1.1.28 | **前端版面選定落地（T1–T7）**（2026-10-02）：依 wayfinder 選定——① **列表**採 B「標籤頁＋列表」：狀態列改 `.seg` pill（未結／詢價／處理／完成／作廢／全部），列表行改 `.row` 編號對齊雙欄（左 `#0000` `--fs-xs`＋tabular-nums／右 標題 `--fs-md`/600＋徽章·廠商·日期），`pages.list` 之 `renderTicketCard` 與 tab bar 同構；② **詳情**維持 A「時間軸主導」（零結構漂移）；③ **表單**採 A→C 同一 DOM——`.defrow` ≤640 單欄 label 在上、>640 以 `@media (min-width:641px)` 切雙欄（grid `96px 1fr`），`pages.new`／`pages.edit` 各欄位包成 `.defrow`；④ **代幣**：`:root` 沿用 v1.1.27 superset（6 字階／6 間距／狀態色成對），`focus` 由 `:focus` 改 `:focus-visible` 並補 `.tab`／`.btn`，ring = `0 0 0 2px var(--primary-bg)`，新增 `input/select/textarea:disabled`（底 #f5f5f5＋`--gray`）；⑤ 後端零改動；typecheck、173 單測、e2e 32 全綠                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| v1.1.25 | **`:id` 校驗下沉（C1）**（2026-09-30）：① `lib/validate.ts` id 規則**單一定義**——`const id = z.coerce.number(...).int(...).positive(...)`（三步各掛同一訊息『無效的 id』），`idParam = z.object({ id })` 與 JSON 欄位（`category_id`/`location_id`/`vendor_id`/`photo_ids`/`category_ids`）同指此定義（param 值為字串故用 `z.coerce`，JSON 字串數字同獲）；② 六支 route 檔 14 個 `:id` 端點於 `requireAuth(...)` 之後插 `zv('param', idParam)`（有 body 者 param／json 雙 validator 並存，Hono 依 target 分鍵），handler 本體改 `const { id } = c.req.valid('param')`，砍掉 14 份手動 `Number(...)+Number.isInteger` guard；③ 400 形與 `error.code='VALIDATION_ERROR'` 不變，id 全失敗路徑（`0`／小數／非數字）統一發『無效的 id』；`share`（token／photo_id）與 daily-report 的 query `category_id` 維持各自判準；④ 補 `:id` 邊界單測 9 條（`boundary` 6：有效／0／3.5／abc／空段／auth 順序；`tickets` 3：param 分項／json 分項／雙分項 precedence）。typecheck 0 errors、單元兩階層各 11 檔 166 tests 全綠、E2E 32 實跑＋1 skip                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| v1.1.24 | **後端優化**（2026-09-22）：① **A3/E1 統一 400 信封**——`lib/respond.ts` 新增 `zv`（包 `@hono/zod-validator`，第三參 hook 把 zod `issues[0].message` 轉為 `error.message`、`code='VALIDATION_ERROR'`），全站 18 個驗證點由裸 `zValidator` 改掛 `zv`，與手動 `fail()` 同形；② **A1/A2 熱路徑**——`resolveUser` 順帶 `payload.exp`（`User` 型別加選填 `exp`），`requireAuth` 續期判斷直讀 `user.exp`（免二次 `decodeJwt`）；`secretKey` 以 secret 為鍵做模組層 `CryptoKey` 快取；③ **B1/B2 查詢**——`optionAllowedInCategory` 單次 `EXISTS`/`NOT EXISTS`（既單查詢）、CSV `update_count` 由關聯子查詢改 `LEFT JOIN` 彙總表；④ **B3 索引**——`idx_tickets_list` 加尾端 tie-breaker `(status, last_activity_at DESC, id DESC)` 對齊列表 `ORDER BY`；⑤ **C1** `dynamic-index` 模板依 version 快取（同部署僅組裝一次）。单元兩阶層 `test`／`test:local` 各 11 檔 157 tests 全綠，E2E 32 實跑＋1 skip（commit 比對需 CI `GITHUB_SHA`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| v1.1.23 | **照片上傳支援 HEIC/HEIF 自動轉 JPEG**（2026-09-03，業主指示「手機端接受更多格式、轉成 JPG，縮小管線沿用」）：① **vendored `heic2any` 0.0.4**（MIT、UMD、wasm 已內嵌、無外部請求）→ `public/vendor/heic2any.js`，兩支 index（`public/index.html`＋`functions/lib/dynamic-index.ts`）於 browser-image-compression 之後、app.js 之前載入（全局 `window.heic2any`）。② **`compressPhoto()`（public/app.js）加前置步驟**——`isHeicBlob()` 讀前 12 bytes magic（`ftyp` ＋ HEIF brand 白名單 `heic/heix/hevc/hevx/heif/mif1/heim/heis`，**不靠 `file.type`**：部分 Android 裝置把 HEIC 報成 `application/octet-stream`）→ 是 HEIC 則 `heic2any({toType:'image/jpeg', quality:0.9})` 轉 JPEG → **再進既有壓縮管線**（最長邊 1280px、目標 ≤500KB、初始品質 0.7、輸出 JPEG——參數原封未動）；非 HEIC 直接照舊。轉換失敗與既有解碼失敗同路徑：toast「此照片無法處理（檔案可能損壞或不支援的格式），請改用相機拍攝或先在相簿轉存」＋`e.toasted` 防重複。③ **後端零改動**（§4.4 照片端點白名單/magic bytes/10MB 不變——到後端的幾乎一定是 JPEG）；§5.0 照片壓縮規則更新、§1.2 目錄樹補 heic2any.js。④ **E2E 加 1 條**（真實 HEIC fixture → 瀏覽器內轉換 → mock 上傳 → 縮圖；cache-busting spec asset 數 3→4）。**未新增 migration、未改 API**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| v1.1.22 | **案件動態「全部類別」預設**（2026-09-02）：① **F1 端點加 `category_id=all`**——合併全部類別當日案件（新／既有兩組 SQL 跳過 `t.category_id` 過濾）、`category_label` 固定「全部類別」、`category_id` 回 `null`、**模板固定取全域預設**（all 無單一類別可取樣；實作以 `category_id=-1` 查 `option_categories` 必然無匹配落全域）；`category_id` 非正整數且非 `all` → `400 VALIDATION_ERROR`（錯誤訊息改「需為正整數或 "all"」）。② **前端「案件動態」類別下拉加「全部類別」列（value=`all`）並設為預設**（`localStorage.dailyReportCatId` 記憶值優先，含 `all`）。③ mock fixture 補當日既有案件（id=98 門禁）＋當日 update，讓「全部」預設模式同時有 new_cases 與 timeline_updates。**未新增 migration、未改其他端點**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| v1.1.21 | **前端兩頁改版＋登出鈕移除＋日期 locale 修正**（2026-09-02）：① **統計頁拆 sub-tab**——「月度統計」（六卡＋月份下拉＋各類別金額＋CSV）與「案件動態」（F2/F3 日報框）拆成 `.tabs` sub-tab，一次只看一塊（手機單屏可讀）；`localStorage.statsTab` 記憶上次選擇；「案件動態」tab 才載入時才發 daily-report 請求（月度預設時不打）；原「案件動態」section-title 砍掉（tab 標籤已說明）。② **訊息模板管理頁重構**——進頁先組「完整簡報預覽」（兩段模板套前端 fixture 即時渲染成整篇實際發送長相，`.tmpl-full`），下方「模板來源」兩行（名稱＋範圍）；**模板名稱改超連結**、點名稱或「編輯」開 `modal-mask` 置中彈窗（textarea＋即時預覽＋重置出廠預設（G7 移入 modal 內）＋儲存），存檔後整篇簡報預覽同步刷新（不再整頁 reload）。編輯 modal 改回既有 `modal-mask` 定位（舊 `modal-bg` 非既有 class、會掉進文件流）。③ **移除底部 nav「🚪 登出」鈕**（v1.1.17 加）——LINE 憑證在 LIFF 快取而非 cookie，`POST /api/auth/logout` 清 cookie 後重載仍會用 LIFF 快取 token 無感自動重登，登出無實際效果；憑證過期時 boot 已自動 `forceFreshLogin()`（`liff.logout()`＋重導 OAuth，受 C1 重登上限保護）。**後端 `/api/auth/logout` 端點保留**（§3.5 端點契約不變）。④ **日期字串 locale 修正**——`taipeiDateStr()` 改用 `Intl.DateTimeFormat('en-US', …).formatToParts()` 組 `YYYY-MM-DD`（locale 無關）；舊法 `'en-CA'` 字串格式非 spec 保證（完整 ICU 回 `MM/DD/YYYY`、受限 ICU 環境回 ISO），餵 `<input type=date>` 會 invalid。**未新增端點、未改 API 回應格式、未動 DB**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| v1.1.20 | **訊息模板欄位重新分配：type 欄當鍵、label 欄存內容、砍 body 欄**（2026-09-01 業主決策）：① **設計**——舊設計 `type='message_template'`（分類）＋`label='new_case'/'timeline'`（鍵）＋`body`（內容）三欄，`label` 被挪用成機器鍵、內容另開 `body`；新設計 `type` 欄直接當鍵（`message_template_new_case` / `message_template_timeline`）、`label` 欄回歸存內容（模板本體），**`body` 欄整個砍掉**。對外 API 形狀**不變**（`label`=鍵、`body`=內容），前端 UI／統計頁／E2E 零改動。② **migration 0013**（幂等）——`UPDATE` 把 new_case/timeline 兩行搬成新 type＋label=內容；`DELETE` 舊 report/empty（active=0、v1.1.15 遺留、無用途，業主：「沒有辦法修改的兩個不留」）；`DROP INDEX idx_options_message_template`（WHERE type='message_template' 已無匹配列，變死索引）；`ALTER TABLE options DROP COLUMN body`（SQLite ≥3.35；D1 現行 3.48+，content 已全部搬進 label、不丢資料）。③ **`UNIQUE(type,label)` 約束不動**（table 層級、所有 type 共用；新語義＝「同鍵模板內容不可重複」，現行每鍵一列、F7 禁新增故不會踩到；開放類別專用模板時再回頭處理）。④ **後端**——`fetchTmpl`（stats.ts）改 `WHERE type='message_template_'+?` 取 `label AS body`；`messageTemplates.ts` GET/GET:id/PUT 全部改由 `REPLACE(type,'message_template_','')` 導出 `label`、`label AS body`，PUT 內容寫 `label` 欄、鍵寫 `type` 欄（同鍵被其他 id 占用 → 400）。⑤ **mock**（app.js）——fixture 改新 schema（type 當鍵、label 存內容），F6 handler 照後端形狀導出回應，mock 與真實後端不漂移。⑥ **測試**——`tests/messageTemplates.test.ts` 四支 DB 查詢改 `type LIKE 'message_template_%'`；對外行為斷言（label 白名單／PUT body／權限）不變。CI typecheck＋unit＋E2E 全綠後 deployment 才生效。**部署順序：先 deploy 新 code、再 `migrations apply` 0013**——反向會 500：舊 code 讀 `o.body`，一旦先 apply 0013 砍掉 body 欄就 `no such column`；先 deploy 新 code 對舊 DB 只是查不到 `type='message_template_new_case'` → 模板回 null、前端顯示硬編空文案（不 500），風險窗口僅「模板暫空」。兩者間隔勿超過數分鐘                                                                                                                                                                                                                                                                                                                                                                 |
 | v1.1.19 | **cache-busting 真正生效＋boot() 重構遺漏修正**（2026-08-30 正式環境實測發現）：① **根因**——v1.1.17 的 cache-busting Function（原 `functions/index.html.ts`）依 CF Pages「檔案路由」只對應 `/index.html` 路徑，**網站根 `/` 需要 `functions/index.ts`**；且 `public/_routes.json` 的 include 白名單（`/api/*`、`/share.html`）沒列根路徑 → 根路徑 `/` 一律回靜態 `public/index.html`（寫死 `?v=1.1.14/1.1.15`），cache-busting **從未生效**（部署成功、CI 全綠但功能死碼，E2E 未驗根路徑 HTML 故未發現）。② **修法**——抽出共用產出模組 `functions/lib/dynamic-index.ts`（HTML 模板＋安全標頭，`serveDynamicIndex(env)`）；`functions/index.html.ts` 改薄入口；**新增 `functions/index.ts`**（根路徑 `/`）；`_routes.json` include 加入 `"/"`、`"/index.html"`。③ **boot() 修正**（`public/app.js`）——v1.1.18 重構後「`liffReady && isLoggedIn()`」分支 `forceFreshLogin()` 成功（已觸發 `liff.login()` 導航）時**漏 `return`**，fall-through 到 boot 尾端 `me.role`（`me` 仍為 `null`）→ TypeError、頁面停在「載入中…」無錯誤卡（`liff.login()` 導航失敗時可見）；補 `return`。④ **E2E 回歸測試** `e2e/cache-busting.spec.js`：`GET /` 與 `/index.html` 應回 200 動態 HTML（asset `?v=<12 位 commit>`、`Cache-Control: no-cache`、`nosniff`），asset 版本應等於本 commit 前 12 字（CI 有 `GITHUB_SHA` 時）。⑤ **production D1 migration 漂移修正＋守門**（2026-08-31 業主回報「daily-report 載入失敗：伺服器錯誤」）——**根因**：`d1_migrations` 止於 0009，**0010/0011/0012 從未套用到 production**；0010 正是 `ALTER TABLE options ADD COLUMN body`（message_template 存 body 的欄）→ daily-report 的 `fetchTmpl` 撈 `SELECT o.id, o.body` 一律 `no such column: body` → 500。v1.1.15 的 79a3d6d 曾修「模板未插進 DB」但誤判為 0010 已套用（實際 0010 連 `body` 欄都還沒加）→ 補的 0011 也從未套用，壞到 v1.1.19。**修法**：`npx wrangler d1 migrations apply repair-db0818 --remote` 套用 0010–0012（皆幂等：`INSERT OR IGNORE`／`CREATE INDEX IF NOT EXISTS`／`UPDATE`）；新增 **`scripts/check-migration-drift.py`** 直查 production D1、比對 repo `migrations/` 清單，有缺即 `::error::` 紅掉（CI 掛在 test job、需 GitHub secret `CLOUDFLARE_API_TOKEN`，未設時跳過）——此類「migration 寫了但沒套到 production」的漂移 code 層測試抓不到（單元跑 fresh D1、E2E 全走 `?mock=true`），唯有直查 production schema 能防。**未新增資料表／未改 API 回應格式** |
-| v1.1.18 | **登入流程對齊 LINE 官方標準＋修復過期 token 卡死**（業主 2026-08-28 指示查 context7 官方 LIFF 文件後改寫）：① **根因**——LIFF 快取過的 id_token 過期後 `liff.isLoggedIn()` 仍為 true，app 還信它重 POST `/api/auth/session` → 後端永遠 401；且官方文件明訂 `liff.login()` 在 LIFF 瀏覽器內（已登入）是 no-op，無法拿真正新 token，只能手動清瀏覽器資料才登得上。② **修法**——抽出兩個共用 helper：`postSession(idToken)`（唯一 `/api/auth/session` POST 入口）＋`forceFreshLogin()`；session 重建失敗時先 `liff.logout()` 清 LIFF 快取（之後 `isLoggedIn()` 為 false），再 `liff.login()` 走完整 OAuth 拿真正新 token。boot 三處未登入分支統一走此標準流程：isLoggedIn→getIDToken/postSession→失敗即 logout+login。**未新增資料表／未改 API 回應格式**。解決「需清空瀏覽器資料才能登入」。**LINE API 語意取自 `developers.line.biz` LIFF reference（context7 `/websites/developers_line_biz_en_reference_liff`）**。
-| v1.1.17 | **前端登出按鈕＋index.html 動態 cache-busting 自動化**（業主 2026-08-27 指示施工）：① **F-logout 新增前端「🚪 登出」按鈕**——置於底部 nav 最右（`public/app.js` 的 `renderNav()`），所有已登入角色（committee/manager/admin）皆可見；點擊先 `confirm` 確認，再 `POST /api/auth/logout`（帶 `X-Requested-With: fetch` 走 csrfGuard）清除 Cookie，隨後 `location.reload()` 由 boot 重新走登入流程。② **A-cache 動態 cache-busting**——新增 `functions/index.html.ts`（Pages Function）在請求時把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` 取 `dev`），並對回應設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `nosniff`／`Referrer-Policy`。**解決「index.html 寫死 ?v=1.1.15 導致瀏覽器長快取舊版、每次部署看不到新程式」**——因每次部署產生唯一 URL，強制抓最新版，无需手動改版本號、永不忘。未新增資料表／未改 API 回應格式。主站仍不加 CSP（沿用 §8.2 決策）。**v1.1.19 內聯修正**：`functions/index.html.ts` 原在 module top-level 用 `process.env.CF_PAGES_COMMIT_SHA`，但 Worker 無 Node `process` → 拋 `ReferenceError: process is not defined`，CF Pages「Failed to publish your Function」、整次部署回退舊版（用戶端仍看得到 v1.1.15）。改為在 onRequest 執行時從 Env 讀 `env.CF_PAGES_COMMIT_SHA`（與 `src/app.ts:43` `/hello` 同款），宣告 optional、dev fallback `'dev'`。typecheck 過。|
-| v1.1.16 | **案件動態訊息簡化**（業主 2026-08-23 拍板）：① **砍後端 templateEngine**——刪除 `src/lib/templateEngine.ts`，模板渲染全移到前端（`public/templateEngine.js` 負責管理頁即時預覽＋統計頁成品拼裝）；② **daily-report（F1）改回應純資料 + 兩種模板 body**：回傳 `new_cases[]`（案件編號.地點.詢價中.描述）、`timeline_updates[]`（既有案件當日 update 拉平，案件編號.地點.狀態.留言）、`templates:{new_case,timeline}`（可編輯 body，seed 於 migration 0012）＋`has_content` 布林、`date`(unix seconds)；前端自行拼 `修繕系統簡報：{X月Y日}` + s1/s2 + （僅有內容時追加總系統連結），空案時分別顯示「今天無新案件 / 今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板）；③ **訊息模板管理頁（F7）簡化**：從 admin 雙 tab(report/empty)＋雙層下拉變數插入＋IntelliSense → **單 tab「訊息模板」+ 兩個編輯區塊(new_case/timeline)**，body 可用 `{{id}} {{location_label}} {{status}} {{description/note}}` + `{{#each}}...{{/each}}`，含即時預覽 + G7 重置出廠預設；④ **messageTemplates（F6）**：`ALLOWED_LABELS = [new_case, timeline]`（default label='new_case'）、PUT body in-place overwrite（`UNIQUE(type,label)` 下同一 label 覆寫 body，不新增 column、不新 migration）。**業主決策**：R-1 編號=案件真編號 / R-2 僅有實際內容才放系統連結 / R-3 日期「X月Y日」無年份無星期 / R-4 header+empty 文案硬編碼。CI 155/155 unit + E2E 同步更新（規格變更） |
-| v1.1.15 | **案件動態訊息框＋訊息模板系統**（業主 2026-08-23 拍板全部照做）：① **F1 新增** `GET /api/stats/daily-report?date=YYYY-MM-DD&category_id=N`（三角色可讀；當日新建 + last_activity_at 當日既有各算一組，updates_today 最多 3 筆、含 amount）；② **F6 新增** `/api/message-templates` CRUD（沿用既有 options 字典表，type='message_template'）；③ **F8** 純函式模板引擎 `{{var}}` 替換 + `{{#each}}...{{/each}}` 迴圈（含巢狀、缺值容錯、`created_at_time`/`note_or_status`/`amount_text` 自動變數）；④ **F2/F3** 統計頁新增「案件動態」區塊——日期選擇器（max=今天）+ 類別下拉（localStorage 記住）+ 複製按鈕（clipboard+execCommand fallback）+ textarea 即時預覽；⑤ **F7** 訊息模板管理頁（從 `pages.admin` tab 進入，F11-1），含雙層下拉變數插入 + 點擊插入面板 + textarea IntelliSense + 即時預覽 + G7 重置為出廠預設按鈕；⑥ **LIFF 進入點健化**：C1 `loggingIn` flag 防 `liff.login()` 迴圈、C2 `openWindow` fallback、C3 外部瀏覽器 boot 兜底錯誤提示、C4 topbar 顯式回列表按鈕；⑦ **A3** NETWORK 錯誤不再靜默吞掉；⑧ **A5** 留言/作廢/重開後 `router()` 局部刷新（不再 `location.reload()`）；⑨ **A6** catalog 失敗提示訊息改用具體錯誤；⑩ **D6/D7** 下拉省略號 + 列表 max-height；⑪ **D8/D9** 統計頁 5s polling + 切頁 200ms 防抖；⑫ **D1** 照片綁定 race 防護（先驗 photos.status='linked' 後再 INSERT binding）、**D5** 索引、**D3** 預計 page 切換時取消舊請求；⑬ **A4** el() 事件名白名單 dev-only（IS_DEV 判斷 localhost / ?dev / ?mock，production 靜默）。**業主決策**：D2 CHECK 約束先不做（用途不明 + 風險過高）；A1 採補測試方案（b）append-only 重建留 v1.1.16+；A7 `app.js` module 封裝留 v1.1.16+（結構重構不混進本版）。**F11 第三輪整合**（2026-08-23）：F11-1 訊息模板入口放 admin 內不從 nav / F11-2 daily-report `date` 驗證錯誤碼 `MISSING_DATE/INVALID_DATE/DATE_FUTURE` + `taipeiToday()` helper / F11-3 seed body 不含 `{{#if}}` / F11-4 `note_or_status` 加 `kind='system'` 第三態分支 / F11-5 daily-report 回應加 `template.body` / F11-6 既有 ticket 加 `last_activity_at` 時間過濾 / F11-7 半開區間 `[startMs, endMs)`（毫秒數字）取代 `BETWEEN`（caller 自轉 ISO）。**F12 簡化決策**：F12-1 `updates_today` 時間正序（ASC）/ F12-2 模板管理用既有 `options` 字典表（不新開表）+ `option_categories` 關聯表。CI 158/160 unit + 25 E2E 全綠、production 已部署 v1.1.15 |
-| v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署 |
-| v1.1.13 | **廠商排序＋共用照片選擇器＋編輯照片＋卡片列表改版＋bug 修復**：① **廠商排序欄位**——migration 0008 移除無用 `vendors.phone`、加 `vendors.sort_order`（後台改 DB，無 UI）；② **共用照片選擇器**——抽出 `attachPhotoPicker()` 全域函式，建單/留言框/編輯三處共用同一份照片邏輯（壓縮/≤5 張/縮圖/✕ 刪除）；③ **編輯照片**——編輯頁可補上傳＋刪除既有照片，儲存送 `photo_ids` 全量覆寫（新增綁定、移除解綁 `target_id=NULL` 不刪 R2），時間軸以 system 留痕；④ **卡片列表改版**——顯示一行維修內容、最後活動只顯示日期（同行放建立日期）、標題後補「(N 天)」建立至今天數；⑤ **修復 share 頁縮圖 lightbox 點不開**——share.js 的 `el()` 缺 `onclick` 事件處理，補 `addEventListener`（與 app.js 一致）；⑥ **bug 修復**——done 結案不清空發包金額（COALESCE 保留）、編輯頁說明欄帶入（el() value 走 property）、session 過期 fallback 強制重登、主站 CSP 撤回（改回僅 nosniff/referrer，§8.2）。CI 全綠、0008 已套 production |
-| v1.1.12 | **發包金額＋金額統計**：① `ticket_updates` 加 `amount`／`amount_at`（0007 ALTER ADD）——`in_progress` 代表「已發包」、改成此狀態必填金額（正整數）；② 新端點 `GET /api/stats/amount-by-category?month=YYYY-MM`（三角色，以 `amount_at` 為月份基準）；③ 詳情資訊卡＋統計頁顯示發包金額與各類別金額（§5）。 |
-| v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片） |
-| v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態） |
-| v1.1.9 | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼 |
-| v1.1.8 | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*） |
-| v1.1.7 | **類別關聯 + 留言框常用說明**（詳見 `docs/archive/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加 |
-| v1.1.6 | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote` |
-| v1.1.5 | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署 |
-| v1.1.4 | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起） |
-| v1.1.3 | 四次評審修訂：**修復 middleware 順序架構錯誤**（`/auth` 與 CSV 下載移到全域 requireAuth 之上、`lib/auth.ts` 拆 `resolveUser`/`requireAuth`）＋補回 §7 官方帳號三步＋快取標頭修正（share 照片改 private、內部照片補回）＋CHECK 約束涵蓋 note＋CSV 欄位精簡＋P1 tab 改名 |
-| v1.1.2 | 三次評審修訂：回歸修復（補回 share 照片端點、P0 畫面、users 防呆、compatibility_date）＋決策補登（D5–D7）＋安全加強（CSV domain separation、5 分鐘效期、CHECK 約束等） |
-| v1.1.1 | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等 |
-| v1.1 | 外部評審修訂（20 項）：Cookie session 取代 Bearer、時間格式統一 ISO8601、label 快照、刪除 ticket_no、void/編輯留痕、業主決策 D1–D4 等 |
-| v1.0 | 初版：技術棧、schema、API、畫面、部署、里程碑 |
+| v1.1.18 | **登入流程對齊 LINE 官方標準＋修復過期 token 卡死**（業主 2026-08-28 指示查 context7 官方 LIFF 文件後改寫）：① **根因**——LIFF 快取過的 id_token 過期後 `liff.isLoggedIn()` 仍為 true，app 還信它重 POST `/api/auth/session` → 後端永遠 401；且官方文件明訂 `liff.login()` 在 LIFF 瀏覽器內（已登入）是 no-op，無法拿真正新 token，只能手動清瀏覽器資料才登得上。② **修法**——抽出兩個共用 helper：`postSession(idToken)`（唯一 `/api/auth/session` POST 入口）＋`forceFreshLogin()`；session 重建失敗時先 `liff.logout()` 清 LIFF 快取（之後 `isLoggedIn()` 為 false），再 `liff.login()` 走完整 OAuth 拿真正新 token。boot 三處未登入分支統一走此標準流程：isLoggedIn→getIDToken/postSession→失敗即 logout+login。**未新增資料表／未改 API 回應格式**。解決「需清空瀏覽器資料才能登入」。**LINE API 語意取自 `developers.line.biz` LIFF reference（context7 `/websites/developers_line_biz_en_reference_liff`）**。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| v1.1.17 | **前端登出按鈕＋index.html 動態 cache-busting 自動化**（業主 2026-08-27 指示施工）：① **F-logout 新增前端「🚪 登出」按鈕**——置於底部 nav 最右（`public/app.js` 的 `renderNav()`），所有已登入角色（committee/manager/admin）皆可見；點擊先 `confirm` 確認，再 `POST /api/auth/logout`（帶 `X-Requested-With: fetch` 走 csrfGuard）清除 Cookie，隨後 `location.reload()` 由 boot 重新走登入流程。② **A-cache 動態 cache-busting**——新增 `functions/index.html.ts`（Pages Function）在請求時把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` 取 `dev`），並對回應設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `nosniff`／`Referrer-Policy`。**解決「index.html 寫死 ?v=1.1.15 導致瀏覽器長快取舊版、每次部署看不到新程式」**——因每次部署產生唯一 URL，強制抓最新版，无需手動改版本號、永不忘。未新增資料表／未改 API 回應格式。主站仍不加 CSP（沿用 §8.2 決策）。**v1.1.19 內聯修正**：`functions/index.html.ts` 原在 module top-level 用 `process.env.CF_PAGES_COMMIT_SHA`，但 Worker 無 Node `process` → 拋 `ReferenceError: process is not defined`，CF Pages「Failed to publish your Function」、整次部署回退舊版（用戶端仍看得到 v1.1.15）。改為在 onRequest 執行時從 Env 讀 `env.CF_PAGES_COMMIT_SHA`（與 `src/app.ts:43` `/hello` 同款），宣告 optional、dev fallback `'dev'`。typecheck 過。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| v1.1.16 | **案件動態訊息簡化**（業主 2026-08-23 拍板）：① **砍後端 templateEngine**——刪除 `src/lib/templateEngine.ts`，模板渲染全移到前端（`public/templateEngine.js` 負責管理頁即時預覽＋統計頁成品拼裝）；② **daily-report（F1）改回應純資料 + 兩種模板 body**：回傳 `new_cases[]`（案件編號.地點.詢價中.描述）、`timeline_updates[]`（既有案件當日 update 拉平，案件編號.地點.狀態.留言）、`templates:{new_case,timeline}`（可編輯 body，seed 於 migration 0012）＋`has_content` 布林、`date`(unix seconds)；前端自行拼 `修繕系統簡報：{X月Y日}` + s1/s2 + （僅有內容時追加總系統連結），空案時分別顯示「今天無新案件 / 今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板）；③ **訊息模板管理頁（F7）簡化**：從 admin 雙 tab(report/empty)＋雙層下拉變數插入＋IntelliSense → **單 tab「訊息模板」+ 兩個編輯區塊(new_case/timeline)**，body 可用 `{{id}} {{location_label}} {{status}} {{description/note}}` + `{{#each}}...{{/each}}`，含即時預覽 + G7 重置出廠預設；④ **messageTemplates（F6）**：`ALLOWED_LABELS = [new_case, timeline]`（default label='new_case'）、PUT body in-place overwrite（`UNIQUE(type,label)` 下同一 label 覆寫 body，不新增 column、不新 migration）。**業主決策**：R-1 編號=案件真編號 / R-2 僅有實際內容才放系統連結 / R-3 日期「X月Y日」無年份無星期 / R-4 header+empty 文案硬編碼。CI 155/155 unit + E2E 同步更新（規格變更）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| v1.1.15 | **案件動態訊息框＋訊息模板系統**（業主 2026-08-23 拍板全部照做）：① **F1 新增** `GET /api/stats/daily-report?date=YYYY-MM-DD&category_id=N`（三角色可讀；當日新建 + last_activity_at 當日既有各算一組，updates_today 最多 3 筆、含 amount）；② **F6 新增** `/api/message-templates` CRUD（沿用既有 options 字典表，type='message_template'）；③ **F8** 純函式模板引擎 `{{var}}` 替換 + `{{#each}}...{{/each}}` 迴圈（含巢狀、缺值容錯、`created_at_time`/`note_or_status`/`amount_text` 自動變數）；④ **F2/F3** 統計頁新增「案件動態」區塊——日期選擇器（max=今天）+ 類別下拉（localStorage 記住）+ 複製按鈕（clipboard+execCommand fallback）+ textarea 即時預覽；⑤ **F7** 訊息模板管理頁（從 `pages.admin` tab 進入，F11-1），含雙層下拉變數插入 + 點擊插入面板 + textarea IntelliSense + 即時預覽 + G7 重置為出廠預設按鈕；⑥ **LIFF 進入點健化**：C1 `loggingIn` flag 防 `liff.login()` 迴圈、C2 `openWindow` fallback、C3 外部瀏覽器 boot 兜底錯誤提示、C4 topbar 顯式回列表按鈕；⑦ **A3** NETWORK 錯誤不再靜默吞掉；⑧ **A5** 留言/作廢/重開後 `router()` 局部刷新（不再 `location.reload()`）；⑨ **A6** catalog 失敗提示訊息改用具體錯誤；⑩ **D6/D7** 下拉省略號 + 列表 max-height；⑪ **D8/D9** 統計頁 5s polling + 切頁 200ms 防抖；⑫ **D1** 照片綁定 race 防護（先驗 photos.status='linked' 後再 INSERT binding）、**D5** 索引、**D3** 預計 page 切換時取消舊請求；⑬ **A4** el() 事件名白名單 dev-only（IS_DEV 判斷 localhost / ?dev / ?mock，production 靜默）。**業主決策**：D2 CHECK 約束先不做（用途不明 + 風險過高）；A1 採補測試方案（b）append-only 重建留 v1.1.16+；A7 `app.js` module 封裝留 v1.1.16+（結構重構不混進本版）。**F11 第三輪整合**（2026-08-23）：F11-1 訊息模板入口放 admin 內不從 nav / F11-2 daily-report `date` 驗證錯誤碼 `MISSING_DATE/INVALID_DATE/DATE_FUTURE` + `taipeiToday()` helper / F11-3 seed body 不含 `{{#if}}` / F11-4 `note_or_status` 加 `kind='system'` 第三態分支 / F11-5 daily-report 回應加 `template.body` / F11-6 既有 ticket 加 `last_activity_at` 時間過濾 / F11-7 半開區間 `[startMs, endMs)`（毫秒數字）取代 `BETWEEN`（caller 自轉 ISO）。**F12 簡化決策**：F12-1 `updates_today` 時間正序（ASC）/ F12-2 模板管理用既有 `options` 字典表（不新開表）+ `option_categories` 關聯表。CI 158/160 unit + 25 E2E 全綠、production 已部署 v1.1.15                                                          |
+| v1.1.14 | **第二階段後端＋前端＋測試基建全數施工**（E/F/G 交接審查批次＋A/B/C 待辦）：① **詳情權限**——`can_edit` 由後端計算（方案B，詳情不回 `created_by`，前端讀 `t.can_edit`）；② **狀態流**——後端鎖退回（`in_progress→open` 禁）、允許 `open→done`、`in_progress→in_progress` 允許（多次發包覆寫）；③ **void/reopen 競態**——改兩步寫入（先 UPDATE 查 changes 成功才 INSERT，避免 batch+EXISTS 依序讀新狀態的假時間軸）；④ **CSV**——日期真驗證（擋 2026-99-99 500）、`to` 邊界、`from<=to`、injection 忽略前導空白、加發包金額/時間欄；⑤ **登入 upsert 防競態**；⑥ **統計**——完成率方案②（期初未結案分母）、月份切換＋Promise.all；⑦ **session 滑動續期**（exp<900 換發）；⑧ **詳情合併查詢**（4→2 roundtrip）；⑨ **編輯頁**補照片 UI／loading／清空廠商；⑩ **CI**部署版本比對、migration 0009（vendors 索引＋ticket_updates append-only trigger）、PRAGMA FK、committee CSV 403 測試、E2E 補照片/void/reopen。CI 全綠、已部署                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| v1.1.13 | **廠商排序＋共用照片選擇器＋編輯照片＋卡片列表改版＋bug 修復**：① **廠商排序欄位**——migration 0008 移除無用 `vendors.phone`、加 `vendors.sort_order`（後台改 DB，無 UI）；② **共用照片選擇器**——抽出 `attachPhotoPicker()` 全域函式，建單/留言框/編輯三處共用同一份照片邏輯（壓縮/≤5 張/縮圖/✕ 刪除）；③ **編輯照片**——編輯頁可補上傳＋刪除既有照片，儲存送 `photo_ids` 全量覆寫（新增綁定、移除解綁 `target_id=NULL` 不刪 R2），時間軸以 system 留痕；④ **卡片列表改版**——顯示一行維修內容、最後活動只顯示日期（同行放建立日期）、標題後補「(N 天)」建立至今天數；⑤ **修復 share 頁縮圖 lightbox 點不開**——share.js 的 `el()` 缺 `onclick` 事件處理，補 `addEventListener`（與 app.js 一致）；⑥ **bug 修復**——done 結案不清空發包金額（COALESCE 保留）、編輯頁說明欄帶入（el() value 走 property）、session 過期 fallback 強制重登、主站 CSP 撤回（改回僅 nosniff/referrer，§8.2）。CI 全綠、0008 已套 production                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| v1.1.12 | **發包金額＋金額統計**：① `ticket_updates` 加 `amount`／`amount_at`（0007 ALTER ADD）——`in_progress` 代表「已發包」、改成此狀態必填金額（正整數）；② 新端點 `GET /api/stats/amount-by-category?month=YYYY-MM`（三角色，以 `amount_at` 為月份基準）；③ 詳情資訊卡＋統計頁顯示發包金額與各類別金額（§5）。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| v1.1.11 | **六份 code review 補強（51 項）**（詳見 `docs/archive/v1.1.11-變更計畫.md`）：**後端**——A1 改類別地點不相容回 400 防崩潰、A2 csrfGuard 允許無 body、A3 CSV 台灣時區換算、A4 comment_desc 禁關聯、D1/G1 vendor_id 三態清空、D4 選項重名 400、D8 approved_at、D9 comments 用 batch、E5 assoc 分批寫入、E6 CSV 掛 zod、E7 assertValidAssoc 空陣列也驗、E8 零管理員競態（條件式 UPDATE）、E9 R2 失敗清理、F4 統計複合索引（0005）、F5 分頁 tie-breaker、G5 廠商留痕、G6 reopen 冒號、G7 share Content-Disposition/H3 photo_id 防禦、G8 optionalText null、H1 description 空轉 null、B1 CSV update_count 子查詢、B4 IN 分塊、C2 onError、C3 env 驗證；**前端**——E1 照片 5 張上限+縮圖刪除鍵（含留言框）、E2 剪貼簿 fallback+toast、E3 loadMore 防連點、E4 #nav safe-area、E10/F2 P7 清快取+tab stale 防覆蓋、F1 assoc modal 防清空、F3 relogin 單例、F6 零關聯 alert、F7 主照片 lightbox、B2 router 過濾 query、D2 編輯頁地點連動、D5 防重複送出、D6 CSV location.href、D7 users 回滾、G3 標籤精準比對、H2 share.js lightbox、H5 CSS cursor、C1 no-cache+版本化。CI 全綠、0005 已套 production、已部署。**建單頁 UI 調整**：範本改名「使用範本」並移到說明之下（類別→地點→說明→使用範本→照片）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| v1.1.10 | **loading 錯誤處理補齊＋code review**：① **loading 錯誤處理**——詳情/列表/成員/建單/編輯頁 catch 分支補清 loading（原本錯誤時 loading 不消失）；② **code review 修正**——updates 照片綁定改 `env.DB.batch()` 的 `last_row_id`（原 `ORDER BY id DESC` 並發回報時可能抓錯 update id）、停用者 `resolveUser` 設 `disabledUser` 標記使 `requireAuth` 不再重查 D1（移除 `isDisabledUser`）、share 端點加 UUID 格式驗證擋非 UUID 掃描、mock 測試資料補到 6 筆（涵蓋各狀態）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| v1.1.9  | **回報範本（comment_desc）＋全頁面 loading＋專案整理**（詳見 `docs/archive/v1.1.9-變更需求報告.md`）：① 建單用「故障類型範本」（`description`）與回報/留言用「回報範本」（`comment_desc`）**分開管理**——新增選項類型 `comment_desc`（migration 0004 seed），catalog 回應加 `comment_descs`，P7 加回報範本 tab；② **各頁面載入時加 spinner**（詳情頁因串行 4 次 D1 查詢達 ~1s，避免白屏）；③ **詳情頁查詢並行化**（photos+updates 用 Promise.all）；④ **登入修復**——`cleanUrlParams()` 從 boot 開頭移到尾端（原本在 liff 授權前清掉 code/state 導致一般瀏覽器無法跳 LINE 登入，時好時壞）；⑤ **專案整理**——變更報告歸檔 `docs/archive/`、SPEC 補 §4.6 options 契約＋標註里程碑完成、新增 README、刪 `.assoc-wrap` 死碼                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| v1.1.8  | **效能優化＋死碼清理**：① catalog 快取分層——建單/編輯由「每次進頁強制重讀」改為**短 TTL（30 秒）**，列表/留言維持長 TTL（10 分鐘），避免每次進建單/編輯頁都吃一次 D1 連線延遲（0.8s）；② 移除 `pages.report` 死碼（v1.1.5 起回報已併入詳情頁留言框，`#/report` 無任何入口）＋router 分支；③ 登入後用 `history.replaceState` 清掉 URL 上的 OAuth 殘留參數（code/state/liff*）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| v1.1.7  | **類別關聯 + 留言框常用說明**（詳見 `docs/archive/v1.1.7-變更需求報告.md`）：新增 `option_categories` 多對多 join 表（0003，只建表不 seed）——建單選類別後地點/說明只顯示「該類別關聯＋通用」；`GET /api/options` 三種模式（active／category_id 過濾／include_inactive 附 category_ids 限 manager/admin）；`category_ids` 三態（undefined 不動/[] 清空/有值全量覆寫）；建單驗證 location 屬於 category 或通用；詳情回應補 category_id/location_id；P7 修停用顯示 bug＋勾選矩陣；manager/admin 留言框加常用說明下拉＋附加                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| v1.1.6  | 七次實測修訂：**詳情頁重構（方案 A）**——右上角 ⋮ 選單（分享連結/複製/編輯/作廢/重新開啟/重新產生）、分享連結收進選單、留言/回報改隱藏式（點「💬 留言／回報」才展開）、案件資訊卡緊湊、時間軸為主角。**照片壓縮加強**：`maxSizeMB` 10→0.5、最長邊 1600→1280、品質 0.7（2MB 照片約縮到 200KB）。**seed 單一來源**：seed 併入 `migrations/0002_seed.sql`，刪除根目錄 seed.sql 與 `db:seed:remote`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| v1.1.5  | 六次實測修訂：**權限中文化改對照**（主管=admin > 保全/秘書=manager > 委員=committee，v1.1.4 寫反已修正）、**指派廠商收斂進編輯頁**（保全/秘書層級，不再塞列表/詳情頁）、移除獨立「新增回報」按鈕（回報統一走留言框含狀態更新，委員不可變狀態）、常用說明改下拉＋附加按鈕、修復重新產生分享連結（引用不存在變數會 throw）。**preview 環境決策：關閉 preview 自動部署**（`preview_deployment_setting: none`），單人開發直接 push main 走 production，避免產生無 D1/R2/secret 的壞部署                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| v1.1.4  | 五次實測修訂（16 項，前端為主）：非手機登入、建單改下拉式、指派廠商 UI、留言/回報合一、詳情可編輯、分享連結指向人類頁面 `share.html?token=`、作廢重新開啟改選單、廠商管理獨立 tab、成員權限中文化＋篩選、停用紅/啟用藍、縮圖 lightbox、統計加未結案總數/完成率。**share_url 格式統一改 `/share.html?token={token}`**（v1.1.4 起）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| v1.1.3  | 四次評審修訂：**修復 middleware 順序架構錯誤**（`/auth` 與 CSV 下載移到全域 requireAuth 之上、`lib/auth.ts` 拆 `resolveUser`/`requireAuth`）＋補回 §7 官方帳號三步＋快取標頭修正（share 照片改 private、內部照片補回）＋CHECK 約束涵蓋 note＋CSV 欄位精簡＋P1 tab 改名                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| v1.1.2  | 三次評審修訂：回歸修復（補回 share 照片端點、P0 畫面、users 防呆、compatibility_date）＋決策補登（D5–D7）＋安全加強（CSV domain separation、5 分鐘效期、CHECK 約束等）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| v1.1.1  | 二次評審修訂（20 項）：後端改 Hono 單一入口、前端套件一律 vendored、month_done 改從時間軸事件計算、CSV 改簽名下載連結等                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| v1.1    | 外部評審修訂（20 項）：Cookie session 取代 Bearer、時間格式統一 ISO8601、label 快照、刪除 ticket_no、void/編輯留痕、業主決策 D1–D4 等                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| v1.0    | 初版：技術棧、schema、API、畫面、部署、里程碑                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
-| # | 決策 | 內容 |
-|---|---|---|
-| D1 | 開放管委會留言 | 三種角色均可在案件下新增「留言」：只記錄內容與時間，**不改變案件狀態**，可附照片 |
-| D2 | 新增 reopen 功能 | **管理員專屬**：已結案或已作廢的案件可重新開啟，並在時間軸留下紀錄 |
-| D3 | CSV 匯出 | 提供案件 CSV 匯出（備份與開會用），權限為管理公司（manager/admin） |
-| D4 | 保留「常用說明」為資料庫管理選項 | 類別、地點、常用說明三種選項皆由管理公司在管理頁自行新增／停用。理由：業主明示需求；三種選項共用同一張 options 表與同一支 API，成本趨近於零；前端硬寫會讓「改一條說明就要重新部署」，違背管理公司自助維護目標 |
-| D5 | 選項／廠商管理權限下放 | 類別／地點／常用說明選項、廠商的新增／修改／停用，由 v1.0 的「僅 admin」放寬為 **manager/admin**。D4 精神延伸：管理公司自助維護 |
-| D6 | 統計頁恢復三角色可讀 | `GET /api/stats/summary` 三角色皆可；**CSV 匯出仍維持 manager/admin**（D3 不變）。業主確認「管委會看得到」 |
-| D7 | 編輯權限恢復 v1.0 | `PATCH /api/tickets/:id`：committee 可編輯**自己建的單**；manager/admin 全部。結案／作廢後仍不可編輯 |
+| #   | 決策                             | 內容                                                                                                                                                                                                          |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | 開放管委會留言                   | 三種角色均可在案件下新增「留言」：只記錄內容與時間，**不改變案件狀態**，可附照片                                                                                                                              |
+| D2  | 新增 reopen 功能                 | **管理員專屬**：已結案或已作廢的案件可重新開啟，並在時間軸留下紀錄                                                                                                                                            |
+| D3  | CSV 匯出                         | 提供案件 CSV 匯出（備份與開會用），權限為管理公司（manager/admin）                                                                                                                                            |
+| D4  | 保留「常用說明」為資料庫管理選項 | 類別、地點、常用說明三種選項皆由管理公司在管理頁自行新增／停用。理由：業主明示需求；三種選項共用同一張 options 表與同一支 API，成本趨近於零；前端硬寫會讓「改一條說明就要重新部署」，違背管理公司自助維護目標 |
+| D5  | 選項／廠商管理權限下放           | 類別／地點／常用說明選項、廠商的新增／修改／停用，由 v1.0 的「僅 admin」放寬為 **manager/admin**。D4 精神延伸：管理公司自助維護                                                                               |
+| D6  | 統計頁恢復三角色可讀             | `GET /api/stats/summary` 三角色皆可；**CSV 匯出仍維持 manager/admin**（D3 不變）。業主確認「管委會看得到」                                                                                                    |
+| D7  | 編輯權限恢復 v1.0                | `PATCH /api/tickets/:id`：committee 可編輯**自己建的單**；manager/admin 全部。結案／作廢後仍不可編輯                                                                                                          |
 
 ### 0.3 產品規則（不可自行更動）
 
@@ -74,6 +73,7 @@
 15. **`month_done` 從 `ticket_updates` 計算**（v1.1.14 修正）：完成率方案②的分母用 `ticket_updates.kind='status' AND status='done'` 計算，**禁止用 `tickets.closed_at`**——reopen 改 `closed_at` 會污染完成率
 
 **明確不做（v1.1.13 確認，勿擅自加入）**：
+
 - **不上 React/Vue 等框架**：維持純原生 JS + vendored，避免建置與依賴。
 - **不開 `nodejs_compat`**：維持 Workers 純 API，不引 Node 相容。
 - **不做多社區／多 tenant**：單一社區，不建 tenant 隔離。
@@ -88,18 +88,18 @@
 
 ### 1.1 技術棧
 
-| 層 | 選型 |
-|---|---|
-| 平台 | Cloudflare Pages + Pages Functions |
-| 後端框架 | Hono（單一 catch-all 入口） |
-| 資料庫 | Cloudflare D1（SQLite） |
-| 檔案儲存 | Cloudflare R2 |
-| 認證 | LINE LIFF（ID token）→ 自簽 JWT 放 HttpOnly Cookie |
-| 前端 | 原生 HTML/JS（無框架、無建置），hash router |
-| 驗證 | zod（schema 即 API 契約唯一真相來源） |
-| JWT | jose（Web Crypto 原生） |
-| 前端圖片壓縮 | browser-image-compression（vendored） |
-| 測試 | @cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock） |
+| 層           | 選型                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| 平台         | Cloudflare Pages + Pages Functions                                  |
+| 後端框架     | Hono（單一 catch-all 入口）                                         |
+| 資料庫       | Cloudflare D1（SQLite）                                             |
+| 檔案儲存     | Cloudflare R2                                                       |
+| 認證         | LINE LIFF（ID token）→ 自簽 JWT 放 HttpOnly Cookie                  |
+| 前端         | 原生 HTML/JS（無框架、無建置），hash router                         |
+| 驗證         | zod（schema 即 API 契約唯一真相來源）                               |
+| JWT          | jose（Web Crypto 原生）                                             |
+| 前端圖片壓縮 | browser-image-compression（vendored）                               |
+| 測試         | @cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock） |
 
 允許依賴：`hono`、`@hono/zod-validator`、`jose`、`zod`、`browser-image-compression`。
 禁止：Node.js 專屬 API 或套件（jsonwebtoken、bcrypt、fs、multer、sharp、crypto.createHmac）。
@@ -198,32 +198,39 @@ repair-system/
 
 ```ts
 // functions/api/[[path]].ts —— 整支檔案就這三行
-import { handle } from 'hono/cloudflare-pages'
-import { app } from '../../src/app'
-export const onRequest = handle(app)
+import { handle } from "hono/cloudflare-pages";
+import { app } from "../../src/app";
+export const onRequest = handle(app);
 ```
 
 ```ts
 // src/app.ts（骨架）—— middleware 掛載順序即安全邊界，勿更動
 type Env = {
-  Bindings: { DB: D1Database; PHOTOS: R2Bucket; LINE_CHANNEL_ID: string; JWT_SECRET: string }
-  Variables: { user: { id: number; role: 'pending'|'committee'|'manager'|'admin' } }
-}
+  Bindings: {
+    DB: D1Database;
+    PHOTOS: R2Bucket;
+    LINE_CHANNEL_ID: string;
+    JWT_SECRET: string;
+  };
+  Variables: {
+    user: { id: number; role: "pending" | "committee" | "manager" | "admin" };
+  };
+};
 
-export const app = new Hono<Env>().basePath('/api')
+export const app = new Hono<Env>().basePath("/api");
 
-app.route('/share', shareRoutes)              // 公開唯讀：無 auth、無 csrf
-app.get('/exports/tickets.csv', csvDownload)  // 雙軌自驗：軌A Cookie / 軌B 簽名（見 §4.8）
-app.use('/*', csrfGuard)                      // 所有 mutation 驗 CSRF（GET/HEAD 直接放行）
-app.route('/auth', authRoutes)   // session 不需登入；me / logout 內部各自掛 requireAuth({ allowPending: true })
-app.use('/*', requireAuth())     // ⚠ 以下全部需已開通；此行之上的路由必須自驗權限
-app.route('/tickets', ticketRoutes)
-app.route('/photos', photoRoutes)
-app.route('/options', optionRoutes)
-app.route('/vendors', vendorRoutes)
-app.route('/users', userRoutes)
-app.route('/stats', statsRoutes)
-app.route('/exports', exportRoutes)  // 僅 POST /sign（走標準 Cookie＋CSRF 流程）
+app.route("/share", shareRoutes); // 公開唯讀：無 auth、無 csrf
+app.get("/exports/tickets.csv", csvDownload); // 雙軌自驗：軌A Cookie / 軌B 簽名（見 §4.8）
+app.use("/*", csrfGuard); // 所有 mutation 驗 CSRF（GET/HEAD 直接放行）
+app.route("/auth", authRoutes); // session 不需登入；me / logout 內部各自掛 requireAuth({ allowPending: true })
+app.use("/*", requireAuth()); // ⚠ 以下全部需已開通；此行之上的路由必須自驗權限
+app.route("/tickets", ticketRoutes);
+app.route("/photos", photoRoutes);
+app.route("/options", optionRoutes);
+app.route("/vendors", vendorRoutes);
+app.route("/users", userRoutes);
+app.route("/stats", statsRoutes);
+app.route("/exports", exportRoutes); // 僅 POST /sign（走標準 Cookie＋CSRF 流程）
 ```
 
 **掛載規則（硬性）**：
@@ -409,9 +416,12 @@ WHERE line_user_id='<他的 LINE user ID>';
 // src/lib/auth.ts
 
 /** 純函式：解析 Cookie、驗 JWT、查 D1，回傳 user 或 null（不拋錯、不寫回應） */
-export async function resolveUser(c: Context<Env>): Promise<
-  { id: number; role: 'pending'|'committee'|'manager'|'admin' } | null
-> {
+export async function resolveUser(
+  c: Context<Env>,
+): Promise<{
+  id: number;
+  role: "pending" | "committee" | "manager" | "admin";
+} | null> {
   // 1. 從 Cookie 取 session JWT；無 Cookie → null
   // 2. jose 驗簽＋效期 → 失敗回 null
   // 3. 從 D1 查 user：SELECT id, role, active FROM users WHERE id = ?
@@ -422,21 +432,33 @@ export async function resolveUser(c: Context<Env>): Promise<
 
 /** middleware：內部呼叫 resolveUser，依 opts 判斷是否放行 */
 export function requireAuth(opts?: {
-  roles?: Array<'committee'|'manager'|'admin'>;
+  roles?: Array<"committee" | "manager" | "admin">;
   allowPending?: boolean;
 }): MiddlewareHandler<Env> {
   return async (c, next) => {
     const user = await resolveUser(c);
     if (!user) {
-      return c.json({ ok: false, error: { code: 'UNAUTHORIZED', message: '請重新登入' } }, 401);
+      return c.json(
+        { ok: false, error: { code: "UNAUTHORIZED", message: "請重新登入" } },
+        401,
+      );
     }
-    if (user.role === 'pending' && !opts?.allowPending) {
-      return c.json({ ok: false, error: { code: 'PENDING', message: '帳號等待開通中' } }, 403);
+    if (user.role === "pending" && !opts?.allowPending) {
+      return c.json(
+        { ok: false, error: { code: "PENDING", message: "帳號等待開通中" } },
+        403,
+      );
     }
-    if (opts?.roles && !opts.roles.includes(user.role as 'committee'|'manager'|'admin')) {
-      return c.json({ ok: false, error: { code: 'FORBIDDEN', message: '權限不足' } }, 403);
+    if (
+      opts?.roles &&
+      !opts.roles.includes(user.role as "committee" | "manager" | "admin")
+    ) {
+      return c.json(
+        { ok: false, error: { code: "FORBIDDEN", message: "權限不足" } },
+        403,
+      );
     }
-    c.set('user', user);
+    c.set("user", user);
     await next();
   };
 }
@@ -472,18 +494,18 @@ export function requireAuth(opts?: {
 
 ### 3.6 權限矩陣
 
-| 功能 | committee 委員 | manager 保全/秘書 | admin 主管 |
-|---|:-:|:-:|:-:|
-| 查看案件、建單、留言（D1）、上傳照片、複製分享連結 | ✓ | ✓ | ✓ |
-| 編輯案件（D7） | **僅自己建的單** | ✓ 全部 | ✓ 全部 |
-| 指派廠商（v1.1.5：僅編輯頁內，保全/秘書層級） | ✗ | ✓ | ✓ |
-| 回報、結案、作廢、重新產生分享連結 | ✗ | ✓ | ✓ |
-| **統計摘要（D6）** | **✓** | ✓ | ✓ |
-| CSV 匯出（D3） | ✗ | ✓ | ✓ |
-| 廠商／選項管理（D5） | ✗ | ✓ | ✓ |
-| 成員審核、角色指派、停用、改名 | ✗ | ✗ | ✓ |
-| reopen 重新開啟（D2） | ✗ | ✗ | ✓ |
-| pending 或 active=0 | 所有 API 除 `/api/auth/*`（me/logout 需 allowPending）一律 `403 PENDING` / `403 DISABLED` | | |
+| 功能                                               |                                      committee 委員                                       | manager 保全/秘書 | admin 主管 |
+| -------------------------------------------------- | :---------------------------------------------------------------------------------------: | :---------------: | :--------: |
+| 查看案件、建單、留言（D1）、上傳照片、複製分享連結 |                                             ✓                                             |         ✓         |     ✓      |
+| 編輯案件（D7）                                     |                                     **僅自己建的單**                                      |      ✓ 全部       |   ✓ 全部   |
+| 指派廠商（v1.1.5：僅編輯頁內，保全/秘書層級）      |                                             ✗                                             |         ✓         |     ✓      |
+| 回報、結案、作廢、重新產生分享連結                 |                                             ✗                                             |         ✓         |     ✓      |
+| **統計摘要（D6）**                                 |                                           **✓**                                           |         ✓         |     ✓      |
+| CSV 匯出（D3）                                     |                                             ✗                                             |         ✓         |     ✓      |
+| 廠商／選項管理（D5）                               |                                             ✗                                             |         ✓         |     ✓      |
+| 成員審核、角色指派、停用、改名                     |                                             ✗                                             |         ✗         |     ✓      |
+| reopen 重新開啟（D2）                              |                                             ✗                                             |         ✗         |     ✓      |
+| pending 或 active=0                                | 所有 API 除 `/api/auth/*`（me/logout 需 allowPending）一律 `403 PENDING` / `403 DISABLED` |                   |            |
 
 > **權限層級（v1.1.5 定案）**：主管（admin）> 保全/秘書（manager）> 委員（committee）。v1.1.4 曾誤將 admin 標為「保全/秘書」、manager 標為「主管」，已修正。
 >
@@ -506,39 +528,40 @@ export function requireAuth(opts?: {
 
 **錯誤碼表**：
 
-| HTTP | code | 意義 |
-|---|---|---|
-| 400 | VALIDATION_ERROR | 欄位驗證失敗（依 §4.1 規則表） |
-| 400 | ADMIN_LOCKED | 違反 users 防呆規則（不可停用自己／至少保留一位 admin） |
-| 401 | UNAUTHORIZED | 未登入 / session 過期 / 簽名錯誤 |
-| 401 | EXPORT_LINK_EXPIRED | 匯出下載連結已過期 |
-| 403 | PENDING | 帳號待審核 |
-| 403 | DISABLED | 帳號已停用 |
-| 403 | FORBIDDEN | 角色權限不足（含 CSRF header 缺失） |
-| 404 | NOT_FOUND | 資源不存在（含 share token 無效） |
-| 500 | INTERNAL | 伺服器錯誤 |
+| HTTP | code                | 意義                                                    |
+| ---- | ------------------- | ------------------------------------------------------- |
+| 400  | VALIDATION_ERROR    | 欄位驗證失敗（依 §4.1 規則表）                          |
+| 400  | ADMIN_LOCKED        | 違反 users 防呆規則（不可停用自己／至少保留一位 admin） |
+| 401  | UNAUTHORIZED        | 未登入 / session 過期 / 簽名錯誤                        |
+| 401  | EXPORT_LINK_EXPIRED | 匯出下載連結已過期                                      |
+| 403  | PENDING             | 帳號待審核                                              |
+| 403  | DISABLED            | 帳號已停用                                              |
+| 403  | FORBIDDEN           | 角色權限不足（含 CSRF header 缺失）                     |
+| 404  | NOT_FOUND           | 資源不存在（含 share token 無效）                       |
+| 500  | INTERNAL            | 伺服器錯誤                                              |
 
 > **統一 400 信封（v1.1.23）**——所有 400 皆走同一形 `{ ok:false, error:{ code, message } }`：
+>
 > - **手動 `fail()` 判準**（如 daily-report 的 `MISSING_DATE`／`INVALID_DATE`／`DATE_FUTURE`、`VALIDATION_ERROR`、users 的 `ADMIN_LOCKED`）→ 同一信封。
 > - **欄位驗證失敗**——`lib/respond.ts` 的 `zv`（包 `@hono/zod-validator`，第三參為統一 hook）把 zod 的 `issues[0].message` 轉成 `error.message`，`code='VALIDATION_ERROR'`；前端一律讀 `body.error.code`／`body.error.message`。
-> 其餘 HTTP 碼（401/403/404/500）一律走統一信封。
+>   其餘 HTTP 碼（401/403/404/500）一律走統一信封。
 
 ### 4.1 欄位驗證規則表（所有 VALIDATION_ERROR 的判準）
 
-| 欄位 | 規則 |
-|---|---|
-| category_id / location_id | 必填，且必須是 active 的 option |
-| description（建單） | 選填，≤ 500 字 |
-| note（回報） | 選填，≤ 500 字 |
-| note（留言） | **必填**，1–500 字（資料庫 CHECK 為第二道防線） |
-| vendor_id | **僅 PATCH 適用**：選填，**三態**——不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（須 active；D1/G1） |
-| photo_ids | 選填，≤ 5 張，**每張須滿足 `uploaded_by=本人` 且 `target_id IS NULL`**（後端強制） |
-| status（回報） | 必填：open / in_progress / done |
-| 廠商 name | 必填，1–50 字（POST／PATCH 皆用） |
-| 廠商 sort_order | 選填，非負整數（**僅 PATCH** 帶；POST 未帶 → DB 預設 0） |
-| 選項 label | 必填，1–30 字 |
-| 成員 display_name | 必填，1–20 字 |
-| :id（path 參數） | 正整數——`zv('param', idParam)`（coerce→int→positive）；非正整數 → 400 `VALIDATION_ERROR`，訊息『無效的 id』（§4.0 統一信封） |
+| 欄位                      | 規則                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| category_id / location_id | 必填，且必須是 active 的 option                                                                                              |
+| description（建單）       | 選填，≤ 500 字                                                                                                               |
+| note（回報）              | 選填，≤ 500 字                                                                                                               |
+| note（留言）              | **必填**，1–500 字（資料庫 CHECK 為第二道防線）                                                                              |
+| vendor_id                 | **僅 PATCH 適用**：選填，**三態**——不帶＝不變、`null`＝清空指派、正整數＝指派新廠商（須 active；D1/G1）                      |
+| photo_ids                 | 選填，≤ 5 張，**每張須滿足 `uploaded_by=本人` 且 `target_id IS NULL`**（後端強制）                                           |
+| status（回報）            | 必填：open / in_progress / done                                                                                              |
+| 廠商 name                 | 必填，1–50 字（POST／PATCH 皆用）                                                                                            |
+| 廠商 sort_order           | 選填，非負整數（**僅 PATCH** 帶；POST 未帶 → DB 預設 0）                                                                     |
+| 選項 label                | 必填，1–30 字                                                                                                                |
+| 成員 display_name         | 必填，1–20 字                                                                                                                |
+| :id（path 參數）          | 正整數——`zv('param', idParam)`（coerce→int→positive）；非正整數 → 400 `VALIDATION_ERROR`，訊息『無效的 id』（§4.0 統一信封） |
 
 ### 4.2 Auth
 
@@ -684,25 +707,25 @@ export function requireAuth(opts?: {
 
 ### 4.6 Options／Vendors／Users
 
-| 端點 | 權限 | 說明 |
-|---|---|---|
-| GET `/api/options/catalog` | 三角色 | 一次抓所有選項＋關聯：`{categories, locations, descriptions, comment_descs}`（v1.1.9 加 comment_descs） |
-| GET `/api/options?type=category\|location\|description\|comment_desc` | 三角色 | **三種模式**（v1.1.7）：① 不帶參數＝只回 active；② 帶 `category_id=N`＝只回該類別關聯＋通用；③ 帶 `include_inactive=1`（限 manager/admin）＝含停用並附 `category_ids` |
-| POST `/api/options` | manager/admin | `{ type, label, sort_order, category_ids? }`；若 `(type,label)` 已存在 → 該筆 `active=1` 並更新 `sort_order`，否則新增；`category_ids` 三態（undefined 不動／[] 清空／有值全量覆寫） |
-| PATCH `/api/options/:id` | manager/admin | 改 label／sort_order／active（停用）／category_ids |
-| POST `/api/options/:id/assoc` | manager/admin | 以類別為中心全量覆寫關聯（v1.1.7） |
-| GET `/api/vendors` | manager/admin | 列表（含停用）；排序 `active DESC, sort_order, id`（v1.1.13） |
-| POST `/api/vendors` | manager/admin | 新增（name） |
-| PATCH `/api/vendors/:id` | manager/admin | 修改／停用／改 `sort_order` |
-| GET `/api/users` | admin | 列表（含 pending 與停用） |
-| PATCH `/api/users/:id` | admin | 可改 `role`、`active`、`display_name`；**防呆規則見下** |
+| 端點                                                                  | 權限          | 說明                                                                                                                                                                                 |
+| --------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET `/api/options/catalog`                                            | 三角色        | 一次抓所有選項＋關聯：`{categories, locations, descriptions, comment_descs}`（v1.1.9 加 comment_descs）                                                                              |
+| GET `/api/options?type=category\|location\|description\|comment_desc` | 三角色        | **三種模式**（v1.1.7）：① 不帶參數＝只回 active；② 帶 `category_id=N`＝只回該類別關聯＋通用；③ 帶 `include_inactive=1`（限 manager/admin）＝含停用並附 `category_ids`                |
+| POST `/api/options`                                                   | manager/admin | `{ type, label, sort_order, category_ids? }`；若 `(type,label)` 已存在 → 該筆 `active=1` 並更新 `sort_order`，否則新增；`category_ids` 三態（undefined 不動／[] 清空／有值全量覆寫） |
+| PATCH `/api/options/:id`                                              | manager/admin | 改 label／sort_order／active（停用）／category_ids                                                                                                                                   |
+| POST `/api/options/:id/assoc`                                         | manager/admin | 以類別為中心全量覆寫關聯（v1.1.7）                                                                                                                                                   |
+| GET `/api/vendors`                                                    | manager/admin | 列表（含停用）；排序 `active DESC, sort_order, id`（v1.1.13）                                                                                                                        |
+| POST `/api/vendors`                                                   | manager/admin | 新增（name）                                                                                                                                                                         |
+| PATCH `/api/vendors/:id`                                              | manager/admin | 修改／停用／改 `sort_order`                                                                                                                                                          |
+| GET `/api/users`                                                      | admin         | 列表（含 pending 與停用）                                                                                                                                                            |
+| PATCH `/api/users/:id`                                                | admin         | 可改 `role`、`active`、`display_name`；**防呆規則見下**                                                                                                                              |
 
 **PATCH `/api/users/:id` 防呆規則**：
 
-| 規則 | 說明 |
-|---|---|
-| 不可停用自己 | `active` 由 1 改 0 且 `id == 自己` → 拒絕 |
-| 不可對自己降權 | `role` 由 admin 改非 admin 且 `id == 自己` → 拒絕 |
+| 規則               | 說明                                                      |
+| ------------------ | --------------------------------------------------------- |
+| 不可停用自己       | `active` 由 1 改 0 且 `id == 自己` → 拒絕                 |
+| 不可對自己降權     | `role` 由 admin 改非 admin 且 `id == 自己` → 拒絕         |
 | 至少保留一位 admin | 操作後 `active=1 AND role='admin'` 的人數須 ≥ 1，否則拒絕 |
 
 違反上述任一規則 → `400 ADMIN_LOCKED`（message 說明原因如「不可停用自己」「系統至少需保留一位管理員」）。
@@ -711,12 +734,12 @@ export function requireAuth(opts?: {
 
 **GET `/api/stats/summary`**（**三角色皆可**，D6）
 
-| 欄位 | 定義（寫死） |
-|---|---|
-| `open_count` / `in_progress_count` | 目前狀態即時數 |
-| `month_new` | 當月 `created_at` 的案件數 |
-| `month_done` | **台灣當月內，時間軸出現過 done 回報的不重複案件數**（見下方 SQL） |
-| `month_initial_open` | **期初未結案**（v1.1.14 A3 方案②）：本月月初時點尚未結案（open+in_progress；done/void 不計） |
+| 欄位                               | 定義（寫死）                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| `open_count` / `in_progress_count` | 目前狀態即時數                                                                               |
+| `month_new`                        | 當月 `created_at` 的案件數                                                                   |
+| `month_done`                       | **台灣當月內，時間軸出現過 done 回報的不重複案件數**（見下方 SQL）                           |
+| `month_initial_open`               | **期初未結案**（v1.1.14 A3 方案②）：本月月初時點尚未結案（open+in_progress；done/void 不計） |
 
 - **v1.1.14（A3 方案②）完成率分母**：完成率＝`month_done / (month_initial_open + month_new)`，由前端計算；分母為 0 顯示「—」
 - `month_initial_open` 因 `tickets.status` 是現狀快照、reopen 會改狀態，以月初時點推導（見下方 SQL 註）
@@ -734,9 +757,9 @@ WHERE kind = 'status' AND status = 'done'
 
 **GET `/api/stats/amount-by-category?month=YYYY-MM`**（**三角色皆可**，v1.1.12）
 
-| 欄位 | 定義 |
-|---|---|
-| `month` | 台灣當月（缺省為當月） |
+| 欄位    | 定義                                                                                    |
+| ------- | --------------------------------------------------------------------------------------- |
+| `month` | 台灣當月（缺省為當月）                                                                  |
 | `items` | `[{ category_label, total_amount, count }]`——以發包時間為月份基準，各類別 `amount` 加總 |
 
 - **以發包時間（`tickets.amount_at`）為記錄基準**：某月內 `amount_at` 落點的案件，其金額納入該月該類別
@@ -754,33 +777,49 @@ GROUP BY category_label ORDER BY total_amount DESC
 
 **GET `/api/stats/daily-report`**（**三角色皆可**）
 
-| Query | 必填 | 說明 |
-|---|---|---|
-| `date` | **必填** | `YYYY-MM-DD` 台灣時區；**不驗證真實日期以外的合法性**（前端 max=今天） |
+| Query         | 必填     | 說明                                                                                                                                                                                                                                       |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `date`        | **必填** | `YYYY-MM-DD` 台灣時區；**不驗證真實日期以外的合法性**（前端 max=今天）                                                                                                                                                                     |
 | `category_id` | **必填** | 正整數（該類別）或字串 `all`（**v1.1.22**：全部類別，合併所有類別當日案件、`category_label` 固定「全部類別」、`category_id` 回 `null`、模板固定取**全域預設**）；類別不存在 → `404 NOT_FOUND`；非正整數且非 `all` → `400 VALIDATION_ERROR` |
 
 - **時間計算**：`taipeiDayRangeUtc(date)` 回 `{startMs, endMs}`（毫秒數字）
   - `startMs` = 該日**台灣 00:00** 的 UTC 對應 = 前一日 16:00:00.000Z
-  - `endMs`   = **明日台灣 00:00** 的 UTC 對應 = 該日 16:00:00.000Z
+  - `endMs` = **明日台灣 00:00** 的 UTC 對應 = 該日 16:00:00.000Z
   - **半開區間 `[startMs, endMs)`**（F11-7）
   - 台灣時區 UTC+8，**不是** UTC 當天 00:00 — 見 `tests/time.test.ts` F2 統計語意 case
 - **回應結構**（v1.1.16：純資料 + new_case/timeline 兩種模板 body，前端負責渲染成品）：
   ```jsonc
   {
-    "date": 1787414400000,              // taipeiDayRangeUtc(date).startMs（UTC 毫秒數字）
-    "category_id": 1,                   // v1.1.22：category_id=all 時回 null
-    "category_label": "水電",           // v1.1.22：all 時固定「全部類別」
+    "date": 1787414400000, // taipeiDayRangeUtc(date).startMs（UTC 毫秒數字）
+    "category_id": 1, // v1.1.22：category_id=all 時回 null
+    "category_label": "水電", // v1.1.22：all 時固定「全部類別」
     "new_cases": [
-      { "id": 7, "location_label": "頂樓", "status": "詢價中", "description": "水泵故障" }
+      {
+        "id": 7,
+        "location_label": "頂樓",
+        "status": "詢價中",
+        "description": "水泵故障",
+      },
     ],
     "timeline_updates": [
-      { "id": 3, "location_label": "大廳", "status": "已發包", "note": "已通知廠商" }
+      {
+        "id": 3,
+        "location_label": "大廳",
+        "status": "已發包",
+        "note": "已通知廠商",
+      },
     ],
-    "has_content": true,                 // new_cases / timeline_updates 任一非空
+    "has_content": true, // new_cases / timeline_updates 任一非空
     "templates": {
-      "new_case": { "id": 12, "body": "{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}" },
-      "timeline": { "id": 13, "body": "{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}" }
-    }
+      "new_case": {
+        "id": 12,
+        "body": "{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}",
+      },
+      "timeline": {
+        "id": 13,
+        "body": "{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}",
+      },
+    },
   }
   ```
 - **new_cases**：當日（`created_at` 在區間內）、屬該類別之新建案件；`status` 固定為「詢價中」（前端文案，非 tickets.status）
@@ -884,6 +923,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - 狀態色：🔴詢價中／🟡處理中（已發包）／🟢已完成／⚫作廢
 
 **v1.1.13 觸控與可讀性補強**：
+
 - **照片刪除鍵 `.thumb-del` ≥ 32px**（原 22px 過小，觸控不佳）
 - **狀態徽章對比**：黃底改深琥珀字（`#92400e`）、紅底改淺紅底深紅字、綠底改淺綠底深綠字（WCAG AA 可讀）
 - **`<select>` 統一 `padding-right: 32px`**：避免長文字被 iOS 原生箭頭覆蓋
@@ -915,6 +955,8 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **指派廠商只在編輯頁**（v1.1.5：列表卡片不塞指派下拉）
 - stale 提示**前端計算**：`now − last_activity_at > 7×24h`（僅 open/in_progress 顯示），文案含實際天數：「⚠ 12 天未更新」
 - 分頁：依 `has_more` 顯示「載入更多」
+- **tab／分類態持久化（v1.1.29）**：`localStorage.listStatus`（值限 `active`／`open`／`in_progress`／`done`／`void`／`all`，非白名單值落預設 `active`）＋`localStorage.listCategory`（`''` ＝全部分類）；整頁重載後仍回到剛才那批案件
+- **刷新後的還原（v1.1.29）**：同 route 的刷新（LIFF push／`pageshow`）還原捲動位置（數值 `scrollY`）與焦點（穩定鍵 `[containerIndex, elementIndex]`＋caret，`Math.min` 鉗制越界）；换 route 落頂、焦點不擾
 
 ### 5.2 P2 建單
 
@@ -1061,7 +1103,11 @@ LINE_CHANNEL_ID = "2008484338"
 **`public/_routes.json`**：
 
 ```json
-{ "version": 1, "include": ["/", "/index.html", "/api/*", "/share.html"], "exclude": [] }
+{
+  "version": 1,
+  "include": ["/", "/index.html", "/api/*", "/share.html"],
+  "exclude": []
+}
 ```
 
 > **⚠ 根路徑必須顯式列出（v1.1.19 實測修正）**：`include` 是白名單，沒列的路徑一律回靜態檔。v1.1.17 曾加 `functions/index.html.ts` 但沒列 `"/"`——CF Pages 檔案路由上根路徑 `/` 對應的檔名是 `functions/index.ts`（不是 `index.html.ts`），兩條件缺一不可，否則根路徑永遠回靜態 `public/index.html`（寫死 `?v=`），cache-busting 形同虛設。
@@ -1080,6 +1126,7 @@ LINE_CHANNEL_ID = "2008484338"
 > **⚠️ 主站不加 CSP（v1.1.13 實測後撤回）**：先前曾嘗試加主站 CSP，但**會導致 LINE 以外的瀏覽器無法開啟**（`script-src`/`connect-src` 白名單過嚴，擋掉 LINE 外環境的非 LIFF 載入）。主站維持「僅 nosniff + referrer-policy」、**不設 CSP**。share.html 的 CSP 由 Function 內獨立回傳（`functions/share.html.ts`），不受 `_headers` 影響，維持安全防護。
 
 **`functions/index.ts`＋`functions/index.html.ts`（v1.1.19 重構；v1.1.17 新增）— 動態 cache-busting**：兩支薄入口共用 `functions/lib/dynamic-index.ts` 的 `serveDynamicIndex(env)`，請求時動態產生 index HTML，把本機 asset（`/style.css`、`/vendor/*.js`、`/templateEngine.js`、`/app.js`）的 `?v=` 設為 `CF_PAGES_COMMIT_SHA` 前 12 字（本機 `wrangler pages dev` fallback 取 `dev`），回應頭設 `Cache-Control: no-cache`＋與 `_headers` 一致的 `X-Content-Type-Options: nosniff`／`Referrer-Policy: no-referrer`（主站仍不加 CSP，同本節）。**目的：修復「每次部署看不到新程式」**——原本 `public/index.html` 寫死 `app.js?v=1.1.15`，即便 `_headers` 對 `/index.html` 設 `no-cache`，瀏覽器仍長快取舊版腳本；本 Function 讓每次部署產生唯一 `?v=<commit>` URL → 強制抓最新版、无需手動改版本號、永不忘。與 `functions/share.html.ts` 同属「function 動態渲染 HTML」模式，安全標頭皆於函式內直接回傳（不走 `_headers`）。
+
 > ⚠ v1.1.19 實測修正：v1.1.17 只建了 `functions/index.html.ts`，但 CF Pages 檔案路由上**根路徑 `/` 對應的檔名是 `functions/index.ts`**、`/index.html` 路徑才對應 `index.html.ts`；加上 `_routes.json` include 白名單沒列根路徑 → 根路徑 `/` 一直回靜態 `public/index.html`，cache-busting 從未生效。v1.1.19 起兩支入口＋include 列 `"/"`、`"/index.html"` 才真正生效。
 > ⚠ 修改 index HTML 結構（增減 `<script>`、`<link>`）時改 `functions/lib/dynamic-index.ts` 即可（兩支入口共用，勿再各改各的）。
 
@@ -1092,6 +1139,7 @@ npx wrangler d1 migrations create repair-db0818 init   # 產生檔案後貼入 �
 npx wrangler d1 migrations apply repair-db0818 --local      # 開發
 npx wrangler d1 migrations apply repair-db0818 --remote     # 正式
 ```
+
 > seed 已併入 migration（v1.1.6），無需手動執行 seed.sql。
 
 ### 8.4 secrets
@@ -1137,6 +1185,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 **CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。E2E 現行規模：4 支 spec 共 33 條（app 20／daily-report 5／message-templates 5／cache-busting 3）；cache-busting 3 條在本地 `http.server`（無 Functions 層）必掛，屬環境限制、非代碼問題。
 
 **E2E 效能（v1.1.14 優化）**：
+
 - **等待方式**：E2E 一律用 Playwright 的 `expect(...)`／`expect.poll()` **自動重試**（DOM 出現即過），**禁止固定 `waitForTimeout()`**（v1.1.14 已移除全部 14 處固定等待，實際測試從 ~20s 降到 ~9s）。
 - **瀏覽器快取**：workflow 對 `~/.cache/ms-playwright` 加 `actions/cache`（keyed on `package-lock.json`），命中後省 `npx playwright install` 的 ~22s 下載。
 - **E2E 已知限制（勿再犯）**：mock 模式 `api()` 開頭 `if (IS_MOCK) return mockApi()` → **不走瀏覽器 fetch**，故 `page.on('request')` 攔不到。驗證「送出 API 是否觸發」只能用 UI 互動斷言（dialog/modal/toast 出現），不能攔截請求。
@@ -1144,23 +1193,24 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 **人工驗收流程（v1.1.14 新增）**：CI 全綠後，另對正式網域 `?mock=true` 逐項實測（不碰正式資料，同 E2E 安全前提）。每次改版後至少跑一遍以下 checklist。
 
 **驗收工具與方法（明確規格）**：
+
 - **工具**：用瀏覽器自動化工具（Minis 內建 `browser_use`，或等價 Playwright / 手動瀏覽器 DevTools）開啟 `https://repair-system-4re.pages.dev/?mock=true`。**禁止用此方式對正式資料寫入**（僅檢視，mock 模式本來就不碰 D1/R2）。
 - **方法**：以「讀取 DOM 狀態」為主——對目標元素下 `execute_js`（或 Playwright `locator`）取 `.textContent`／`.value`／元素數量／`.classList` 內含的 `active` 等，**與預期值比對**。不以肉眼描述截圖為準，改以**可斷言的文字/數值**判斷（避免誤判）。
 - **判斷準則**：每一項下方列「預期」與「實測」；兩者相符＝PASS，不符＝FAIL（需修復後重跑）。非等到自動載入完的項目，實測前可用 `await sleep(500ms)` 等非同步渲染。
 
 **checklist（工具：`execute_js` 取 DOM；預期如下）**：
 
-| # | 頁面 | 動作 | 預期（DOM 斷言） |
-|---|---|---|---|
-| 1 | 首頁 `/` | 讀 `.tab` 文字清單 | 含「未結／詢價／處理／完成／作廢／全部」 |
-| 2 | 統計頁 `/stats` | 讀 `.month-row select` options | 近 12 個月（如 `2026-08`…`2025-09`） |
-| 2b | 統計頁 | 選另一月（`change` 事件）後讀 `.stat-card` 與 `.section-title` | 「本月新增」數與「各類別金額（YYYY-MM」標題**同步**變為該月（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增 |
-| 3 | 詳情 `/ticket/2` | 點 ⋮ → 讀 `.menu-item` | 含「編輯案件」（`can_edit` 由後端算，E1 方案B） |
-| 4 | 編輯 `/edit/2` | 讀 `.form label` 清單、`.form input[type=file]`、`.form .photo-preview` | label 含「照片」；有 file input＋preview；`.photo-thumb` 數 ≥0（既有照片） |
-| 4b | 編輯 `/edit/2` | 讀廠商 `.form select` options | 含「— 清空指派 —」（值 `_clear`，E5） |
-| 5 | 詳情 `/ticket/1`(open) | 開留言框讀狀態 select options | 僅「僅留言／標記已發包／標記完成並結案」，無退回 |
-| 5b | 詳情 `/ticket/2`(in_progress) | 開留言框讀狀態 select options | 僅「僅留言／更新發包金額／標記完成並結案」，無退回 |
-| 6 | 建單 `/new` | 讀 `.form input[type=file]`＋`.photo-preview` | 兩者存在（照片選擇器正常） |
+| #   | 頁面                          | 動作                                                                    | 預期（DOM 斷言）                                                                                                             |
+| --- | ----------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 首頁 `/`                      | 讀 `.tab` 文字清單                                                      | 含「未結／詢價／處理／完成／作廢／全部」                                                                                     |
+| 2   | 統計頁 `/stats`               | 讀 `.month-row select` options                                          | 近 12 個月（如 `2026-08`…`2025-09`）                                                                                         |
+| 2b  | 統計頁                        | 選另一月（`change` 事件）後讀 `.stat-card` 與 `.section-title`          | 「本月新增」數與「各類別金額（YYYY-MM」標題**同步**變為該月（Promise.all，無上下月不一致）；完成率分母＝期初未結案＋本月新增 |
+| 3   | 詳情 `/ticket/2`              | 點 ⋮ → 讀 `.menu-item`                                                  | 含「編輯案件」（`can_edit` 由後端算，E1 方案B）                                                                              |
+| 4   | 編輯 `/edit/2`                | 讀 `.form label` 清單、`.form input[type=file]`、`.form .photo-preview` | label 含「照片」；有 file input＋preview；`.photo-thumb` 數 ≥0（既有照片）                                                   |
+| 4b  | 編輯 `/edit/2`                | 讀廠商 `.form select` options                                           | 含「— 清空指派 —」（值 `_clear`，E5）                                                                                        |
+| 5   | 詳情 `/ticket/1`(open)        | 開留言框讀狀態 select options                                           | 僅「僅留言／標記已發包／標記完成並結案」，無退回                                                                             |
+| 5b  | 詳情 `/ticket/2`(in_progress) | 開留言框讀狀態 select options                                           | 僅「僅留言／更新發包金額／標記完成並結案」，無退回                                                                           |
+| 6   | 建單 `/new`                   | 讀 `.form input[type=file]`＋`.photo-preview`                           | 兩者存在（照片選擇器正常）                                                                                                   |
 
 > 上述為人工/瀏覽器實測（非自動化），與 §8.7 的 CI 自動化互補；實測結果記錄於當次改版報告。
 
@@ -1171,6 +1221,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 **v1 不做**：關鍵字搜尋、LINE 推播通知、時間軸明細匯出、孤兒照片清理、留言通知、多社區（多 tenant）、`approved_by` 畫面（欄位保留）。
 
 **Rate Limiting（v1.1.13 確認，於 Cloudflare Dashboard 設定，非改程式）**：公開端點建議加每 IP 速率限制，避免被濫用（UUID 已擋列舉，但無每 IP 上限）：
+
 - `GET /api/share/:token`
 - `GET /api/share/:token/photos/:id`
 - `POST /api/auth/session`
@@ -1179,6 +1230,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 設定方式：Cloudflare Dashboard → 該 Pages 專案 → Security/Rate limiting rules。**本專案不寫 code 實作**（靠 CF 邊緣層），故屬維運作業，非程式施工項。
 
 **下一批文件（已產出）**：
+
 1. `docs/lib-spec.md` — `src/lib/` 共用層介面規格（`resolveUser`／`requireAuth`／`csrfGuard`／`respond`／`taipeiMonthRangeUtc()` 正確實作範本）——§3.2 已定案 auth 介面，本文件補齊其餘四模組與細節
 2. `docs/test-cases.md` — 核心端點測試案例（`@cloudflare/vitest-pool-workers`），已含以下回歸斷言：
    - 未登入打 `/api/tickets` → `401`
@@ -1194,4 +1246,4 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 - LIFF SDK 最新版本與 `liff.getIDToken()` 用法
 - LINE 官方帳號方案名稱與費率（§7 第 4 步，以後台當下公告為準）
 - Pages Functions 的 D1/R2 binding 語法（`env.DB.prepare()`、`env.PHOTOS.put()`）
-- `hono/cloudflare-pages` 的 `handle()` 與 `basePath` 行為（M1 
+- `hono/cloudflare-pages` 的 `handle()` 與 `basePath` 行為（M1
