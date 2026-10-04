@@ -406,3 +406,81 @@ test("v1.1.23：建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）", async
   const thumbs = page.locator(".form .photo-preview .photo-thumb");
   await expect(thumbs).toHaveCount(1, { timeout: 20000 });
 });
+
+// v1.1.28 選定形態（T10）：列表頁新 DOM class 於真實 chromium 的渲染驗證
+test("v1.1.28：列表頁 .seg/.rows/.row/.no.num/.t.ticket-title 渲染", async ({
+  page,
+}) => {
+  // 6 個狀態 pill，預設 active 唯一
+  await expect(page.locator(".seg button")).toHaveCount(6);
+  await expect(page.locator(".seg button.active")).toHaveCount(1);
+  // 容器同時帶 ticket-list 與 rows（選定 B）
+  await expect(page.locator(".ticket-list.rows")).toHaveCount(1);
+  // 每卡同時帶 ticket-card 與 row；active（open+in_progress）＝6 張
+  await expect(page.locator(".ticket-card.row")).toHaveCount(6);
+  // 編號補 0、並為 tabular-nums
+  await expect(page.locator(".row .no.num").first()).toHaveText("#0001");
+  const variant = await page
+    .locator(".row .no.num")
+    .first()
+    .evaluate((el) => getComputedStyle(el)["font-variant-numeric"]);
+  expect(variant).toBe("tabular-nums");
+  // 標題列帶 t ticket-title
+  await expect(page.locator(".t.ticket-title")).toHaveCount(6);
+});
+
+// v1.1.28 選定 A→C 同一 DOM：建單每欄 .defrow，窄帶單欄、桌面雙欄
+test("v1.1.28：建單 .defrow 於 ≤640 單欄、>640 雙欄", async ({ page }) => {
+  await page.goto(`${BASE}/?mock=true#/new`);
+  await page.waitForSelector(".form .defrow", { timeout: 10000 });
+  await expect(page.locator(".form .defrow")).toHaveCount(5);
+  // 每欄都帶 label
+  await expect(page.locator(".form .defrow > label")).toHaveCount(5);
+
+  // 窄帶（≤640）：單欄（block，非 grid）
+  await page.setViewportSize({ width: 500, height: 900 });
+  const narrow = await page
+    .locator(".form .defrow")
+    .first()
+    .evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return [cs.display, cs["grid-template-columns"]];
+    });
+  expect(narrow[0]).toBe("block");
+  expect(narrow[1]).toBe("none");
+
+  // 桌面（>640）：雙欄 grid，首欄 96px
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const wide = await page
+    .locator(".form .defrow")
+    .first()
+    .evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return [cs.display, cs["grid-template-columns"]];
+    });
+  expect(wide[0]).toBe("grid");
+  expect(wide[1]).toMatch(/^96px\s+\d/);
+});
+
+// v1.1.31：手機寬下首頁列面不撑破視窗（.row 1fr 欄 min-width:0，nowrap 文字走 ellipsis）
+test("v1.1.31：首頁列面寬＝視窗寬，卡內文字不出界", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE}/?mock=true`);
+  await page.waitForSelector(".ticket-card", { timeout: 10000 });
+  const { docW, vw } = await page.evaluate(() => ({
+    docW: document.documentElement.scrollWidth,
+    vw: window.innerWidth,
+  }));
+  expect(docW <= vw + 1).toBe(true);
+  // 第二欄收在視窗內且 ellipsis 生效（內容被裁＝cw < sw）
+  const desc = await page
+    .locator(".ticket-desc")
+    .first()
+    .evaluate((el) => ({
+      cw: el.getBoundingClientRect().width,
+      sw: el.scrollWidth,
+      right: el.getBoundingClientRect().right,
+    }));
+  expect(desc.cw).toBeLessThan(desc.sw);
+  expect(desc.right <= vw + 1).toBe(true);
+});
