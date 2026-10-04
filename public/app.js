@@ -2810,6 +2810,10 @@ pages.users = function () {
       filterSelect.appendChild(
         el("option", { value: "disabled", text: "已停用" }),
       );
+      // v1.1.30（T12）：篩選態納層二，非白名單值落預設 all
+      const FILTER_VALUES = ["all", "pending", "active", "disabled"];
+      const savedFilter = localStorage.getItem("usersFilter");
+      if (FILTER_VALUES.includes(savedFilter)) filterSelect.value = savedFilter;
 
       function render() {
         list.innerHTML = "";
@@ -2876,7 +2880,10 @@ pages.users = function () {
           renderEmpty(list, "沒有符合條件的成員"); // 空狀態
         }
       }
-      filterSelect.addEventListener("change", render);
+      filterSelect.addEventListener("change", () => {
+        localStorage.setItem("usersFilter", filterSelect.value);
+        render();
+      });
       clearLoading(root);
       root.appendChild(
         el("div", { class: "filter-row" }, [
@@ -3242,7 +3249,11 @@ pages.admin = function () {
   ];
   const tabBar = el("div", { class: "tabs" });
   const content = el("div", {});
-  let currentType = "category";
+  // v1.1.30（T12）：tab 態納層二（與列表同形），非白名單值落預設 category
+  const savedType = localStorage.getItem("adminType");
+  let currentType = types.some(([v]) => v === savedType)
+    ? savedType
+    : "category";
 
   function renderVendors() {
     const thisType = "vendors"; // F2：記錄發起時 tab，避免 stale 覆蓋
@@ -3522,6 +3533,7 @@ pages.admin = function () {
         text: label,
         onclick: (e) => {
           currentType = val;
+          localStorage.setItem("adminType", val);
           for (const b of tabBar.children) b.classList.remove("active");
           e.currentTarget.classList.add("active");
           // 廠商 tab 有自己內嵌的新增列，隱藏選項新增列
