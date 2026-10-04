@@ -12,7 +12,8 @@
     "test:local": "vitest run --config vitest.node.config.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{js,ts,json}\"",
-    "format:check": "prettier --check \"**/*.{js,ts,json}\""
+    "format:check": "prettier --check \"**/*.{js,ts,json}\"",
+    "setup-hooks": "git config --local core.hooksPath .husky"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.4.1",

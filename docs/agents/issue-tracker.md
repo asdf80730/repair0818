@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations（本機 ＝ `/usr/local/bin/gh`，v2.102.0；鑒定用 `GH_TOKEN`＝origin URL 內嵌的 token）。
 
 ## Conventions
 

@@ -4,12 +4,12 @@
 
 ## 環境備註（本專案前後交互使用多種環境）
 - **Minis App**：根在 `/var/minis/workspace/`，連結用 `minis://workspace/...`（見 §12.2）。
-- **omp 沙箱**：根在 `/work`；只有 `bun`、`python3`（無 npm/gh）→ script 以 `bun run <script>` 執行（如 `bun run typecheck`、`bun run test:local`）。
+- **omp 沙箱**：根在 `/work`；`bun`、`python3`、`curl` ＋ `gh`（靜態 binary 在 `/usr/local/bin/gh`，鑒定走 `GH_TOKEN`＝origin 內嵌 token）→ script 以 `bun run <script>` 執行（如 `bun run typecheck`、`bun run test:local`）。
 - **本機（glibc）**：npm 全套可用（`npm ci` / `npm test`）。
-- script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check），哪種 package 執行器存在就用哪種。
+- script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check / setup-hooks），哪種 package 執行器存在就用哪種。
 - CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。
 - 編輯慣例：同檔多個行段一次 read 帶齊（`;` 分隔）再發 edit；eval kernel 的工作目錄＝工作區根，檔名需帶目錄前綴（如 `repair0818/public/app.js`）。
-- 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 需 `git config --local core.hooksPath .husky` 才會觸發。
+- 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 先 `bun run setup-hooks` 才會觸發。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
