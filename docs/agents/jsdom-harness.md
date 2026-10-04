@@ -11,3 +11,7 @@
    `Object.defineProperty(w.document, "activeElement", { get: () => w.__act, configurable: true })`。
 
 範本：`tests/init-modal.test.ts` 用自己的 DOM shim，非 jsdom；兩階層（workers pool／node shim）仍以 `bun run test`、`bun run test:local` 為準。
+
+## 長輸出的時序
+
+`artifact://<id>` 只在交付前後短暫可用，隨後即回收（`Artifact 23 not found. Available: 2, 3, …`）。需分段時在首次調用就帶 `:N-M`／`:raw`；已交付的 follow-up 本文即真相，事後補讀會拿到「not found」。

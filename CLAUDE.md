@@ -9,6 +9,7 @@
 - script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check），哪種 package 執行器存在就用哪種。
 - CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。
 - 編輯慣例：同檔多個行段一次 read 帶齊（`;` 分隔）再發 edit；eval kernel 的工作目錄＝工作區根，檔名需帶目錄前綴（如 `repair0818/public/app.js`）。
+- 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 需 `git config --local core.hooksPath .husky` 才會觸發。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
@@ -137,7 +138,7 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 ## Agent skills
 
 ### Issue tracker
-本 repo 的 GitHub Issues，經 `gh` CLI 操作。見 `docs/agents/issue-tracker.md`。
+本 repo 的 GitHub Issues，經 `gh` CLI 操作；沙箱內無 `gh` 時用同檔末的等價 curl。見 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 五個正規角色，標籤字串＝名稱（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）。見 `docs/agents/triage-labels.md`。
@@ -146,4 +147,4 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 single-context：根目錄一份 `GLOSSARY.md` ＋ `docs/adr/`。見 `docs/agents/domain.md`。
 
 ### 擑機 DOM probe（jsdom）
-寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的四條不相容點見 `docs/agents/jsdom-harness.md`。
+寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的四條不相容點與 `artifact://` 的時序見 `docs/agents/jsdom-harness.md`。

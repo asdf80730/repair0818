@@ -43,3 +43,17 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## 無 `gh` 時的等價 curl（omp 沙箱）
+
+沙箱只有 `bun`、`python3`：`gh` 不存在（`read issue://<n>` 亦因此報 `GitHub CLI (gh) is not installed`）。token 取 `git remote -v` 的 origin URL 內嵌值（或 `GITHUB_TOKEN_REPAIR0818`）；每支調用帶 `-H "Authorization: token $T" -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json'`，base = `https://api.github.com/repos/asdf80730/repair0818`。
+
+- **讀票**：`GET <base>/issues/<n>` → `.body`／`.labels[].name`／`.issue_dependencies_summary.blocked_by`
+- **列票**：`GET <base>/issues?state=open&labels=<label>`
+- **開票**：`POST <base>/issues`，body `{"title","body","labels"}`
+- **留言**：`POST <base>/issues/<n>/comments`，body `{"body"}`
+- **閉票／認領**：`PATCH <base>/issues/<n>`，body `{"state":"closed"}` ／ `{"assignees":["<dev>"]}`
+- **掛 sub-issue**：`POST <base>/issues/<map>/sub_issues`，body `{"sub_issue_id":<db id>}`（db id＝`GET <base>/issues/<n>` 的 `.id`，非 `#number`／`node_id`）
+- **阻斷邊**：`POST <base>/issues/<child>/dependencies/blocked_by`，body `{"issue_id":<blocker 的 .id>}`
+
+JSON body 先寫進 `/tmp/*.json`，再以 `--data-binary '@-'` ＋ `< file` 送（避開 shell 引號轉義）。
