@@ -17,3 +17,11 @@
 ## 長輸出的時序
 
 `artifact://<id>` 只在交付前後短暫可用，隨後即回收（`Artifact 23 not found. Available: 2, 3, …`）。需分段時在首次調用就帶 `:N-M`／`:raw`；已交付的 follow-up 本文即真相，事後補讀會拿到「not found」。
+
+## 瀏覽器 probe（omp `browser` 全域，headless chromium）
+
+佈局量测（rect／scrollWidth）走 `tab.evaluate("<表達式字串>")`——在頁面 context 執行，`window` 可用。`tab.run(fn)` 在 VM context 執行，**無 `window`**（`ReferenceError`）。要點：
+
+1. **A/B sheet 對照需 fresh tab**：同 tab 內改 `link.href` 换 sheet，時序不稳（舊版式未即卸）→ 每個 sheet 開一個 fresh tab（URL query 決定 sheet），且在頁內以標記斷言生效與否（掃 `document.styleSheets` 找目標規則）。
+2. **`Bun.serve` 同 port 重建需先 `server.stop()`**；kernel 內 `globalThis.server` 跨 cell 存活。
+3. 假綠來源：替換 sheet 後未重排 → 以標記位（如 `min-width` 計算值 `0px` vs `NO`）為準，不以 rect 數值單一佐証。

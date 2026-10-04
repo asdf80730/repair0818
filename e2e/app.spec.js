@@ -484,3 +484,24 @@ test("v1.1.31：首頁列面寬＝視窗寬，卡內文字不出界", async ({ p
   expect(desc.cw).toBeLessThan(desc.sw);
   expect(desc.right <= vw + 1).toBe(true);
 });
+
+// v1.1.31 補強：五條路由皆收口於視窗（docW ≤ vw），NAV（fixed＝vw 寬）與內容同界
+test("v1.1.31：五路由 docW 收口於視窗寬", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  for (const hash of ["#/", "#/new", "#/stats", "#/admin", "#/users"]) {
+    await page.goto(`${BASE}/?mock=true${hash}`);
+    await page.waitForSelector("#nav > *", { timeout: 10000 });
+    const { docW, vw, navW } = await page.evaluate(() => ({
+      docW: document.documentElement.scrollWidth,
+      vw: window.innerWidth,
+      navW: Math.round(
+        document.getElementById("nav").getBoundingClientRect().width,
+      ),
+    }));
+    expect({ hash, docW: docW <= vw + 1, navW: navW <= vw + 1 }).toEqual({
+      hash,
+      docW: true,
+      navW: true,
+    });
+  }
+});
