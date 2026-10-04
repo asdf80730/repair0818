@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.25 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.29 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 環境備註（本專案前後交互使用多種環境）
 - **Minis App**：根在 `/var/minis/workspace/`，連結用 `minis://workspace/...`（見 §12.2）。
@@ -16,13 +16,14 @@
 - 語言分界：functions/、src/ 用 TypeScript；public/ 一律純 JS，禁止 import npm 套件。
 - 前端第三方套件一律 vendored 至 public/vendor/ 以 <script src> 載入，禁止 CDN。
 - **C4（v1.1.15）唯一例外**：LINE 官方 LIFF SDK（`https://static.line-scdn.net/liff/edge/2/sdk.js`）走 LINE 平台 CDN，是 LINE LIFF 平台的官方 SDK，必須從 LINE 載入（vendor 無法模擬 LIFF runtime）。liff-mock（測試用）仍 vendored 至 `public/vendor/liff-mock.js`。
+  - HTML 由 `functions/lib/dynamic-index.ts` 於請求時產出（經 `functions/index.ts` ＋ `functions/index.html.ts`）；`public/` 下**無**靜態 `index.html`，`wc`／`grep` 它會報 os error 2。
 - 允許依賴：hono, @hono/zod-validator, jose, zod, browser-image-compression, heic2any（v1.1.23 起，vendored，HEIC/HEIF → JPEG）。
 - 禁止：Node.js 專屬 API 或套件（jsonwebtoken, bcrypt, fs, multer, sharp, crypto.createHmac）。
 - 測試：@cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock）。
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
-- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒 166 tests；本專案 11 支 `tests/*.test.ts`）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒；本專案 12 支 `tests/*.test.ts`、173 tests）。
   - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
     `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
     `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
@@ -35,6 +36,9 @@
   `npm run typecheck` → `npm run test:local`（單元快速迴圈，見上節）→ commit + push 等 CI 綠燈。
   E2E（Playwright，對 production `?mock=true`）一律靠 CI；沙箱內本機可做的語法檢查另有
   `node --check <file>`。
+  沙箱可直接跑 `bun x playwright test`（打 `playwright.config.js` 的預設已部署 BASE，全綠）；
+  本機 dev server 不可靠：Bun 跑 `wrangler pages dev` 只印到 `Ready on …`，首个請求後即以
+  `#runtimeDispatcher?.close is not a function` 退出（wrangler 自報不相容 Bun runtime）。
   部署由 Cloudflare 整合自動處理（push main 走 production，preview 已關閉，見 §0.3）。
 
 ## 硬性規則
@@ -140,3 +144,6 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 
 ### Domain docs
 single-context：根目錄一份 `GLOSSARY.md` ＋ `docs/adr/`。見 `docs/agents/domain.md`。
+
+### 擑機 DOM probe（jsdom）
+寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的四條不相容點見 `docs/agents/jsdom-harness.md`。
