@@ -11,6 +11,7 @@ interface Env {
   PHOTOS: R2Bucket;
   LINE_CHANNEL_ID: string;
   JWT_SECRET: string;
+  CF_PAGES_COMMIT_SHA?: string; // Pages 部署注入；dev 無此變數 → fallback 'dev'
 }
 
 // 防 XSS：選項 label 屬使用者內容，進 HTML 前需 escape
@@ -42,6 +43,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     }
   }
 
+  const version = (env.CF_PAGES_COMMIT_SHA || "dev").slice(0, 12);
   const html = `<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -52,13 +54,13 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="社區修繕派工單">
   <meta name="description" content="社區修繕派工單">
-  <link rel="stylesheet" href="/style.css?v=1.1.14">
+  <link rel="stylesheet" href="/style.css?v=${version}">
 </head>
 <body style="padding-bottom:16px">
   <div id="share-app">
     <p class="loading">載入中…</p>
   </div>
-  <script src="/share.js?v=1.1.14"></script>
+  <script src="/share.js?v=${version}"></script>
 </body>
 </html>`;
 

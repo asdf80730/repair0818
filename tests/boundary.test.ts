@@ -2,86 +2,11 @@
 // 依 F.I.R.S.T：涵蓋邊界與例外，這些才是 bug 的溫床
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs, getOptionId, createTicket } from "./harness";
 
 const worker = SELF;
 
 afterEach(() => vi.restoreAllMocks());
-
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-/** 建立 session，回傳 cookie；role 可為 pending（不 UPDATE） */
-async function loginAs(
-  sub: string,
-  name: string,
-  role?: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  const body = await session.json();
-  const userId = body.data.user_id;
-  if (role) {
-    await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-      .bind(role, userId)
-      .run();
-  }
-  return {
-    userId,
-    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
-  };
-}
-
-async function getOptionId(type: "category" | "location"): Promise<number> {
-  const row = await env.DB.prepare(
-    "SELECT id FROM options WHERE type = ? AND active = 1 ORDER BY id LIMIT 1",
-  )
-    .bind(type)
-    .first<{ id: number }>();
-  if (!row) throw new Error("找不到選項");
-  return row.id;
-}
-
-async function createTicket(
-  cookie: string,
-  description = "邊界測試單",
-): Promise<number> {
-  const cat = await getOptionId("category");
-  const loc = await getOptionId("location");
-  const r = await worker.fetch("http://example.com/api/tickets", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ category_id: cat, location_id: loc, description }),
-  });
-  const body = await r.json();
-  return body.data.id;
-}
 
 describe("權限邊界（§3.2）", () => {
   it("pending 打 /api/tickets → 403 PENDING", async () => {
@@ -164,7 +89,7 @@ describe("zod 欄位驗證邊界（§4.1）", () => {
 
   it("留言 note 空字串 → 400（必填）", async () => {
     const { cookie } = await loginAs("U-bd-v3", "驗證3", "committee");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/comments`,
       {
@@ -182,7 +107,7 @@ describe("zod 欄位驗證邊界（§4.1）", () => {
 
   it("回報 status 非法值 → 400", async () => {
     const { cookie } = await loginAs("U-bd-v4", "驗證4", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -200,7 +125,7 @@ describe("zod 欄位驗證邊界（§4.1）", () => {
 
   it("PATCH 指派無效 vendor_id → 400", async () => {
     const { cookie } = await loginAs("U-bd-v5", "驗證5", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: {
@@ -225,7 +150,7 @@ describe("zod 欄位驗證邊界（§4.1）", () => {
 describe(":id param 校驗（v1.1.25，C1）", () => {
   it("有效 :id → 200 且 data.id 為數字", async () => {
     const { cookie } = await loginAs("U-bd-p1", "參數1", "committee");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
       headers: { Cookie: cookie },
     });
@@ -285,7 +210,7 @@ describe("D7 編輯權限（§4.3）", () => {
   it("committee 改別人建的單 → 403", async () => {
     const owner = await loginAs("U-bd-d7a", "建單者", "committee");
     const other = await loginAs("U-bd-d7b", "他人", "committee");
-    const ticketId = await createTicket(owner.cookie);
+    const { id: ticketId } = await createTicket(owner.cookie);
     const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: {
@@ -300,7 +225,7 @@ describe("D7 編輯權限（§4.3）", () => {
 
   it("committee 改自己建的單 → 200", async () => {
     const { cookie } = await loginAs("U-bd-d7c", "自己", "committee");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: {
@@ -315,7 +240,7 @@ describe("D7 編輯權限（§4.3）", () => {
 
   it("已結案案件不可編輯 → 400", async () => {
     const { cookie } = await loginAs("U-bd-d7d", "結案", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: "POST",
       headers: {
@@ -356,7 +281,7 @@ describe("D7 編輯權限（§4.3）", () => {
 describe("reopen / comments 邊界（§4.3）", () => {
   it("reopen 非 done/void 的案件 → 400", async () => {
     const { cookie } = await loginAs("U-bd-r1", "重開1", "admin");
-    const ticketId = await createTicket(cookie); // status=open
+    const { id: ticketId } = await createTicket(cookie); // status=open
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/reopen`,
       {
@@ -374,7 +299,7 @@ describe("reopen / comments 邊界（§4.3）", () => {
 
   it("committee 不可 reopen（限 admin）→ 403", async () => {
     const { cookie } = await loginAs("U-bd-r2", "重開2", "committee");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/reopen`,
       {
@@ -392,7 +317,7 @@ describe("reopen / comments 邊界（§4.3）", () => {
 
   it("void 案件不可留言 → 400", async () => {
     const { cookie } = await loginAs("U-bd-r3", "留言3", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     await worker.fetch(`http://example.com/api/tickets/${ticketId}/void`, {
       method: "POST",
       headers: {
@@ -613,7 +538,7 @@ describe("資源不存在（§4.6）", () => {
 describe("v1.1.12 已發包必填金額（§4.3）", () => {
   it("回報 in_progress 缺 amount → 400", async () => {
     const { cookie } = await loginAs("U-bd-am1", "金額1", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -631,7 +556,7 @@ describe("v1.1.12 已發包必填金額（§4.3）", () => {
 
   it("回報 in_progress 帶 amount → 200，詳情回傳 amount/amount_at，時間軸帶 amount", async () => {
     const { cookie } = await loginAs("U-bd-am2", "金額2", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -670,7 +595,7 @@ describe("v1.1.12 已發包必填金額（§4.3）", () => {
 
   it("回報 done 不需 amount → 200", async () => {
     const { cookie } = await loginAs("U-bd-am3", "金額3", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -689,7 +614,7 @@ describe("v1.1.12 已發包必填金額（§4.3）", () => {
   it("reopen 到 in_progress 不重置 amount/amount_at（v1.1.13 金額語意鎖死）", async () => {
     const mgr = await loginAs("U-bd-am4", "金額4", "manager");
     const admin = await loginAs("U-bd-am5", "金額5", "admin");
-    const ticketId = await createTicket(mgr.cookie);
+    const { id: ticketId } = await createTicket(mgr.cookie);
     // 發包 5000
     const r1 = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
@@ -749,7 +674,7 @@ describe("v1.1.12 已發包必填金額（§4.3）", () => {
 
   it("同一張單多次發包，amount 覆寫為最後一次（統計取最終 amount_at）", async () => {
     const { cookie } = await loginAs("U-bd-am6", "金額6", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     // 第一次發包 5000
     const r1 = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,

@@ -3,6 +3,7 @@
 // 0.5.41 新版：用 SELF（cloudflare:test）呼叫 main worker
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerifyRaw as mockLineVerify } from "./harness";
 
 const worker = SELF;
 
@@ -10,20 +11,6 @@ const worker = SELF;
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-/** mock LINE ID token 驗證成功，回傳指定 payload */
-function mockLineVerify(payload: Record<string, unknown>) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
 
 describe("app 組裝與 middleware 掛載順序（§1.3）", () => {
   it("未登入 GET /api/tickets → 401（全域 requireAuth 擋下）", async () => {

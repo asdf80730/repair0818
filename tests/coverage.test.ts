@@ -2,82 +2,11 @@
 // 依 F.I.R.S.T：測行為、AAA、涵蓋邊界與例外
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs, getOptionId, createTicket } from "./harness";
 
 const worker = SELF;
 
 afterEach(() => vi.restoreAllMocks());
-
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-async function loginAs(
-  sub: string,
-  name: string,
-  role: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  const body = await session.json();
-  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-    .bind(role, body.data.user_id)
-    .run();
-  return {
-    userId: body.data.user_id,
-    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
-  };
-}
-
-async function getOptionId(type: "category" | "location"): Promise<number> {
-  const row = await env.DB.prepare(
-    "SELECT id FROM options WHERE type = ? AND active = 1 ORDER BY id LIMIT 1",
-  )
-    .bind(type)
-    .first<{ id: number }>();
-  if (!row) throw new Error("找不到選項");
-  return row.id;
-}
-
-async function createTicket(
-  cookie: string,
-  description = "覆蓋測試單",
-): Promise<number> {
-  const cat = await getOptionId("category");
-  const loc = await getOptionId("location");
-  const r = await worker.fetch("http://example.com/api/tickets", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ category_id: cat, location_id: loc, description }),
-  });
-  const body = await r.json();
-  return body.data.id;
-}
 
 /** 上傳一張 jpeg 照片，回傳 photo id */
 async function uploadPhoto(
@@ -622,7 +551,7 @@ describe("auth logout（§4.2）", () => {
 describe("tickets void（§4.3）", () => {
   it("manager 作廢案件 → status void", async () => {
     const { cookie } = await loginAs("U-cov-vd1", "作廢1", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/void`,
       {
@@ -642,7 +571,7 @@ describe("tickets void（§4.3）", () => {
 
   it("已結案不可再作廢 → 400", async () => {
     const { cookie } = await loginAs("U-cov-vd2", "作廢2", "manager");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     // 先結案
     await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: "POST",
@@ -670,7 +599,7 @@ describe("tickets void（§4.3）", () => {
 
   it("committee 不可作廢 → 403", async () => {
     const { cookie } = await loginAs("U-cov-vd3", "作廢3", "committee");
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/void`,
       {
@@ -690,8 +619,8 @@ describe("tickets void（§4.3）", () => {
 describe("tickets 列表篩選（§4.3）", () => {
   it("status=done 只回結案案件", async () => {
     const { cookie } = await loginAs("U-cov-ls1", "篩選1", "manager");
-    const openId = await createTicket(cookie, "未結案");
-    const doneId = await createTicket(cookie, "已結案");
+    const { id: openId } = await createTicket(cookie, "未結案");
+    const { id: doneId } = await createTicket(cookie, "已結案");
     await worker.fetch(`http://example.com/api/tickets/${doneId}/updates`, {
       method: "POST",
       headers: {
@@ -712,7 +641,7 @@ describe("tickets 列表篩選（§4.3）", () => {
 
   it("status=all 回全部，含 void", async () => {
     const { cookie } = await loginAs("U-cov-ls2", "篩選2", "manager");
-    const voidId = await createTicket(cookie, "作廢單");
+    const { id: voidId } = await createTicket(cookie, "作廢單");
     await worker.fetch(`http://example.com/api/tickets/${voidId}/void`, {
       method: "POST",
       headers: {
@@ -806,7 +735,7 @@ describe("share photos 端點（§4.5）", () => {
   it("非該案件的照片透過 share 讀取 → 404", async () => {
     const { cookie } = await loginAs("U-cov-sp2", "分享2", "manager");
     const photoId = await uploadPhoto(cookie, JPEG); // 未綁定
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     const detail = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}`,
       { headers: { Cookie: cookie } },
@@ -824,7 +753,7 @@ describe("share photos 端點（§4.5）", () => {
   it("綁到 update 的照片透過 share 讀取 → 404（target_type 限 ticket）", async () => {
     const { cookie } = await loginAs("U-cov-sp3", "分享3", "manager");
     const photoId = await uploadPhoto(cookie, JPEG);
-    const ticketId = await createTicket(cookie);
+    const { id: ticketId } = await createTicket(cookie);
     // 回報帶照片 → 綁到 update（target_type='update'）
     const upd = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,

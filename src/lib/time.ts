@@ -131,7 +131,7 @@ export function toTaipeiDisplay(iso: string): string {
  *
  * SQL 用法：WHERE created_at >= startMs AND created_at < endMs（半開區間）
  *
- * **呼叫前請先用 isValidDate() 驗證**——本函式只校驗 regex，不驗證真實日期。
+ * **校驗已內化**：regex ＋ isValidDate 於本函式內完成，失敗回 `{ startMs: 0, endMs: 0 }`。
  */
 export function taipeiDayRangeUtc(date: string): {
   startMs: number;

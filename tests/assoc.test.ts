@@ -2,52 +2,10 @@
 // 涵蓋：三種查詢模式、category_ids 三態、建單驗證、詳情回應 id、通用語意、assertValidAssoc
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs } from "./harness";
 
 const worker = SELF;
 afterEach(() => vi.restoreAllMocks());
-
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-async function loginAs(
-  sub: string,
-  name: string,
-  role: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  const body = await session.json();
-  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-    .bind(role, body.data.user_id)
-    .run();
-  return {
-    userId: body.data.user_id,
-    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
-  };
-}
 
 async function optionId(type: string, label: string): Promise<number> {
   const row = await env.DB.prepare(

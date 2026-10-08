@@ -2,71 +2,13 @@
 // 在真實 workerd runtime 跑，D1 用 miniflare
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs, getOptionId } from "./harness";
 
 const worker = SELF;
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-/** mock LINE 驗證成功，回傳指定 sub/name */
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-/** 建立一個已開通使用者並回傳 session cookie（直接更新 D1 role 模擬審核） */
-async function loginAs(
-  sub: string,
-  name: string,
-  role: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  expect(session.status).toBe(200);
-  const body = await session.json();
-  const userId = body.data.user_id;
-
-  // 直接更新 D1 role（模擬管理員審核，users PATCH 屬 M2 後續）
-  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-    .bind(role, userId)
-    .run();
-
-  const cookie = session.headers.get("set-cookie")?.split(";")[0] ?? "";
-  return { userId, cookie };
-}
-
-/** 取第一個 active 的 category/location option id（seed 後動態查） */
-async function getOptionId(type: "category" | "location"): Promise<number> {
-  const row = await env.DB.prepare(
-    "SELECT id FROM options WHERE type = ? AND active = 1 ORDER BY id LIMIT 1",
-  )
-    .bind(type)
-    .first<{ id: number }>();
-  if (!row) throw new Error("找不到 " + type + " 選項，seed 失敗");
-  return row.id;
-}
 
 describe("M3 案件核心（§4.3）", () => {
   it("建單 → 列表 → 詳情 完整流程", async () => {

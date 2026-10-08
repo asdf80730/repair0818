@@ -17,53 +17,11 @@
 
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs } from "./harness";
 
 const worker = SELF;
 
 afterEach(() => vi.restoreAllMocks());
-
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-async function loginAs(
-  sub: string,
-  name: string,
-  role: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  const body = await session.json();
-  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-    .bind(role, body.data.user_id)
-    .run();
-  return {
-    userId: body.data.user_id,
-    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
-  };
-}
 
 /** 取得當前台灣當月 YYYY-MM（含未來月份滾動時的測試穩定性） */
 function currentMonth(): string {
@@ -708,7 +666,7 @@ describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
     );
     expect(tl).toHaveLength(3);
     expect(tl[0].location_label).toBe("F1-test-loc-ex");
-    expect(tl[0].status).toBe("待處理"); // tickets.status=open→原 status_label
+    expect(tl[0].status).toBe("詢價中"); // tickets.status=open→原 status_label（§5.0 定案）
     // reverse 回 ASC：comment(10:01=a)、status(10:02=空 note)、comment(10:03=b)
     expect(tl[0].note).toBe("a");
     expect(tl[1].note).toBe("");

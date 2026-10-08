@@ -57,3 +57,5 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **阻斷邊**：`POST <base>/issues/<child>/dependencies/blocked_by`，body `{"issue_id":<blocker 的 .id>}`
 
 JSON body 先寫進 `/tmp/*.json`，再以 `--data-binary '@-'` ＋ `< file` 送（避開 shell 引號轉義）。
+
+**GH_TOKEN 提取**：取 origin URL 冒號後的裸 PAT（去 `username:` 前綴）；整串 `username:pat` 帶入會 401。

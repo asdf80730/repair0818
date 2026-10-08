@@ -1,6 +1,6 @@
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.30（定稿，可施工）** ｜ 日期：2026-10-04
+**版本：v1.1.32（定稿，可施工）** ｜ 日期：2026-10-08
 
 > 本文件為 v1.0～v1.1.25 各版合併後的完整規格，單獨即可作為施工依據；逐版變更見 §0.1 版本歷程，無需回查舊版。
 
@@ -12,10 +12,11 @@
 
 | 版本    | 內容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.1.32 | **seed 值集全量取代（T5／map #15）**（2026-10-08）：新增幂等增補層 `migrations/0002_replace_seed_from_new_excel.sql`，以新 Excel「報修清冊」對 category／location／vendors／users 做全量取代——category 補 冷氣空調／公設設備／健身器材（sort_order 10/11/12）、`消防設備` 停用（`active=0`）；vendors 補 政統工程(非簽約廠)／岱宇健身器材（sort_order 8/9）；users 依 production `repair-db0818` 實測補 id=2..8；`0001_initial.sql` 已套用 production 不可改。幂等：`options` 走 `INSERT OR IGNORE`、`vendors`／`users` 走 `WHERE NOT EXISTS`。 |
+| v1.1.31 | **列表超寬修復＋測試 harness 收攏**（2026-10-05）：① 列表行超寬：`.row > div { min-width: 0 }`（style.css），e2e 補五路由 docW≤vw 收口斷言（390/375）；② 測試 harness 收攏：新增 `tests/harness.ts`（`mockLineVerify`／`mockLineVerifyRaw`／`loginAs`／`getOptionId`／`createTicket`／`bootMock`／`hasJsdom`）取代九支檔的檔內拷貝；DOM contract 由 jsdom ＋ Playwright 兩個 adapter 守（手拷 token 表退場）；③ 層二通用對：`restoreKey`／`remember` 收六鍵內聯（listStatus／listCategory／statsTab／dailyReportCatId／adminType／usersFilter）；④ message-templates 列表 query 折入 zv 缝（`listTemplatesQuerySchema`，同碼 `VALIDATION_ERROR`；daily-report 依 §4.0 留手動 `fail()`）。typecheck 0 errors、單測 13 檔／175、workers＋node 兩池全綠 |
 | v1.1.30 | **層二範圍補齊（T12）**（2026-10-04）：① **P7 管理**的選項 tab 態納 `localStorage.adminType`（值限 `category`／`location`／`description`／`comment_desc`／`vendors`／`message_templates`，非白名單值落預設 `category`；tab 點擊寫入）；② **P6 成員**的角色篩選納 `localStorage.usersFilter`（值限 `all`／`pending`／`active`／`disabled`，非白名單值落預設 `all`；`change` 寫入）；③ **建單／編輯**的已選類別、地點、廠商屬一次性輸入，**不納**層二（随該次渲染，焦點由層一帶著走）。後端零改動；typecheck 0 errors、單測 173、e2e 32 全綠 |
 | v1.1.29 | **刷新與焦點還原（T9）**（2026-10-03，依 wayfinder 選定）：① **單一刷新入口** `refresh()` → `router()`（冪，自带 `_pendingTimer` 清理），加 `refreshPending` 布林＋`setTimeout(…, 0)` 做同 tick 去重；② **push 來源**——LIFF 回調 `liff.onIsNewMessageCallback` 走**特徵偵測**（`typeof === 'function'` 才注册），缺失（含 `?mock=true` 的 vendored mock，其面無該回調）走 `pageshow` 兜底；③ **層一＝模組級單條快照**（`{route, scrollY, focusKey, caret}`，`router()` 於清 DOM 前寫入、頁面渲染完讀取；整頁重載即失落）——同 route 還原數值 `scrollY`（`window.scrollTo`）、focus 按穩定鍵 `[containerIndex, elementIndex]`（`#page` 直屬容器序＋容器內可聚焦元序）還原，同鍵已無則落該容器首個可聚焦元，caret 以 `Math.min(saved, value.length)` 鉗制；换 route 落頂、focus 不擾；④ **層二＝`localStorage`**——列表新增 `listStatus`／`listCategory` 兩鍵（失落落出廠預設 `active`／全部分類），與既有 `statsTab`／`dailyReportCatId` 同慣例；admin／users 的 tab 與篩選、詳情 ⋮ 選單／留言框展開態**不納層二**（後兩者由層一 focus 快照帶著走）；⑤ 後端零改動                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| v1.1.28 | **前端版面選定落地（T1–T7）**（2026-10-02）：依 wayfinder 選定——① **列表**採 B「標籤頁＋列表」：狀態列改 `.seg` pill（未結／詢價／處理／完成／作廢／全部），列表行改 `.row` 編號對齊雙欄（左 `#0000` `--fs-xs`＋tabular-nums／右 標題 `--fs-md`/600＋徽章·廠商·日期），`pages.list` 之 `renderTicketCard` 與 tab bar 同構；② **詳情**維持 A「時間軸主導」（零結構漂移）；③ **表單**採 A→C 同一 DOM——`.defrow` ≤640 單欄 label 在上、>640 以 `@media (min-width:641px)` 切雙欄（grid `96px 1fr`），`pages.new`／`pages.edit` 各欄位包成 `.defrow`；④ **代幣**：`:root` 沿用 v1.1.27 superset（6 字階／6 間距／狀態色成對），`focus` 由 `:focus` 改 `:focus-visible` 並補 `.tab`／`.btn`，ring = `0 0 0 2px var(--primary-bg)`，新增 `input/select/textarea:disabled`（底 #f5f5f5＋`--gray`）；⑤ 後端零改動；typecheck、173 單測、e2e 32 全綠                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-> 更早版本（v1.1.25 與更早）見 `docs/archive/spec-changelog.md`。
+> 更早版本（v1.1.28 與更早）見 `docs/archive/spec-changelog.md`。
 
 ### 0.2 業主決策紀錄（已確認，2026-08-18）
 
@@ -73,10 +74,10 @@
 | 前端         | 原生 HTML/JS（無框架、無建置），hash router                         |
 | 驗證         | zod（schema 即 API 契約唯一真相來源）                               |
 | JWT          | jose（Web Crypto 原生）                                             |
-| 前端圖片壓縮 | browser-image-compression（vendored）                               |
+| 前端圖片壓縮 | browser-image-compression ＋ heic2any（v1.1.23 HEIC 轉換，皆 vendored）      |
 | 測試         | @cloudflare/vitest-pool-workers（Workers 池跑測試，不用 Jest+mock） |
 
-允許依賴：`hono`、`@hono/zod-validator`、`jose`、`zod`、`browser-image-compression`。
+允許依賴：`hono`、`@hono/zod-validator`、`jose`、`zod`、`browser-image-compression`、`heic2any`（v1.1.23 起，HEIC/HEIF → JPEG）。
 禁止：Node.js 專屬 API 或套件（jsonwebtoken、bcrypt、fs、multer、sharp、crypto.createHmac）。
 
 ### 1.1.5 工作區與檔案結構慣例（v1.1.15 起）
@@ -142,15 +143,18 @@ repair-system/
 │       └── db.ts                  # 共用查詢
 ├── migrations/
 │   └── 0001_initial.sql           # 單一 squash migration（淨最終態；原 0001~0013 已壓平，見 §2）
+├── initial-data/                  # Excel 報修清冊 seed 來源留檔（已併入 0001_initial.sql，見 §2.3）
+│   └── 001_excel_tickets.sql
 ├── scripts/
-│   └── check-migration-drift.py   # 直查 production D1 比對 migrations（v1.1.19 守門，見 §8.7）
-├── tests/                         # 單元測試（11 檔 166 tests）
-│   ├── *.test.ts                  # app/assoc/boundary/coverage/messageTemplates/share-html/share/stats/ticket-actions/tickets/time
+│   ├── check-migration-drift.py   # 直查 production D1 比對 migrations（v1.1.19 守門，見 §8.7）
+│   └── sync-npm-lock.js           # bun.lock → package-lock.json 同步（CI `npm ci` 用）
+├── tests/                         # 單元測試（13 檔 175 tests）
+│   ├── *.test.ts                  # app/assoc/boundary/coverage/dom-classes/init-modal/messageTemplates/share-html/share/stats/ticket-actions/tickets/time
 │   ├── worker.ts / env.d.ts       # workers pool 入口與型別
-│   ├── apply-migrations.ts
+│   ├── harness.ts / apply-migrations.ts  # 共用測試 helper（v1.1.31 收攏）；migration 套用 setup
 │   └── node/                      # test:local 的 node:sqlite shim（§8.7）
-├── e2e/                           # Playwright E2E（33 條；對 production ?mock=true）
-│   ├── app.spec.js                # 20 條（v1.1.23 加 HEIC 上傳）
+├── e2e/                           # Playwright E2E（37 條；對 production ?mock=true）
+│   ├── app.spec.js                # 24 條（v1.1.23 加 HEIC 上傳；v1.1.31 加五路由 docW≤vw 收口斷言）
 │   ├── daily-report.spec.js       # 5 條（案件動態日報，v1.1.22 加「全部類別」預設）
 │   ├── message-templates.spec.js  # 5 條（模板頁，v1.1.16 重構後）
 │   ├── cache-busting.spec.js      # 3 條（v1.1.19；本地 http.server 無 Functions 層故只 CI 跑）
@@ -334,13 +338,15 @@ BEGIN SELECT RAISE(ABORT, 'ticket_updates is append-only (DELETE forbidden)'); E
 
 > **單一來源**：所有預設資料以 `INSERT ... VALUES`（來源為 Excel「報修清冊」）併入 `0001_initial.sql`。原 `0002_seed`／`0004_comment_desc`／`0010`~`0013` 已壓平進此檔，不再另立檔；根目錄 `seed.sql` 與 `db:seed:remote` script 已刪除。
 
-- `users`：第一位管理員（id=1，`line_user_id='Ucd377f91b66f4f0f7a382a21b3862f15'`，role `admin`，`created_by` 統一引用此 id）
-- `options.type='category'`（Excel J 欄）：弱電修繕／機電修繕／電梯修繕／園藝植栽／泳池設備／消防設備／漏水／地磚泥作／水電項目／其他（`其他` 的 sort_order=99）
+- `users`：id=1（王任鋒，admin）為 `created_by` 統一引用之 id；`0002` 依 production `repair-db0818` 實測補入 id=2..8（含 id=3 `active=0`、全部 `approved_by=NULL`）。
+- `options.type='category'`（Excel J 欄）：弱電修繕／機電修繕／電梯修繕／園藝植栽／泳池設備／消防設備／漏水／地磚泥作／水電項目／其他（`其他` 的 sort_order=99）；`0002` 補入 冷氣空調／公設設備／健身器材（sort_order 10/11/12），`消防設備` 因新表無此值改 `active=0` 停用（非 DELETE）
 - `options.type='location'`（Excel H 欄）：公共區域／一樓外圍／B1·B2·B3 地下室公設／三期 A~F 棟／四期 G~K 棟（共 16 列）
-- `vendors`（Excel F 欄）：富華創新／順宏弱電／國霖機電／OTIS電梯／園藝／智生活／其它
+- `vendors`（Excel F 欄）：富華創新／順宏弱電／國霖機電／OTIS電梯／園藝／智生活／其它；`0002` 補入 政統工程(非簽約廠)／岱宇健身器材（sort_order 8/9）
 - `options.type='description'`（建單說明範本）：水泵浦異音／照明故障／門禁感應不良／水管滲漏／油漆剝落／其他（99）
 - `options.type='comment_desc'`（回報範本）：已通知廠商處理／已到場勘查／待料中／已修復完成／需追蹤
 - `options.type='message_template_new_case'`／`'message_template_timeline'`：`label` 欄即模板內容（v1.1.20，見 §4.9）；`sort_order` 0／1
+
+> **`0002_replace_seed_from_new_excel.sql`（幂等增補層）**：以新 Excel「報修清冊」對上述值集做「全量取代」——`options` 走 `INSERT OR IGNORE`（`UNIQUE(type,label)`）、`vendors`／`users` 走 `INSERT ... SELECT ... WHERE NOT EXISTS`。`0001_initial.sql` 已套用 production 不可改，取代內容承載於此檔；location（16 列）與 0001 現行相同、無需增補。
 
 （預設選項為初始值，上線後由管理公司在 P7 自行維護。）
 
@@ -1148,7 +1154,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
 
 **本地單元測試快速迴圈 `npm run test:local`（v1.1.15 新增，不用 workerd）**：
 
-- **用途**：本機立即驗證單元測試（11 檔 166 tests，約 10–60 秒視環境），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
+- **用途**：本機立即驗證單元測試（13 檔 175 tests，約 10–60 秒視環境），不必等 push 後的 CI。workerd 跑不了的環境（如 Alpine musl 沙箱）也能跑。
 - **原理**：`vitest.node.config.ts` 以 `resolve.alias` 把 `cloudflare:test` 指向 `tests/node/cloudflare-test-shim.ts`，**測試檔零改動**：
   - `SELF.fetch()` → Hono `app.request()`（不起 HTTP server）
   - `env.DB` → `tests/node/d1.ts`：以 Node 內建 `node:sqlite` 實作的 D1 shim（prepare/bind/run/all/first/raw/batch/exec；batch 經 `__execForBatch` 保留 INSERT 的 `meta.last_row_id`）
@@ -1157,7 +1163,7 @@ v1 不處理（R2 免費額度足夠）；v2 若要清理，須另開**獨立 Wo
   - `tests/node/_icu-polyfill.ts`：精簡 ICU 的 Node 上補 en-CA 的 `format`／`formatToParts`（full-ICU 環境自動 no-op），避免日期格式假失敗
 - **語意警告**：shim 是近似而非真 D1——錯誤訊息格式、meta 欄位細節與真 D1 有差。**`npm test`（workers pool / CI）仍是唯一真相**；`test:local` 全綠不代表可略過 CI。
 
-**CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。E2E 現行規模：4 支 spec 共 33 條（app 20／daily-report 5／message-templates 5／cache-busting 3）；cache-busting 3 條在本地 `http.server`（無 Functions 層）必掛，屬環境限制、非代碼問題。
+**CI 流程**（`.github/workflows/test.yml`）：`npm ci` → typecheck → `npm test`（單元）→ E2E（對正式網域 `?mock=true`）。E2E 現行規模：4 支 spec 共 37 條（app 24／daily-report 5／message-templates 5／cache-busting 3）；cache-busting 3 條在本地 `http.server`（無 Functions 層）必掛，屬環境限制、非代碼問題。
 
 **E2E 效能（v1.1.14 優化）**：
 

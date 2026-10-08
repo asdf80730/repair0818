@@ -8,7 +8,7 @@
 (function (global) {
   "use strict";
 
-  // 變數點查找：先查 ctx 本身，找不到查當前 each 迴圈的 stack（由內而外）
+  // 變數點查找（SPEC §4.9 F8）：當前 each item → 外層 each item（遞迴向上）→ ctx 頂層；內層同名遮蔽外層
   function lookup(key, ctx, eachStack) {
     // 自動變數：序（在 each 區段內 = 1-based 計數）
     if (key === "序") {
@@ -44,14 +44,14 @@
   }
 
   function lookupRaw(key, ctx, eachStack) {
-    // 先查 ctx
-    if (ctx && Object.prototype.hasOwnProperty.call(ctx, key)) return ctx[key];
-    // 再查 each stack（由內而外）
+    // 先查 each stack（由內而外）：當前 item → 外層 each item（SPEC §4.9 F8）
     for (let i = eachStack.length - 1; i >= 0; i--) {
       const item = eachStack[i].item;
       if (item && Object.prototype.hasOwnProperty.call(item, key))
         return item[key];
     }
+    // 再查 ctx 頂層（內層同名遮蔽 ctx）
+    if (ctx && Object.prototype.hasOwnProperty.call(ctx, key)) return ctx[key];
     return undefined;
   }
 

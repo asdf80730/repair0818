@@ -1,6 +1,6 @@
 # 社區修繕管理系統 — 施工規則
 
-> 完整規格見 `docs/SPEC.md`（v1.1.29 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
+> 完整規格見 `docs/SPEC.md`（v1.1.31 定稿）。本檔為 AI 施工必讀的硬性規則摘要。
 
 ## 環境備註（本專案前後交互使用多種環境）
 - **Minis App**：根在 `/var/minis/workspace/`，連結用 `minis://workspace/...`（見 §12.2）。
@@ -24,7 +24,7 @@
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
-- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒；本專案 12 支 `tests/*.test.ts`、173 tests）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒；本專案 13 支 `tests/*.test.ts`、175 tests）。
   - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
     `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
     `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
@@ -147,4 +147,4 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 single-context：根目錄一份 `GLOSSARY.md` ＋ `docs/adr/`。見 `docs/agents/domain.md`。
 
 ### 擑機 DOM probe（jsdom）
-寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的四條不相容點與 `artifact://` 的時序見 `docs/agents/jsdom-harness.md`。
+寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的七條不相容點與 `artifact://` 的時序見 `docs/agents/jsdom-harness.md`。

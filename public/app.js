@@ -1096,6 +1096,15 @@ function initModal(mask, firstFocusable, closeFn) {
   setTimeout(() => firstFocusable && firstFocusable.focus(), 0);
 }
 
+// v1.1.31：層二（localStorage）通用對——還原＝白名單∋默認；寫入＝單行
+function restoreKey(key, allowed, dflt) {
+  const v = localStorage.getItem(key);
+  return allowed.includes(v) ? v : dflt;
+}
+function remember(key, value) {
+  localStorage.setItem(key, value);
+}
+
 // A4（v1.1.15）：el() 事件名白名單——拼錯事件名（如 onfoo）開發期 console.warn 提示
 // **dev-only**：production 不掛（依業主決策 2026-08-23：console noise 也算影響）
 // 判斷：hostname 為 localhost / 127.0.0.1 / 帶 ?dev=1 query / mock 模式 → dev
@@ -1373,10 +1382,11 @@ pages.list = function () {
     ["all", "全部"],
   ];
   // v1.1.29（T9）：tab／分類態納層二（localStorage），失落落出廠預設
-  const savedStatus = localStorage.getItem("listStatus");
-  let currentStatus = tabs.some(([v]) => v === savedStatus)
-    ? savedStatus
-    : "active";
+  let currentStatus = restoreKey(
+    "listStatus",
+    tabs.map(([v]) => v),
+    "active",
+  );
   let currentCategory = localStorage.getItem("listCategory") || "";
   let page = 1;
   let hasMore = false;
@@ -1526,7 +1536,7 @@ pages.list = function () {
         text: label,
         onclick: (e) => {
           currentStatus = val;
-          localStorage.setItem("listStatus", val);
+          remember("listStatus", val);
           page = 1;
           listEl.innerHTML = "";
           for (const b of segBar.children) b.classList.remove("active");
@@ -1543,7 +1553,7 @@ pages.list = function () {
     class: "select",
     onchange: (e) => {
       currentCategory = e.target.value;
-      localStorage.setItem("listCategory", e.target.value);
+      remember("listCategory", e.target.value);
       page = 1;
       listEl.innerHTML = "";
       load();
@@ -2439,8 +2449,7 @@ pages.stats = function () {
 
   // v1.1.21：月度統計／案件動態拆成 sub-tab（手機單屏可讀；記住上次選擇）。
   // 兩塊原本摺在同一條滾動軸（6 卡+金額表+日報框），手機要滑兩三屏；現在一次只看一塊。
-  let curStatsTab =
-    localStorage.getItem("statsTab") === "report" ? "report" : "monthly";
+  let curStatsTab = restoreKey("statsTab", ["monthly", "report"], "monthly");
   let reportLoadPromise = null; // 防重入：切回「案件動態」不重發請求（loadReport 是下方 function 宣告，hoisted，可安全引用）
   const tabsBar = el("div", { class: "tabs" });
   const monthlyPanel = el("div", {});
@@ -2459,7 +2468,7 @@ pages.stats = function () {
   });
   function showStatsTab(tab) {
     curStatsTab = tab;
-    localStorage.setItem("statsTab", tab);
+    remember("statsTab", tab);
     tabMonthlyBtn.classList.toggle("active", tab === "monthly");
     tabReportBtn.classList.toggle("active", tab === "report");
     monthlyPanel.style.display = tab === "monthly" ? "" : "none";
@@ -2599,7 +2608,11 @@ pages.stats = function () {
   ensureCatalog().then((cat) => {
     allCategories = (cat.categories || []).filter((c) => c.active !== false);
     // v1.1.22：「全部類別」（value='all'）列第一、預設選取；localStorage 記住上次選擇（F3 業主決策 2026-08-23）
-    const savedCat = localStorage.getItem("dailyReportCatId"); // 'all' 或類別 id 字串
+    const savedCat = restoreKey(
+      "dailyReportCatId",
+      ["all", ...allCategories.map((c) => String(c.id))],
+      "all",
+    ); // 'all' 或類別 id 字串；非白名單落 'all'
     catSel.appendChild(
       el("option", {
         value: "all",
@@ -2627,7 +2640,7 @@ pages.stats = function () {
       reportLoadPromise = loadReport();
   });
   catSel.addEventListener("change", () => {
-    if (catSel.value) localStorage.setItem("dailyReportCatId", catSel.value);
+    if (catSel.value) remember("dailyReportCatId", catSel.value);
     loadReport();
   });
   dateInput.addEventListener("change", loadReport);
@@ -2811,9 +2824,11 @@ pages.users = function () {
         el("option", { value: "disabled", text: "已停用" }),
       );
       // v1.1.30（T12）：篩選態納層二，非白名單值落預設 all
-      const FILTER_VALUES = ["all", "pending", "active", "disabled"];
-      const savedFilter = localStorage.getItem("usersFilter");
-      if (FILTER_VALUES.includes(savedFilter)) filterSelect.value = savedFilter;
+      filterSelect.value = restoreKey(
+        "usersFilter",
+        ["all", "pending", "active", "disabled"],
+        "all",
+      );
 
       function render() {
         list.innerHTML = "";
@@ -2881,7 +2896,7 @@ pages.users = function () {
         }
       }
       filterSelect.addEventListener("change", () => {
-        localStorage.setItem("usersFilter", filterSelect.value);
+        remember("usersFilter", filterSelect.value);
         render();
       });
       clearLoading(root);
@@ -3250,10 +3265,11 @@ pages.admin = function () {
   const tabBar = el("div", { class: "tabs" });
   const content = el("div", {});
   // v1.1.30（T12）：tab 態納層二（與列表同形），非白名單值落預設 category
-  const savedType = localStorage.getItem("adminType");
-  let currentType = types.some(([v]) => v === savedType)
-    ? savedType
-    : "category";
+  let currentType = restoreKey(
+    "adminType",
+    types.map(([v]) => v),
+    "category",
+  );
 
   function renderVendors() {
     const thisType = "vendors"; // F2：記錄發起時 tab，避免 stale 覆蓋
@@ -3533,7 +3549,7 @@ pages.admin = function () {
         text: label,
         onclick: (e) => {
           currentType = val;
-          localStorage.setItem("adminType", val);
+          remember("adminType", val);
           for (const b of tabBar.children) b.classList.remove("active");
           e.currentTarget.classList.add("active");
           // 廠商 tab 有自己內嵌的新增列，隱藏選項新增列
@@ -3624,7 +3640,7 @@ function renderNav() {
 
 // ---- v1.1.29（T9）：刷新／focus／捲動 還原 ----
 // 層一＝模組級單條快照（「這一次渲染」的連續性；整頁重載即失落）
-// 層二＝localStorage（listStatus／listCategory／statsTab／dailyReportCatId）
+// 層二＝localStorage（listStatus／listCategory／statsTab／dailyReportCatId／adminType／usersFilter），經 restoreKey／remember 通用對
 const VIEW_FOCUSABLE = "input, textarea, select, button, a[href]";
 let refreshPending = false;
 let lastRoute = null; // 上一次渲染的 route（判斷同 route／换 route）

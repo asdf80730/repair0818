@@ -2,89 +2,17 @@
 // 回報/留言/作廢/reopen/編輯留痕
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { mockLineVerify, loginAs, getOptionId, createTicket } from "./harness";
 
 const worker = SELF;
 
 afterEach(() => vi.restoreAllMocks());
 
-function mockLineVerify(sub: string, name: string) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-      return new Response(
-        JSON.stringify({
-          iss: "https://access.line.me",
-          sub,
-          aud: "test-channel",
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          name,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    throw new Error("No mock found for " + url.href);
-  });
-}
-
-async function loginAs(
-  sub: string,
-  name: string,
-  role: "committee" | "manager" | "admin",
-) {
-  mockLineVerify(sub, name);
-  const session = await worker.fetch("http://example.com/api/auth/session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-    },
-    body: JSON.stringify({ id_token: "mock" }),
-  });
-  const body = await session.json();
-  await env.DB.prepare("UPDATE users SET role = ? WHERE id = ?")
-    .bind(role, body.data.user_id)
-    .run();
-  return {
-    userId: body.data.user_id,
-    cookie: session.headers.get("set-cookie")?.split(";")[0] ?? "",
-  };
-}
-
-async function getOptionId(type: "category" | "location"): Promise<number> {
-  const row = await env.DB.prepare(
-    "SELECT id FROM options WHERE type = ? AND active = 1 ORDER BY id LIMIT 1",
-  )
-    .bind(type)
-    .first<{ id: number }>();
-  if (!row) throw new Error("找不到選項");
-  return row.id;
-}
-
-async function createTicket(cookie: string): Promise<number> {
-  const cat = await getOptionId("category");
-  const loc = await getOptionId("location");
-  const r = await worker.fetch("http://example.com/api/tickets", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "fetch",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({
-      category_id: cat,
-      location_id: loc,
-      description: "測試單",
-    }),
-  });
-  const body = await r.json();
-  return body.data.id;
-}
-
 describe("M4 案件動作（§4.3）", () => {
   it("完整流程：回報 in_progress → 留言 → 回報 done → reopen", async () => {
     const mgr = await loginAs("U-m4-mgr", "管理公司", "manager");
     const admin = await loginAs("U-m4-admin", "管理員", "admin");
-    const ticketId = await createTicket(mgr.cookie);
+    const { id: ticketId } = await createTicket(mgr.cookie);
 
     // 回報 in_progress（v1.1.12：已發包需填金額）
     const r1 = await worker.fetch(
@@ -184,7 +112,7 @@ describe("M4 案件動作（§4.3）", () => {
 
   it("committee 不可回報（回報限 manager/admin）", async () => {
     const comm = await loginAs("U-m4-comm", "管委", "committee");
-    const ticketId = await createTicket(comm.cookie);
+    const { id: ticketId } = await createTicket(comm.cookie);
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -202,7 +130,7 @@ describe("M4 案件動作（§4.3）", () => {
 
   it("committee 可留言但不可指派廠商（編輯）", async () => {
     const comm = await loginAs("U-m4-comm2", "管委2", "committee");
-    const ticketId = await createTicket(comm.cookie);
+    const { id: ticketId } = await createTicket(comm.cookie);
     const r = await worker.fetch(`http://example.com/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: {
@@ -218,7 +146,7 @@ describe("M4 案件動作（§4.3）", () => {
   // F3（v1.1.14 決策）：狀態流限制——鎖死退回、允許 open→done
   it("F3：open 案件可直結 done（跳過已發包）", async () => {
     const mgr = await loginAs("U-f3-open-done", "管理", "manager");
-    const ticketId = await createTicket(mgr.cookie); // status=open
+    const { id: ticketId } = await createTicket(mgr.cookie); // status=open
     const r = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
       {
@@ -236,7 +164,7 @@ describe("M4 案件動作（§4.3）", () => {
 
   it("F3：in_progress 不可退回 open", async () => {
     const mgr = await loginAs("U-f3-back", "管理", "manager");
-    const ticketId = await createTicket(mgr.cookie);
+    const { id: ticketId } = await createTicket(mgr.cookie);
     // 先發包
     const r1 = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
@@ -269,7 +197,7 @@ describe("M4 案件動作（§4.3）", () => {
 
   it("F3：open→open 禁、in_progress→in_progress 允許（多次發包覆寫）", async () => {
     const mgr = await loginAs("U-f3-same", "管理", "manager");
-    const ticketId = await createTicket(mgr.cookie);
+    const { id: ticketId } = await createTicket(mgr.cookie);
     // open→open 禁
     const r1 = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/updates`,
@@ -312,7 +240,7 @@ describe("M4 案件動作（§4.3）", () => {
   // E3（v1.1.14）：void/reopen 競態——狀態已變更時不寫入假時間軸
   it("E3：雙 void——第二個回 400 且不新增時間軸", async () => {
     const mgr = await loginAs("U-e3-void", "管理", "manager");
-    const ticketId = await createTicket(mgr.cookie);
+    const { id: ticketId } = await createTicket(mgr.cookie);
     // 第一次作廢成功
     const r1 = await worker.fetch(
       `http://example.com/api/tickets/${ticketId}/void`,
@@ -356,7 +284,7 @@ describe("M4 案件動作（§4.3）", () => {
 
   it("E3：雙 reopen——第二個回 400 且不新增時間軸", async () => {
     const admin = await loginAs("U-e3-reopen", "管理", "admin");
-    const ticketId = await createTicket(admin.cookie);
+    const { id: ticketId } = await createTicket(admin.cookie);
     // 結案
     await worker.fetch(`http://example.com/api/tickets/${ticketId}/updates`, {
       method: "POST",

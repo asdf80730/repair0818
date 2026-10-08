@@ -3,57 +3,11 @@
 // workers pool（`test`）無 jsdom/fs（tough-cookie require() 與 node:fs shim 皆不相容）
 // → 退到對兩檔相關 token 的源碼校驗，同一 contract、兩池皆綠。
 import { describe, it, expect } from "vitest";
-
-const APP_PATH = "public/app.js";
-const CSS_PATH = "public/style.css";
-
-/** jsdom 僅 node pool 可用；本檔用 try/catch 讓 workers pool 平退。 */
-async function bootMock(hash: string) {
-  const { JSDOM } = await import("jsdom");
-  const fs = await import("node:fs");
-  const app = fs.readFileSync(APP_PATH, "utf8") as string;
-  const css = fs.readFileSync(CSS_PATH, "utf8") as string;
-  const html =
-    `<!doctype html><html><head><style>${css}</style></head><body>` +
-    `<div id="page"></div><div id="nav"></div></body></html>`;
-  const w = new JSDOM(html, {
-    url: `http://localhost:8788/?mock=true${hash}`,
-    runScripts: "dangerously",
-  });
-  const win = w.window;
-  const doc = win.document;
-  // jsdom 30 不相容點（見 docs/agents/jsdom-harness.md）
-  win.addEventListener = doc.addEventListener.bind(doc);
-  win.scrollTo = (x: number, y: number) => {
-    (win.__scroll ||= []).push([x, y]);
-  };
-  win.HTMLElement.prototype.focus = function () {
-    win.__act = this;
-  };
-  Object.defineProperty(doc, "activeElement", {
-    get: () => win.__act,
-    configurable: true,
-  });
-  win.eval(app);
-  for (let i = 0; i < 12; i++) await new Promise((r) => win.setTimeout(r, 0));
-  return { win, doc };
-}
-
-const hasJsdom = async (): Promise<boolean> => {
-  const m = await import("jsdom").catch(() => null);
-  return typeof m?.JSDOM === "function";
-};
+import { bootMock, hasJsdom } from "./harness";
 
 describe("列表頁：選定 B（.seg/.rows/.row/.no.num/.t.ticket-title）", () => {
   it("渲染 .seg pill、.rows 容器、每卡 .row，編號補 0、tabular-nums 生效", async () => {
-    if (!(await hasJsdom())) {
-      // workers pool：源碼 token 校驗（對齊 public/*.js|css 現行內容）
-      expect(APP_SNAPSHOT).toContain('class: "ticket-list rows"');
-      expect(APP_SNAPSHOT).toContain('class: "ticket-card row"');
-      expect(APP_SNAPSHOT).toContain('class: "no num"');
-      expect(CSS_SNAPSHOT).toContain("font-variant-numeric: tabular-nums");
-      return;
-    }
+    if (!(await hasJsdom())) return; // workers pool：無 jsdom——contract 由 e2e（chromium）＋ node pool jsdom 覆蓋
     const { doc, win } = await bootMock("#/list");
     // 選定 B：容器同時帶 ticket-list 與 rows
     const rows = doc.querySelector(".rows");
@@ -81,14 +35,7 @@ describe("列表頁：選定 B（.seg/.rows/.row/.no.num/.t.ticket-title）", ()
 
 describe("表單頁：選定 A→C 同一 DOM（.defrow）", () => {
   it("建單每欄為 .defrow 且帶 label（≤640 單欄由 e2e 驗）", async () => {
-    if (!(await hasJsdom())) {
-      // workers pool：源碼 token 校驗
-      const n = (APP_SNAPSHOT.match(/class: "defrow"/g) || []).length;
-      expect(n).toBeGreaterThanOrEqual(5); // 類別/地點/說明/使用範本/照片
-      expect(CSS_SNAPSHOT).toContain("@media (min-width: 641px)");
-      expect(CSS_SNAPSHOT).toContain("grid-template-columns: 96px 1fr");
-      return;
-    }
+    if (!(await hasJsdom())) return; // workers pool：無 jsdom——contract 由 e2e（chromium）＋ node pool jsdom 覆蓋
     const { doc, win } = await bootMock("#/new");
     const defrows = doc.querySelectorAll(".form .defrow");
     expect(defrows.length).toBe(5);
@@ -99,21 +46,3 @@ describe("表單頁：選定 A→C 同一 DOM（.defrow）", () => {
     expect(win.getComputedStyle(defrows[0])["display"]).toBe("block");
   });
 });
-
-// 對齊 public/ 現行檔案（節錄相關 token，兩池共用的源碼基準）
-const APP_SNAPSHOT = [
-  'const listEl = el("div", { class: "ticket-list rows" });',
-  'class: "ticket-card row",',
-  'class: "no num",',
-  'el("div", { class: "defrow" }, [', // 類別
-  'el("div", { class: "defrow" }, [', // 地點
-  'el("div", { class: "defrow" }, [', // 說明
-  'el("div", { class: "defrow" }, [', // 使用範本
-  'el("div", { class: "defrow" }, [', // 照片
-].join("\n");
-
-const CSS_SNAPSHOT = [
-  "font-variant-numeric: tabular-nums;",
-  "@media (min-width: 641px) {",
-  ".defrow { display: grid; grid-template-columns: 96px 1fr;",
-].join("\n");

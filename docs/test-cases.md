@@ -2,7 +2,7 @@
 
 > 對應開發文件 §10「下一批文件」第 2 項。用 `@cloudflare/vitest-pool-workers` 在真實 workerd runtime 跑，D1 用 miniflare。
 > 執行環境：需 glibc（本機 mac/Windows/Linux、GitHub Actions 等），Alpine musl 沙箱無法執行 workerd。
-> 版本：v1.1.25（test:local 166 條＝v1.1.23 的 157 條＋`:id` 邊界 9 條〔`boundary` 6：有效／0／3.5／abc／空段／auth 順序；`tickets` 3：param 分項／json 分項／雙分項 precedence〕）｜v1.1.23（test:local 157 條，本版未加單測——HEIC 轉換為純前端行為，單測層無法模擬 wasm；以 E2E 覆蓋）｜v1.1.23：`e2e/app.spec.js` 加 1 條「建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）」（真實 HEIC fixture、`application/octet-stream` MIME 走 magic-bytes 偵測、heic2any 轉 JPEG → 壓縮 → mock 上傳 → 縮圖）；`e2e/cache-busting.spec.js` asset 數 ≥3 → ≥4（多一個 heic2any.js）｜v1.1.22（test:local 157 條＝v1.1.20 的 155 條＋v1.1.22 加 `category_id=all` 2 條；v1.1.16 起 SPEC 所載 12 條 `tests/templateEngine.test.js` 隨砍後端引擎而刪，計數以本行 test:local 為準）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
+> 版本：v1.1.31（test:local 13 檔 175 條＝v1.1.25 的 166 條＋`dom-classes` 2 條＋`init-modal` 7 條；`tests/harness.ts` 收攏取代九支檔內拷貝〔`mockLineVerify`／`mockLineVerifyRaw`／`loginAs`／`getOptionId`／`createTicket`／`bootMock`／`hasJsdom`〕；E2E 4 支 spec 共 37 條＝app 24〔五路由 docW≤vw 收口斷言〕＋daily-report 5＋message-templates 5＋cache-busting 3）｜v1.1.25（test:local 166 條＝v1.1.23 的 157 條＋`:id` 邊界 9 條〔`boundary` 6：有效／0／3.5／abc／空段／auth 順序；`tickets` 3：param 分項／json 分項／雙分項 precedence〕）｜v1.1.23（test:local 157 條，本版未加單測——HEIC 轉換為純前端行為，單測層無法模擬 wasm；以 E2E 覆蓋）｜v1.1.23：`e2e/app.spec.js` 加 1 條「建單照片選擇器（HEIC 檔自動轉 JPEG 上傳）」（真實 HEIC fixture、`application/octet-stream` MIME 走 magic-bytes 偵測、heic2any 轉 JPEG → 壓縮 → mock 上傳 → 縮圖）；`e2e/cache-busting.spec.js` asset 數 ≥3 → ≥4（多一個 heic2any.js）｜v1.1.22（test:local 157 條＝v1.1.20 的 155 條＋v1.1.22 加 `category_id=all` 2 條；v1.1.16 起 SPEC 所載 12 條 `tests/templateEngine.test.js` 隨砍後端引擎而刪，計數以本行 test:local 為準）｜v1.1.19 起 E2E 另含 `e2e/cache-busting.spec.js`（根路徑動態 cache-busting 回歸測試，3 條）；另含 `scripts/check-migration-drift.py`（CI 直查 production D1 比對 migrations，防 schema 漂移——code 層測試抓不到的唯一防線）
 > v1.1.21：`e2e/daily-report.spec.js`（4 條，v1.1.15 既有、本版對齊 stats 拆 sub-tab：先點「案件動態」tab 才載入、日期 max/預設值＝今日台灣（`formatToParts` 組 YYYY-MM-DD）、mock daily-render 前端拼裝、複製鈕）＋ `e2e/message-templates.spec.js`（5 條，v1.1.15 既有、本版對齊模板頁重構：管理頁 tab、完整簡報預覽＋模板來源兩行、點模板名稱超連結開 modal-mask 置中彈窗、即時預覽、G7 重置移入 modal 內）
 > v1.1.22：`category_id=all`（全部類別合併）unit 測試 2 條（多類別當日案件合併＋`category_label=全部類別`/`category_id=null`；非正整數且非 all 的 `abc/0/1.5` → 400 `VALIDATION_ERROR`）＋ E2E 加 1 條（`e2e/daily-report.spec.js` 共 5 條：類別下拉預設 `all`、預設預覽同時含當日新建與既有案件時間軸）
 
@@ -25,7 +25,7 @@ npm test   # 等於 vitest run
 
 > 斷言 1–4 均已實作並通過（見 `tests/app.test.ts` 對應案例）；不再有 `it.skip` 或 501。
 
-## 測試檔結構（v1.1.25 現況，166 單元測試）
+## 測試檔結構（v1.1.31 現況，13 檔 175 單元測試）
 
 ```
 tests/
@@ -40,13 +40,16 @@ tests/
 ├── stats.test.ts          # A1 統計完成率 + F1 daily-report（date/category 必填、空態、半開區間、v1.1.22 全部類別）（17）
 ├── messageTemplates.test.ts # F6 CRUD（三角色讀、committee 不可寫、label 重複、空 body 拒收；v1.1.20 起 type LIKE 'message_template_%'）（11）
 ├── time.test.ts           # lib/time taipeiMonthRangeUtc 月份邊界（7）
+├── dom-classes.test.ts      # jsdom DOM 契約（選定版面類名／結構；v1.1.31）（2）
+├── init-modal.test.ts       # initModal DOM contract（focus trap／ESC／disabled 排除；v1.1.31）（7）
+├── harness.ts               # 共用測試 helper（非 test 檔；v1.1.31 收攏）
 ├── apply-migrations.ts    # setup：套用 D1 migrations + PRAGMA FK（C7）
 └── env.d.ts               # 測試環境型別（DB/PHOTOS/TEST_MIGRATIONS）
 ```
 
 > v1.1.15 的 `tests/templateEngine.test.ts`（12 條）隨 v1.1.16 砍後端引擎而刪（引擎移到前端 `public/templateEngine.js`，無獨立單測、由 E2E 覆蓋）；stats 13→17（v1.1.22 全部類別等）、新增 time.test.ts。
 
-E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**20 個測試**（v1.1.23 加 HEIC 上傳）涵蓋列表/卡片（維修內容＋日期＋天數）/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填/**A8 照片選擇器（PNG＋v1.1.23 HEIC 自動轉 JPEG）**/**A9 作廢（二次確認）與 reopen modal**。
+E2E（`e2e/app.spec.js`，Playwright，對正式網域 ?mock=true）：**24 個測試**（v1.1.23 加 HEIC 上傳；v1.1.31 加五路由 docW≤vw 收口斷言）涵蓋列表/卡片（維修內容＋日期＋天數）/建單（下拉式）/詳情（分享格式、編輯、指派廠商在編輯頁）/編輯頁四欄帶入/權限中文/篩選/按鈕顏色/常用說明下拉/回報範本附加寫入＋防重複/重新產生分享連結/狀態 tab/管理頁/統計頁/已發包金額＋必填/**A8 照片選擇器（PNG＋v1.1.23 HEIC 自動轉 JPEG）**/**A9 作廢（二次確認）與 reopen modal**。
 
 E2E（`e2e/daily-report.spec.js`，v1.1.16 拆出）：**5 個測試**——案件動態日報頁（月份 tab、日期+類別下拉、空態、v1.1.22「全部類別」預設與 localStorage 記憶、切回單類別）。
 

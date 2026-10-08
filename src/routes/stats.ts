@@ -18,7 +18,7 @@ import { getPreferredTemplate } from "../lib/messageTemplates";
 // F1（v1.1.15）：status 字串 → 顯示用 label
 // 與前端 public/app.js 頂部 `STATUS_LABEL`（同 4 值）對齊；badge 層 label 見 `statusBadge()`（v1.1.12 刻意異字）
 const STATUS_LABEL: Record<string, string> = {
-  open: "待處理",
+  open: "詢價中",
   in_progress: "已發包",
   done: "已完成",
   void: "已作廢",

@@ -1,6 +1,6 @@
 # 擑機 DOM probe（jsdom 30）
 
-前端（`public/app.js`）的 DOM／focus／捲動行為用一支擑機 `.mjs` 核對，走 `jsdom`（`package.json` 的 dev 依賴）。六條不相容點（本會話實測，jsdom 30.1.1）：
+前端（`public/app.js`）的 DOM／focus／捲動行為用一支擑機 `.mjs` 核對，走 `jsdom`（`package.json` 的 dev 依賴）。七條不相容點（實測，jsdom 30.1.1）：
 
 1. **`runScripts` 必填 `"dangerously"`**，否則 `window.eval(...)` 回 `null`，随后的 `TypeError: null is not an object` 出在 `helpers/runtime-script-errors.js`：
    `new JSDOM(html, { url: "http://localhost:8788/?mock=true#/list", runScripts: "dangerously" })`。
@@ -11,8 +11,9 @@
    `Object.defineProperty(w.document, "activeElement", { get: () => w.__act, configurable: true })`。
 5. **`element.click()` 會崩**（`Failed to construct 'PointerEvent': member view is not of type Window`）→ 改用 realm 內的事件：`btn.dispatchEvent(new w.Event("click"))`（監聽器走 `el()` 的 `addEventListener`，`e.currentTarget` 仍正確）。
 6. **時序**：`localStorage` 需在 `w.eval(app)` **之前**寫好（頁面在 eval 期就讀），例元覆寫也在 eval 前；`app.js` 底本身會跑 `boot()`，故 eval 後再多排幾輪 `setTimeout(…, 0)` 讓 `fetch` 鏈落地。
+7. **`win.eval` 的宣告不落 `window`**（isolated context）→ 需真身函式時在**同一 eval 串**內顯式掛上：`window.initModal = initModal;`（`tests/harness.ts` 的 `bootMock` 已內建）。
 
-範本：`tests/init-modal.test.ts` 用自己的 DOM shim，非 jsdom；兩階層（workers pool／node shim）仍以 `bun run test`、`bun run test:local` 為準。
+範本：`tests/init-modal.test.ts` 採雙池——node pool 以 jsdom（harness `bootMock`）測真身 `initModal`，workers pool 走內聯 shim。兩階層（workers pool／node shim）仍以 `bun run test`、`bun run test:local` 為準。
 
 ## 長輸出的時序
 

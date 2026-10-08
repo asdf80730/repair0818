@@ -178,3 +178,20 @@ export const listTicketsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
+
+// 訊息模板列表（§4.9 GET /api/message-templates）
+// 空字串 label 視同未填（preprocess → default），與原 `||` 語意對齊
+export const listTemplatesQuerySchema = z.object({
+  category_id: z.coerce
+    .number({ message: "category_id 必填且需為正整數" })
+    .int({ message: "category_id 必填且需為正整數" })
+    .positive({ message: "category_id 必填且需為正整數" }),
+  label: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z
+      .enum(["new_case", "timeline"], {
+        message: "label 必須為 new_case|timeline",
+      })
+      .default("new_case"),
+  ),
+});

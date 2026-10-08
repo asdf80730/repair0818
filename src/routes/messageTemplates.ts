@@ -13,7 +13,7 @@ import { z } from "zod";
 import { ok, fail, zv } from "../lib/respond";
 import { requireAuth } from "../lib/auth";
 import type { Env } from "../lib/env";
-import { idParam } from "../lib/validate";
+import { idParam, listTemplatesQuerySchema } from "../lib/validate";
 import {
   listTemplates,
   getTemplateById,
@@ -32,31 +32,21 @@ const ALLOWED_LABELS = ["new_case", "timeline"] as const;
 // - category_id 必填（沿用 F1 決策：不做「全部」，避免訊息過長）
 // - label 預設 'new_case'（v1.1.16；原 v1.1.15 為 'report'）
 // - 回該類別關聯的模板優先，無則用全域預設（active=1 + 無 option_categories）
-messageTemplateRoutes.get("/", requireAuth(), async (c) => {
-  const categoryIdStr = c.req.query("category_id");
-  if (!categoryIdStr)
-    return fail(c, 400, "VALIDATION_ERROR", "category_id 必填");
-  const categoryId = Number(categoryIdStr);
-  if (!Number.isInteger(categoryId) || categoryId <= 0) {
-    return fail(c, 400, "VALIDATION_ERROR", "category_id 需為正整數");
-  }
+messageTemplateRoutes.get(
+  "/",
+  requireAuth(),
+  zv("query", listTemplatesQuerySchema),
+  async (c) => {
+    // 校驗經 zv（§4.0 統一信封）：category_id 必填正整數；label 預設 new_case
+    const { category_id: categoryId, label } = c.req.valid("query");
 
-  const label = c.req.query("label") || "new_case";
-  if (!ALLOWED_LABELS.includes(label as (typeof ALLOWED_LABELS)[number])) {
-    return fail(
-      c,
-      400,
-      "VALIDATION_ERROR",
-      `label 必須為 ${ALLOWED_LABELS.join("|")}`,
-    );
-  }
+    // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）
+    // v1.1.20：type 欄當鍵（'message_template_'+label）、label 欄即內容 → 回應 body 取自 label 欄
+    const templates = await listTemplates(c, categoryId, label);
 
-  // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）
-  // v1.1.20：type 欄當鍵（'message_template_'+label）、label 欄即內容 → 回應 body 取自 label 欄
-  const templates = await listTemplates(c, categoryId, label);
-
-  return ok(c, { category_id: categoryId, label, templates });
-});
+    return ok(c, { category_id: categoryId, label, templates });
+  },
+);
 
 // GET /api/message-templates/:id — 三角色可讀
 messageTemplateRoutes.get(
