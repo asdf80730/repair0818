@@ -6,10 +6,12 @@
 - **Minis App**：根在 `/var/minis/workspace/`，連結用 `minis://workspace/...`（見 §12.2）。
 - **omp 沙箱**：根在 `/work`；`bun`、`python3`、`curl` ＋ `gh`（靜態 binary 在 `/usr/local/bin/gh`，鑒定走 `GH_TOKEN`＝origin 內嵌 token）→ script 以 `bun run <script>` 執行（如 `bun run typecheck`、`bun run test:local`）。
 - **本機（glibc）**：npm 全套可用（`npm ci` / `npm test`）。
-- script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check / setup-hooks），哪種 package 執行器存在就用哪種。
+- script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check / e2e / setup-hooks），哪種 package 執行器存在就用哪種。
+  - **執行引擎**：`bun run <script>` 對 `.bin/*` 走 `node`（沙箱＝18.20.4：缺 `node:sqlite`、Playwright CLI 需 ≥20）→ `test:local` 與 E2E 在沙箱直入 Bun 引擎：`bun node_modules/vitest/dist/cli.js run --config vitest.node.config.ts`、`bun node_modules/playwright/cli.js test`；`typecheck`／`format:check`／`test`（workers pool）用 `bun run` 即可。`npx` 為 Bun shim（只認本地 script）→ 遠端套件改 `bun x <pkg> …`。
+  - **環境變數**：`GH_TOKEN`（`gh api` 鑒定）、`CLOUDFLARE_API_TOKEN`（`scripts/check-migration-drift.py` 直查 production D1）；未設時該 script 走 `::warning::` 跳過、不擋 build。
 - CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。
 - 編輯慣例：同檔多個行段一次 read 帶齊（`;` 分隔）再發 edit；eval kernel 的工作目錄＝工作區根，檔名需帶目錄前綴（如 `repair0818/public/app.js`）。
-- 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 先 `bun run setup-hooks` 才會觸發。
+- 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 先 `bun run setup-hooks` 才會觸發（沙箱若報 `dubious ownership`，改 `git -c safe.directory=/work config --local core.hooksPath .husky`）。
 
 ## 技術棧與結構
 - 後端：Cloudflare Pages Functions + Hono。唯一入口 functions/api/[[path]].ts
