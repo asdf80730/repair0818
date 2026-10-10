@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 
 test("案件列表渲染（含 mock 資料）", async ({ page }) => {
   await expect(page.locator(".ticket-card").first()).toBeVisible();
-  await expect(page.getByText("電梯－停車場")).toBeVisible();
+  await expect(page.getByText("電梯－停車場 (53 天)")).toBeVisible();
   await expect(page.getByText("⚙ 管理")).toBeVisible();
   await expect(page.getByText("👥 成員")).toBeVisible();
 });
@@ -129,7 +129,7 @@ test("切換狀態 tab 篩選", async ({ page }) => {
   await expect(page.locator(".ticket-card").first()).toBeVisible({
     timeout: 10000,
   });
-  await expect(page.getByText("電梯－停車場")).toBeVisible();
+  await expect(page.getByText("電梯－停車場 (53 天)")).toBeVisible();
 });
 
 test("管理頁渲染（admin 專屬）+ 類別關聯計數", async ({ page }) => {

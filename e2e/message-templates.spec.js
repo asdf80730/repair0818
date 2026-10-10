@@ -81,7 +81,7 @@ test("點模板名稱 → modal-mask 置中彈窗＋textarea＋即時預覽（v1
     )
     .toBe(true);
   // v1.1.16 已砍除：下拉變數插入、點擊插入面板
-  expect(page.locator(".insert-panel")).toHaveCount(0);
+  await expect(page.locator(".insert-panel")).toHaveCount(0);
 });
 
 test("G7 重置出廠預設（v1.1.21 移入編輯 modal 內）", async ({ page }) => {
