@@ -12,6 +12,7 @@
 
 | 版本    | 內容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.1.33 | **列表標題去編號＋訊息模板合併**（2026-10-10，業主拍板）：① 列表卡：左欄 `#0000` 已顯編號，標題尾端 `#NNNN` 去除；② 訊息模板合併：`new_case`／`timeline` 兩支 → 單一支 `message_template_daily`（body 內含 header／新案件段／時間軸段／系統連結），migration `0003` 幂等取代 seed；`ALLOWED_LABELS=[daily]`、query 預設 `daily`、daily-report 回應 `templates:{ daily }`；③ 前端拼裝收口：`composeDailyMessage()` 統計頁與模板頁共用，空案以 dummy 列補位、無內容不放系統連結 |
 | v1.1.32 | **seed 值集全量取代（T5／map #15）**（2026-10-08）：新增幂等增補層 `migrations/0002_replace_seed_from_new_excel.sql`，以新 Excel「報修清冊」對 category／location／vendors／users 做全量取代——category 補 冷氣空調／公設設備／健身器材（sort_order 10/11/12）、`消防設備` 停用（`active=0`）；vendors 補 政統工程(非簽約廠)／岱宇健身器材（sort_order 8/9）；users 依 production `repair-db0818` 實測補 id=2..8；`0001_initial.sql` 已套用 production 不可改。幂等：`options` 走 `INSERT OR IGNORE`、`vendors`／`users` 走 `WHERE NOT EXISTS`。 |
 | v1.1.31 | **列表超寬修復＋測試 harness 收攏**（2026-10-05）：① 列表行超寬：`.row > div { min-width: 0 }`（style.css），e2e 補五路由 docW≤vw 收口斷言（390/375）；② 測試 harness 收攏：新增 `tests/harness.ts`（`mockLineVerify`／`mockLineVerifyRaw`／`loginAs`／`getOptionId`／`createTicket`／`bootMock`／`hasJsdom`）取代九支檔的檔內拷貝；DOM contract 由 jsdom ＋ Playwright 兩個 adapter 守（手拷 token 表退場）；③ 層二通用對：`restoreKey`／`remember` 收六鍵內聯（listStatus／listCategory／statsTab／dailyReportCatId／adminType／usersFilter）；④ message-templates 列表 query 折入 zv 缝（`listTemplatesQuerySchema`，同碼 `VALIDATION_ERROR`；daily-report 依 §4.0 留手動 `fail()`）。typecheck 0 errors、單測 13 檔／175、workers＋node 兩池全綠 |
 | v1.1.30 | **層二範圍補齊（T12）**（2026-10-04）：① **P7 管理**的選項 tab 態納 `localStorage.adminType`（值限 `category`／`location`／`description`／`comment_desc`／`vendors`／`message_templates`，非白名單值落預設 `category`；tab 點擊寫入）；② **P6 成員**的角色篩選納 `localStorage.usersFilter`（值限 `all`／`pending`／`active`／`disabled`，非白名單值落預設 `all`；`change` 寫入）；③ **建單／編輯**的已選類別、地點、廠商屬一次性輸入，**不納**層二（随該次渲染，焦點由層一帶著走）。後端零改動；typecheck 0 errors、單測 173、e2e 32 全綠 |
@@ -249,8 +250,8 @@ CREATE TABLE vendors (
 CREATE TABLE options (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   type       TEXT NOT NULL,                        -- category / location / description / comment_desc
-                                                   -- ＋ message_template_new_case / message_template_timeline（v1.1.20 起 type 當鍵）
-  label      TEXT NOT NULL,                        -- 選項文字；message_template_% 兩行則存模板內容（v1.1.20，body 欄已被 0013 砍掉）
+                                                   -- ＋ message_template_daily（v1.1.33 合併單支；v1.1.20 起 type 當鍵）
+  label      TEXT NOT NULL,                        -- 選項文字；message_template_% 列存模板內容（v1.1.20，body 欄已被 0013 砍掉）
   sort_order INTEGER NOT NULL DEFAULT 0,
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -344,7 +345,7 @@ BEGIN SELECT RAISE(ABORT, 'ticket_updates is append-only (DELETE forbidden)'); E
 - `vendors`（Excel F 欄）：富華創新／順宏弱電／國霖機電／OTIS電梯／園藝／智生活／其它；`0002` 補入 政統工程(非簽約廠)／岱宇健身器材（sort_order 8/9）
 - `options.type='description'`（建單說明範本）：水泵浦異音／照明故障／門禁感應不良／水管滲漏／油漆剝落／其他（99）
 - `options.type='comment_desc'`（回報範本）：已通知廠商處理／已到場勘查／待料中／已修復完成／需追蹤
-- `options.type='message_template_new_case'`／`'message_template_timeline'`：`label` 欄即模板內容（v1.1.20，見 §4.9）；`sort_order` 0／1
+- `options.type='message_template_daily'`（v1.1.33 合併單支）：`label` 欄即模板內容（見 §4.9）；`0001` 舊兩行 `message_template_new_case`／`'message_template_timeline'` 由 `0003` 幂等取代
 
 > **`0002_replace_seed_from_new_excel.sql`（幂等增補層）**：以新 Excel「報修清冊」對上述值集做「全量取代」——`options` 走 `INSERT OR IGNORE`（`UNIQUE(type,label)`）、`vendors`／`users` 走 `INSERT ... SELECT ... WHERE NOT EXISTS`。`0001_initial.sql` 已套用 production 不可改，取代內容承載於此檔；location（16 列）與 0001 現行相同、無需增補。
 
@@ -768,7 +769,7 @@ GROUP BY category_label ORDER BY total_amount DESC
   - `endMs` = **明日台灣 00:00** 的 UTC 對應 = 該日 16:00:00.000Z
   - **半開區間 `[startMs, endMs)`**（F11-7）
   - 台灣時區 UTC+8，**不是** UTC 當天 00:00 — 見 `tests/time.test.ts` F2 統計語意 case
-- **回應結構**（v1.1.16：純資料 + new_case/timeline 兩種模板 body，前端負責渲染成品）：
+- **回應結構**（v1.1.33：純資料 + 合併模板 daily 單支 body，前端負責渲染成品）：
   ```jsonc
   {
     "date": 1787414400000, // taipeiDayRangeUtc(date).startMs（UTC 毫秒數字）
@@ -792,13 +793,9 @@ GROUP BY category_label ORDER BY total_amount DESC
     ],
     "has_content": true, // new_cases / timeline_updates 任一非空
     "templates": {
-      "new_case": {
+      "daily": {
         "id": 12,
-        "body": "{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}",
-      },
-      "timeline": {
-        "id": 13,
-        "body": "{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}",
+        "body": "修繕系統簡報：{{date_label}}\n{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}\n{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}\n{{system_link}}",
       },
     },
   }
@@ -806,7 +803,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **new_cases**：當日（`created_at` 在區間內）、屬該類別之新建案件；`status` 固定為「詢價中」（前端文案，非 tickets.status）
 - **timeline_updates**：既有案件（`last_activity_at` 在區間內且 `created_at < startIso`，非當日新建）於當日 update **拉平成一維清單**，每筆含 `id`(案件編號)、`location_label`、`status`(原 status_label)、`note`(留言；null→空字串)。上限：每張既有案件當日 update 最多 3 筆，依 `created_at` 反序取最新 3 再 reverse 為時間正序（由舊到新）
 - **業主決策（2026-08-23）**：當日新建 + 當日又有 update 的案件只進 `new_cases`，不進 `timeline_updates`
-- **templates.new_case / timeline**：可編輯模板內容（v1.1.16 起 seed 於 migration 0012；**v1.1.20 起內容存 `label` 欄、`type` 欄當鍵**，migration 0013 自 `body` 欄搬遷並 DROP 該欄；active=1、全域）。即使無案件也回傳（前端空案時以硬編文案取代渲染結果）
+- **templates.daily**：可編輯合併模板（v1.1.33：`new_case`/`timeline` 併為單支，seed 於 migration 0003；**v1.1.20 起內容存 `label` 欄、`type` 欄當鍵**；active=1、全域）。body 內含 header／兩段 each／`{{system_link}}`；即使無案件也回傳（前端空案以 dummy 列補位、無內容時 `system_link` 為空字串）
 - **has_content**：`new_cases` 與 `timeline_updates` 任一非空 → true。前端依此決定成品末尾是否追加總系統連結（R-2）
 - **all 模式（v1.1.22）**：`category_id=all` 時新／既有兩組 SQL 皆不限類別（`WHERE` 跳過 `t.category_id` 過濾），`category_label` 固定「全部類別」、`category_id` 回 `null`；**模板固定取全域預設**（all 沒有單一類別可取樣專用模板——實作上以 `category_id = -1` 查 `option_categories`，必然無匹配 → 落全域）。前端統計頁「案件動態」類別下拉因此多一列「全部類別」（value=`all`）且**預設選取**
 
@@ -859,9 +856,10 @@ GROUP BY category_label ORDER BY total_amount DESC
 ### 4.9 訊息模板 CRUD（F6/F8，v1.1.15；v1.1.20 欄位重新分配）
 
 > 不新開表，沿用既有 `options` 字典表。F12-2 業主決策。
-> **v1.1.20（業主決策）**：`type` 欄直接當模板鍵（`message_template_new_case` / `message_template_timeline`）、`label` 欄存模板內容，**砍掉 `body` 欄**（migration 0013）。舊的 `type='message_template'`＋`label` 當鍵＋`body` 存內容設計廢止；v1.1.15 的 `report` / `empty` 兩行一併刪除（無用途）。對外 API 形狀不變：query/response 的 `label` 是鍵、`body` 是內容（現取自 `label` 欄）。
+> **v1.1.20（業主決策）**：`type` 欄直接當模板鍵（前綴 `message_template_`）、`label` 欄存模板內容，**砍掉 `body` 欄**（migration 0013）。舊的 `type='message_template'`＋`label` 當鍵＋`body` 存內容設計廢止；v1.1.15 的 `report` / `empty` 兩行一併刪除（無用途）。
+> **v1.1.33（業主拍板）**：兩支模板合併為單一支 `message_template_daily`（migration 0003 幂等：DELETE 舊鍵＋`INSERT OR IGNORE` 新列）。對外 API 形狀不變：query/response 的 `label` 是鍵、`body` 是內容（取自 `label` 欄）。
 
-**GET `/api/message-templates?category_id=N&label=new_case|timeline`（`label` 選填，預設 `new_case`）；`ALLOWED_LABELS = [new_case, timeline]`，其它值 → `400 VALIDATION_ERROR`**
+**GET `/api/message-templates?category_id=N&label=daily`（`label` 選填，預設 `daily`）；`ALLOWED_LABELS = [daily]`，其它值 → `400 VALIDATION_ERROR`**
 
 - 三角色皆可讀
 - 回 `{ category_id, label, templates: [{ id, label, body, active, sort_order, is_category_specific }] }`（v1.1.20：`label` 由 `type` 前綴導出、`body` 取自 `label` 欄；`is_category_specific` 依當次查詢的 `category_id` 對 `option_categories` 的關聯計）
@@ -874,7 +872,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 **PUT `/api/message-templates/:id`**
 
 - **manager/admin** 限定；committee → `403`
-- body 接受 `{ body?: string, label?: 'new_case'|'timeline' }`（至少一欄）；空 body → `400 VALIDATION_ERROR`
+- body 接受 `{ body?: string, label?: 'daily' }`（至少一欄）；空 body → `400 VALIDATION_ERROR`
 - in-place overwrite（v1.1.20）：`body`→`UPDATE label`（內容）、`label`（鍵）→`UPDATE type`（加 `message_template_` 前綴，同鍵被其他 id 占用 → `400 VALIDATION_ERROR`）
 - **不做**新增/刪除/啟用切換：編輯就是修改該筆 active=1 模板，存檔後直接覆寫生效
 
@@ -883,8 +881,8 @@ GROUP BY category_label ORDER BY total_amount DESC
 - `{{key}}` 替換；缺值 → 空字串
 - `{{#each array}}...{{/each}}` 迴圈；支援巢狀
 - `{{序}}` 為迴圈計數器（1-based）
-- v1.1.16：模板渲染**全在前端**（`public/templateEngine.js`）。後端 `src/lib/templateEngine.ts` **已刪除**，API 不回傳渲染結果，只回純資料 + 兩種模板 body
-- v1.1.16 可編輯模板僅兩支：**new_case**（變數：`{{id}} {{location_label}} {{status}} {{description}}`）與 **timeline**（變數：`{{id}} {{location_label}} {{status}} {{note}}`），皆用 `{{#each new_cases}}` / `{{#each timeline_updates}}` 迴圈
+- v1.1.16：模板渲染**全在前端**（`public/templateEngine.js`）。後端 `src/lib/templateEngine.ts` **已刪除**，API 不回傳渲染結果，只回純資料 + 合併模板 body
+- v1.1.33 可編輯模板僅一支 **daily**（合併）：頂層變數 `{{date_label}}` `{{system_link}}`；new_cases 段 `{{id}} {{location_label}} {{status}} {{description}}`；timeline_updates 段 `{{id}} {{location_label}} {{status}} {{note}}`；各段以 `{{#each …}}…{{/each}}` 展開
 - **變數解析順序**（F8 v1.1.15）：巢狀 each 內變數查找 = 當前 item → 外層 each item（遞迴向上）→ ctx 頂層。內層有同名變數時遮蔽外層。
 
 ---
@@ -988,8 +986,8 @@ GROUP BY category_label ORDER BY total_amount DESC
   - 日期選擇器：`<input type="date">`，**max=今天**（不允許選未來），onchange 重抓
   - 類別下拉：從 `ensureCatalog()` 拿 categories，**第一列為「全部類別」（v1.1.22 預設選取，值 `all`；取代 v1.1.15「預設第一個、不做全部」的決策）**，**不存 hash**，**用 `localStorage` 記住上次選擇**
   - 複製按鈕：`navigator.clipboard.writeText`；LIFF WebView / iOS Safari 權限問題 fallback `document.execCommand('copy')` + toast「已複製」
-  - 訊息預覽（v1.1.16）：讀 daily-report 回傳的 `new_cases` / `timeline_updates` + `templates.new_case/timeline` body → 前端 templateEngine.render 渲染成兩段文案，再拼上硬編 header「修繕系統簡報：{X月Y日}」、空案文案（今天無新案件／今天沒有案件狀態更新），僅有實際內容時末尾追加總系統連結（R-2）
-  - **空態**：`new_cases`、`timeline_updates` 皆空 → 兩段分別顯示「今天無新案件」「今天沒有案件狀態更新」（header/empty 文案硬編碼，非模板渲染）
+  - 訊息預覽（v1.1.33）：讀 daily-report 回傳的 `new_cases` / `timeline_updates` + `templates.daily` body → `composeDailyMessage()`（統計頁與模板頁共用）以 templateEngine 渲染整篇：header／兩段 each／系統連結皆在模板內；空案以 dummy 列補位（今天無新案件／今天沒有案件狀態更新）；僅有實際內容時 `{{system_link}}` 有值（R-2）
+  - **空態**：`new_cases`、`timeline_updates` 皆空 → 對應段顯示「今天無新案件」「今天沒有案件狀態更新」（由拼裝函式以 dummy 列帶入），且末行無系統連結
   - **不做**今日/昨日/本週三選一，**單純日期選擇**就夠業主用了
 
 ### 5.6 P6 成員管理（admin）
@@ -1002,13 +1000,13 @@ GROUP BY category_label ORDER BY total_amount DESC
 ### 5.6.1 P6.1 訊息模板管理（F7 + G7，v1.1.15，manager/admin）
 
 - 入口：**top nav「📝 訊息模板」**（manager/admin）；獨立頁 `pages.messageTemplates()`
-- v1.1.16 簡化為兩支模板：**「新案件」(new_case)** 與 **「時間軸」(timeline)**
-- v1.1.21 **版面重構**：進頁先組「**完整簡報預覽**」（兩段模板套前端 fixture 即時渲染出整篇實際發送長相：header＋新案件段＋時間軸段＋系統連結，`.tmpl-full`）；下方「**模板來源**」兩行（模板名稱＋此類別專用/全域預設）。**模板名稱是超連結**，點名稱或「編輯」才開編輯 modal
+- v1.1.33：合併後單一支模板 **daily（「每日簡報」）**（原 new_case／timeline 兩支併為一支）
+- v1.1.21 **版面重構**：進頁先組「**完整簡報預覽**」（合併模板套前端 fixture 即時渲染出整篇實際發送長相：header＋新案件段＋時間軸段＋系統連結，`.tmpl-full`）；下方「**模板來源**」一行（模板名稱＋此類別專用/全域預設）。**模板名稱是超連結**，點名稱或「編輯」才開編輯 modal
 - 編輯 modal（`modal-mask` 置中彈窗）：`<textarea>`（可拖曳調整大小）+ **即時預覽**（用前端 fixture 資料渲染，无需 roundtrip）＋變數提示；**「重置出廠預設」（G7）移入 modal 內**（不再散在列表行）；**存檔後整篇簡報預覽同步刷新**（不再整頁重新載入）
-- body 可用變數：**new_case**＝`{{id}} {{location_label}} {{status}} {{description}}` + `{{#each new_cases}}...{{/each}}`；**timeline**＝`{{id}} {{location_label}} {{status}} {{note}}` + `{{#each timeline_updates}}...{{/each}}`
+- body 可用變數：**daily**＝頂層 `{{date_label}}` `{{system_link}}`＋`{{#each new_cases}}…{{/each}}`（`{{id}} {{location_label}} {{status}} {{description}}`）＋`{{#each timeline_updates}}…{{/each}}`（`{{id}} {{location_label}} {{status}} {{note}}`）
 - 儲存：PUT /api/message-templates/:id（manager/admin 限定，body in-place overwrite）
 - **不做**：下拉式變數插入、IntelliSense 自動完成、版本歷史（v1.1.16 簡化砍除）
-- **重置為出廠預設（G7）**：seed body hardcode 在前端（與 migration 0012 對齊），確認後 PUT 覆寫
+- **重置為出廠預設（G7）**：seed body hardcode 在前端（與 migration 0003 合併模板對齊），確認後 PUT 覆寫
 
 ### 5.7 P7 管理（manager/admin，D5）
 
@@ -1034,7 +1032,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 > **施工規則全文以根目錄 `CLAUDE.md` 為準**（v1.1.23 起不再於 SPEC 內嵌副本——此前兩份各走各的、已漂移：根目錄版含 test:local/CI 工作流/依賴清單等 SPEC 副本沒有的一半，SPEC 副本含 2 條 SPEC 側細則根目錄版沒有）。此兩條 SPEC 側細則為 CLAUDE.md 未重複者：
 >
 > 1. **詳情連結走登入後路由 `/#/ticket/{id}`，不走 share_token**（避免把公開連結用於內部通訊）。
-> 2. **模板變數語法（F8，v1.1.16）**：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**完全不渲染**，API 只回純資料 + new_case/timeline 兩種模板 body，前端 `templateEngine.render()` 負責管理頁預覽與統計頁成品拼裝。
+> 2. **模板變數語法（F8，v1.1.16；v1.1.33 合併）**：`{{key}}` 替換 / `{{#each array}}...{{/each}}` 迴圈；後端**完全不渲染**，API 只回純資料 + 合併模板（daily）單支 body，前端 `templateEngine.render()`＋`composeDailyMessage()` 負責管理頁預覽與統計頁成品拼裝。
 >
 > 產品規則（狀態流/權限/時間軸不可改等）以 §0.3 為唯一真相來源；CLAUDE.md 的「產品規則」段僅補 §0.3 未列的 AI 動作細則。
 

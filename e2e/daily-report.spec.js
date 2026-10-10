@@ -1,9 +1,9 @@
 // e2e/daily-report.spec.js — F10 案件動態訊息框 E2E（Playwright，mock 模式 v1.1.16）
 // 跑正式網域 ?mock=true（與其他 e2e 同步）
 //
-// v1.1.16 對齊：daily-render 改「前端拼裝成品」——後端只回 new_cases / timeline_updates
-// + templates.{new_case,timeline} body，前端用 templateEngine.render 渲染後疊上硬編
-// header「修繕系統簡報：{X月Y日}」、空案文案與（僅有內容時）總系統連結。
+// v1.1.32：daily-render 前端拼裝成品——後端只回 new_cases / timeline_updates
+// + templates.daily body（合併模板，內含 header/兩段 each/連結），前端 templateEngine.render
+// 渲染；空案文案與系統連結由 composeDailyMessage 拼裝函式補位。
 import { test, expect } from "@playwright/test";
 
 const BASE = process.env.E2E_BASE_URL || "https://repair-system-4re.pages.dev";

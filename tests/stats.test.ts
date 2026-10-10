@@ -786,9 +786,9 @@ describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
     expect(body.data.timeline_updates).toEqual([]);
     expect(typeof body.data.has_content).toBe("boolean");
     expect(body.data.has_content).toBe(false);
-    // v1.1.16：模板仍回傳 new_case / timeline（seed 於 migration）；不再區分 empty/report
-    expect(body.data.templates.new_case.body).toContain("{{#each new_cases}}");
-    expect(body.data.templates.timeline.body).toContain(
+    // v1.1.32：合併模板（daily）同時含兩段 each（seed 於 migration 0003）
+    expect(body.data.templates.daily.body).toContain("{{#each new_cases}}");
+    expect(body.data.templates.daily.body).toContain(
       "{{#each timeline_updates}}",
     );
   });
@@ -864,8 +864,8 @@ describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
     expect(ids).toContain(tidB);
     expect(body.data.has_content).toBe(true);
     // 模板仍回傳（all 固定取全域預設；seed 模板即全域）
-    expect(body.data.templates.new_case.body).toContain("{{#each new_cases}}");
-    expect(body.data.templates.timeline.body).toContain(
+    expect(body.data.templates.daily.body).toContain("{{#each new_cases}}");
+    expect(body.data.templates.daily.body).toContain(
       "{{#each timeline_updates}}",
     );
   });
@@ -892,10 +892,9 @@ describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
     );
     expect(r.status).toBe(200);
     const body = await r.json();
-    // v1.1.16：回傳 templates.new_case / templates.timeline（各含 id + body）
-    expect(typeof body.data.templates.new_case?.id).toBe("number");
-    expect(typeof body.data.templates.new_case?.body).toBe("string");
-    expect(typeof body.data.templates.timeline?.id).toBe("number");
-    expect(typeof body.data.templates.timeline?.body).toBe("string");
+    // v1.1.32：回傳 templates.daily（含 id + body；合併模板單支，內含 header/兩段 each/連結）
+    expect(typeof body.data.templates.daily?.id).toBe("number");
+    expect(typeof body.data.templates.daily?.body).toBe("string");
+    expect(body.data.templates.daily?.body).toContain("修繕系統簡報：");
   });
 });

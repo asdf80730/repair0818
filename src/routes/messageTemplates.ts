@@ -1,11 +1,10 @@
-// src/routes/messageTemplates.ts — 訊息模板 CRUD（v1.1.15 F6；v1.1.16 簡化為 new_case / timeline；v1.1.20：type 欄當鍵、label 欄存內容、砍 body 欄）
+// src/routes/messageTemplates.ts — 訊息模板 CRUD（v1.1.15 F6；v1.1.20 欄位再分配；v1.1.33 併為單一支 daily 合併模板）
 // 註冊於全域 requireAuth() 之下
 //
-// 沿用既有 options 字典表。v1.1.20 起 type='message_template_new_case'/'message_template_timeline' 直接當模板鍵、
-// label 欄存模板內容（舊 type='message_template'+label 當鍵+body 存內容已併入 type/label，body 欄已 DROP）。
+// 沿用既有 options 字典表。v1.1.20 起 type='message_template_<鍵>' 直接當模板鍵、
+// label 欄存模板內容（body 欄已 DROP）。v1.1.33 起模板鍵＝daily（單一支，body 內含 header/兩段 each/系統連結）。
 // 類別關聯走 option_categories。
-// 對外 API 形狀不變：query/response 的 label 是鍵（new_case/timeline）、body 是內容（取自 label 欄）。
-// v1.1.16：模板從 report/empty 改爲「新案件(new_case)／時間軸(timeline)」兩種，供案件動態訊息框使用；
+// 對外 API 形狀不變：query/response 的 label 是鍵、body 是內容（取自 label 欄）。
 // PUT /:id 就地覆寫 body（UNIQUE(type,label) 下同 label 唯一列，故為更新非新增——v1.1.16 業主決策）。
 
 import { Hono } from "hono";
@@ -24,20 +23,20 @@ import {
 
 export const messageTemplateRoutes = new Hono<Env>();
 
-// 標籤限定：v1.1.16 支援 new_case / timeline 兩種（取代 v1.1.15 的 report/empty）
-const ALLOWED_LABELS = ["new_case", "timeline"] as const;
+// 標籤限定：v1.1.33 起單一支合併模板 daily（取代 v1.1.16 的 new_case/timeline 兩支）
+const ALLOWED_LABELS = ["daily"] as const;
 
-// GET /api/message-templates?category_id=N&label=new_case|timeline
+// GET /api/message-templates?category_id=N&label=daily
 // - 三角色可讀
 // - category_id 必填（沿用 F1 決策：不做「全部」，避免訊息過長）
-// - label 預設 'new_case'（v1.1.16；原 v1.1.15 為 'report'）
+// - label 預設 'daily'（v1.1.33；原 v1.1.16 為 new_case/timeline 二選一）
 // - 回該類別關聯的模板優先，無則用全域預設（active=1 + 無 option_categories）
 messageTemplateRoutes.get(
   "/",
   requireAuth(),
   zv("query", listTemplatesQuerySchema),
   async (c) => {
-    // 校驗經 zv（§4.0 統一信封）：category_id 必填正整數；label 預設 new_case
+    // 校驗經 zv（§4.0 統一信封）：category_id 必填正整數；label 預設 daily
     const { category_id: categoryId, label } = c.req.valid("query");
 
     // 撈模板：類別關聯優先 → 全域預設（無 option_categories 紀錄）

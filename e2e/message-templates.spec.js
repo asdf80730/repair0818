@@ -1,7 +1,7 @@
 // e2e/message-templates.spec.js — 訊息模板管理頁 E2E（Playwright，mock 模式，v1.1.16 簡化；v1.1.21 重構為「完整簡報預覽＋超連結編輯」）
 // 從 admin 內 tab 進（F11-1 業主決策；committee 看不到入口）
 //
-// v1.1.16：模板 new_case / timeline 兩種。
+// v1.1.32：合併後單一支模板 daily（body 內含 header/兩段 each/連結），列表一行。
 // v1.1.21：管理頁 = 完整簡報預覽（兩段模板套 fixture 即時組出整篇）+ 模板來源列表（名稱超連結）；
 // 點名稱或「編輯」開 modal-mask 置中彈窗（textarea + 即時預覽 + 重置出廠預設 + 儲存），存檔後整篇預覽同步刷新。
 import { test, expect } from "@playwright/test";
@@ -18,15 +18,14 @@ test("管理頁 tab 含訊息模板（F11-1）", async ({ page }) => {
   await expect(tabs.filter({ hasText: "訊息模板" })).toBeVisible();
 });
 
-test("點訊息模板 tab → 完整簡報預覽＋模板來源兩行（v1.1.21）", async ({
+test("點訊息模板 tab → 完整簡報預覽＋模板來源一行（v1.1.32）", async ({
   page,
 }) => {
   await page.locator(".tab").filter({ hasText: "訊息模板" }).click();
-  // 兩個模板名稱（超連結）各一
-  await expect(page.getByText("新案件")).toHaveCount(1);
-  await expect(page.getByText("時間軸")).toHaveCount(1);
-  // 模板來源兩行
-  await expect(page.locator(".tmpl-row")).toHaveCount(2);
+  // 合併後單一模板名（超連結）
+  await expect(page.getByText("每日簡報")).toHaveCount(1);
+  // 模板來源一行
+  await expect(page.locator(".tmpl-row")).toHaveCount(1);
 });
 
 test("完整簡報預覽：進頁即組出整篇（v1.1.21）", async ({ page }) => {
@@ -57,7 +56,7 @@ test("點模板名稱 → modal-mask 置中彈窗＋textarea＋即時預覽（v1
 }) => {
   await page.locator(".tab").filter({ hasText: "訊息模板" }).click();
   // 名稱是超連結（v1.1.21 業主：點下去才是編輯處）
-  const link = page.locator(".tmpl-name").filter({ hasText: "新案件" });
+  const link = page.locator(".tmpl-name").filter({ hasText: "每日簡報" });
   await expect(link).toHaveClass(/tmpl-link/);
   await link.click();
   await page.waitForSelector(".modal-mask", { timeout: 5000 });

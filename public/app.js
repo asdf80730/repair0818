@@ -207,24 +207,15 @@ const mockOptions = {
     { id: 1, label: "已通知廠商處理" },
     { id: 2, label: "已到場勘查" },
   ],
-  // v1.1.20：訊息模板 mock fixture — 對應新 schema：type 欄當鍵（message_template_new_case/timeline）、label 欄存內容（body 欄已砍）
+  // v1.1.33：合併後單一支模板（鍵 daily）——body 內含 header/新案件段/時間軸段/連結
   message_template: [
     {
       id: 1,
-      type: "message_template_new_case",
+      type: "message_template_daily",
       sort_order: 0,
       active: 1,
       label:
-        "{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}",
-      is_category_specific: false,
-    },
-    {
-      id: 2,
-      type: "message_template_timeline",
-      sort_order: 1,
-      active: 1,
-      label:
-        "{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}",
+        "修繕系統簡報：{{date_label}}\n{{#each new_cases}}\n{{id}}. {{location_label}}　{{status}}　{{description}}\n{{/each}}\n{{#each timeline_updates}}\n{{id}}. {{location_label}}　{{status}}　{{note}}\n{{/each}}\n{{system_link}}",
       is_category_specific: false,
     },
   ],
@@ -237,6 +228,57 @@ const DAILY_REPORT_HEADER = "修繕系統簡報";
 const EMPTY_NEW_CASES_TEXT = "今天無新案件";
 const EMPTY_TIMELINE_TEXT = "今天沒有案件狀態更新";
 const SYSTEM_LINK = "https://liff.line.me/2008484338-AvdMWQQg";
+
+// v1.1.33：合併模板（daily）拼裝——統計頁「案件動態」與模板管理頁共用
+function monthDayOf(dateStr) {
+  const [y, m, d] = String(dateStr || "")
+    .split("-")
+    .map(Number);
+  return m ? `${m}月${d}日` : "";
+}
+function composeDailyMessage(body, data) {
+  const newCases = (data && data.new_cases) || [];
+  const updates = (data && data.timeline_updates) || [];
+  const hasContent = newCases.length > 0 || updates.length > 0;
+  const ctx = {
+    date_label: monthDayOf(data && data.date),
+    // 空態：以 dummy 列帶入硬編空案文案（each 空陣列不輸出，補位用）
+    new_cases: newCases.length
+      ? newCases
+      : [
+          {
+            id: "",
+            location_label: EMPTY_NEW_CASES_TEXT,
+            status: "",
+            description: "",
+          },
+        ],
+    timeline_updates: updates.length
+      ? updates
+      : [
+          {
+            id: "",
+            location_label: EMPTY_TIMELINE_TEXT,
+            status: "",
+            note: "",
+          },
+        ],
+    system_link: hasContent ? SYSTEM_LINK : "",
+  };
+  let s = "";
+  try {
+    s = globalThis.templateEngine.render(body || SEED_TEMPLATE_BODY.daily, ctx);
+  } catch (_) {
+    s = "";
+  }
+  if (!s.trim())
+    s = `${DAILY_REPORT_HEADER}：${ctx.date_label}\n${EMPTY_NEW_CASES_TEXT}\n\n${EMPTY_TIMELINE_TEXT}`;
+  return s
+    .split("\n")
+    .map((l) => l.replace(/\s+$/, ""))
+    .join("\n")
+    .trim();
+}
 const mockUsers = [
   { id: 1, display_name: "測試用戶", role: "admin", active: 1 },
   { id: 2, display_name: "王任鋒", role: "admin", active: 1 },
@@ -614,7 +656,7 @@ function mockApi(path, options = {}) {
         });
       }
     }
-    // v1.1.20：type 欄當鍵、label 欄存內容（與後端 fetchTmpl 一致：回應 { id, body }，body 取自 label 欄）
+    // v1.1.20：type 欄當鍵、label 欄存內容；v1.1.33：合併後單一支 daily
     const tpl = (label) => {
       const f = mockOptions.message_template.find(
         (x) => x.type === "message_template_" + label,
@@ -627,7 +669,7 @@ function mockApi(path, options = {}) {
       category_label: isAll ? "全部類別" : cat.label,
       new_cases,
       timeline_updates,
-      templates: { new_case: tpl("new_case"), timeline: tpl("timeline") },
+      templates: { daily: tpl("daily") },
     });
   }
   // F6（v1.1.15）：message-templates 列表 + 單筆 GET
@@ -1467,7 +1509,7 @@ pages.list = function () {
     };
     const createdDays = dayDiff(t.created_at);
     const age = `(${createdDays} 天)`;
-    // v1.1.28 選定 B：編號對齊雙欄行（左 #0000／右 標題＋徽章·廠商·日期）
+    // v1.1.28 選定 B：編號對齊雙欄行（左 #0000）；v1.1.33：標題去尾端編號（左欄已顯，免重複）
     return el(
       "div",
       {
@@ -1484,7 +1526,9 @@ pages.list = function () {
         el("div", {}, [
           el("div", { class: "t ticket-title" }, [
             statusBadge(t.status),
-            el("span", { text: `${t.title} ${age}`.trim() }),
+            el("span", {
+              text: `${t.title.replace(/ #\d+$/, "")} ${age}`.trim(),
+            }),
           ]),
           t.description
             ? el("div", { class: "ticket-desc", text: t.description })
@@ -2682,11 +2726,7 @@ pages.stats = function () {
   );
   reportBox.appendChild(preview);
 
-  // F4（v1.1.16 簡化）：載入並渲染 — 前端拼 header + 兩段模板內容 + 空文案 + 總系統連結
-  function monthDayOf(dateStr) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return `${m}月${d}日`; // R-3：月/日、無年份、無星期
-  }
+  // F4（v1.1.33）：載入並渲染 — 合併模板（daily）單支即拼出整篇成品
   async function loadReport() {
     const date = dateInput.value;
     const categoryId = catSel.value; // v1.1.22：'all'（全部類別）或類別 id 字串
@@ -2699,31 +2739,14 @@ pages.stats = function () {
         `/api/stats/daily-report?date=${date}&category_id=${encodeURIComponent(categoryId)}`,
       );
       const data = r.data;
-      const ncBody =
-        (data.templates &&
-          data.templates.new_case &&
-          data.templates.new_case.body) ||
+      const tplBody =
+        (data.templates && data.templates.daily && data.templates.daily.body) ||
         "";
-      const tlBody =
-        (data.templates &&
-          data.templates.timeline &&
-          data.templates.timeline.body) ||
-        "";
-      let s1 = globalThis.templateEngine.render(ncBody, {
-        new_cases: data.new_cases || [],
+      preview.value = composeDailyMessage(tplBody, {
+        date: date || data.date,
+        new_cases: data.new_cases,
+        timeline_updates: data.timeline_updates,
       });
-      if (!s1.trim()) s1 = EMPTY_NEW_CASES_TEXT;
-      let s2 = globalThis.templateEngine.render(tlBody, {
-        timeline_updates: data.timeline_updates || [],
-      });
-      if (!s2.trim()) s2 = EMPTY_TIMELINE_TEXT;
-      const hasContent =
-        (data.new_cases?.length || 0) > 0 ||
-        (data.timeline_updates?.length || 0) > 0;
-      // R-3：date 用選取的 YYYY-MM-DD（dateInput.value），避免 unix seconds 解析問題
-      let msg = `${DAILY_REPORT_HEADER}：${monthDayOf(date)}\n${s1}\n\n${s2}`;
-      if (hasContent) msg += `\n\n${SYSTEM_LINK}`; // R-2：僅有實際內容時放總系統連結
-      preview.value = msg;
     } catch (e) {
       preview.value = "";
       reportBox.appendChild(
@@ -2920,18 +2943,20 @@ pages.users = function () {
 // 簡化版：不做下拉變數插入、自動完成；用 textarea + 提示文字「可用變數清單」
 // 含 G7 重置為出廠預設按鈕（hardcode seed body 在前端）
 const SEED_TEMPLATE_BODY = {
-  new_case: `{{#each new_cases}}
+  daily: `修繕系統簡報：{{date_label}}
+{{#each new_cases}}
 {{id}}. {{location_label}}　{{status}}　{{description}}
-{{/each}}`,
-  timeline: `{{#each timeline_updates}}
+{{/each}}
+{{#each timeline_updates}}
 {{id}}. {{location_label}}　{{status}}　{{note}}
-{{/each}}`,
+{{/each}}
+{{system_link}}`,
 };
 
-// v1.1.16：可編輯模板的變數提示（僅兩支）
+// v1.1.33：合併後僅一支可編輯模板（daily）
 const VARIABLE_HINT = {
-  new_case: "可用變數：{{id}} {{location_label}} {{status}} {{description}}",
-  timeline: "可用變數：{{id}} {{location_label}} {{status}} {{note}}",
+  daily:
+    "可用變數：{{date_label}} {{system_link}}；new_cases 段：{{id}} {{location_label}} {{status}} {{description}}；timeline_updates 段：{{id}} {{location_label}} {{status}} {{note}}（{{序}}＝迴圈計數）",
 };
 
 async function getFirstCategoryId() {
@@ -2960,9 +2985,9 @@ pages.messageTemplates = async function () {
     ]),
   );
 
-  // v1.1.16：模板 new_case / timeline；v1.1.21：進頁先組好「完整簡報範例」，模板名做超連結，
-  // 點下去才開 modal-mask 編輯（內含即時預覽），存檔後整篇簡報同步刷新。
-  const LABEL_META = { new_case: "新案件", timeline: "時間軸" };
+  // v1.1.33：合併後單一支模板 daily（「每日簡報」）；v1.1.21：進頁先組「完整簡報預覽」，
+  // 模板名做超連結，點下去才開 modal-mask 編輯（內含即時預覽），存檔後整篇預覽同步刷新。
+  const LABEL_META = { daily: "每日簡報" };
   const catId = await getFirstCategoryId();
   if (!catId) {
     root.appendChild(
@@ -2971,25 +2996,17 @@ pages.messageTemplates = async function () {
     return;
   }
 
-  // 模板內容：{ new_case: { id, body, is_category_specific }, timeline: {...} }
-  let tmplData = { new_case: null, timeline: null };
+  // 模板內容：{ daily: { id, body, is_category_specific } }
+  let tmplData = { daily: null };
 
-  // 完整簡報範例：兩段模板套 fixture 範例資料，組出「實際發送長什麼樣」的整篇訊息
+  // 完整簡報範例：合併模板套 fixture 範例資料，組出「實際發送長什麼樣」的整篇訊息
   function fullPreviewText() {
-    const render = (body, label) => {
-      if (!body) return "";
-      try {
-        const ctx = makeFixtureContext(label);
-        return globalThis.templateEngine.render(body, ctx);
-      } catch (e) {
-        return "";
-      }
-    };
-    let s1 = render(tmplData.new_case?.body, "new_case");
-    let s2 = render(tmplData.timeline?.body, "timeline");
-    if (!s1.trim()) s1 = EMPTY_NEW_CASES_TEXT;
-    if (!s2.trim()) s2 = EMPTY_TIMELINE_TEXT;
-    return `${DAILY_REPORT_HEADER}：\n${s1}\n\n${s2}\n\n${SYSTEM_LINK}`;
+    return composeDailyMessage(
+      tmplData.daily && tmplData.daily.body
+        ? tmplData.daily.body
+        : SEED_TEMPLATE_BODY.daily,
+      makeFixtureContext(),
+    );
   }
 
   const fullPreview = el("pre", {
@@ -3027,7 +3044,7 @@ pages.messageTemplates = async function () {
     listBox.appendChild(el("div", { class: "loading-text", text: "載入中…" }));
     try {
       const rows = [];
-      for (const label of ["new_case", "timeline"]) {
+      for (const label of ["daily"]) {
         const r = await api(
           `/api/message-templates?category_id=${catId}&label=${label}`,
         );
@@ -3046,7 +3063,7 @@ pages.messageTemplates = async function () {
           }),
         );
       }
-      for (const label of ["new_case", "timeline"]) {
+      for (const label of ["daily"]) {
         const t = tmplData[label];
         if (!t) continue;
         // 行：名稱（超連結→開編輯 modal）+ 範圍說明
@@ -3130,9 +3147,9 @@ pages.messageTemplates = async function () {
 
     function renderPreview() {
       try {
-        previewBox.textContent = globalThis.templateEngine.render(
+        previewBox.textContent = composeDailyMessage(
           bodyArea.value,
-          makeFixtureContext(label),
+          makeFixtureContext(),
         );
       } catch (e) {
         previewBox.textContent = "預覽失敗：" + e.message;
@@ -3202,22 +3219,10 @@ pages.messageTemplates = async function () {
   loadList();
 };
 // F7：模板預覽用 fixture 資料（hardcoded，與 SPEC §F5 一致）
-// v1.1.16：模板管理頁即時預覽用範例資料（依 label 回傳對應陣列）
-function makeFixtureContext(label) {
-  if (label === "timeline") {
-    return {
-      timeline_updates: [
-        { id: 3, location_label: "大廳", status: "已發包", note: "已通知廠商" },
-        {
-          id: 7,
-          location_label: "頂樓",
-          status: "待處理",
-          note: "到場勘查，待報價",
-        },
-      ],
-    };
-  }
+// v1.1.33：合併後單一套 ctx（date + 兩段陣列），供 composeDailyMessage 使用
+function makeFixtureContext() {
   return {
+    date: "2026-10-10",
     new_cases: [
       {
         id: 12,
@@ -3230,6 +3235,15 @@ function makeFixtureContext(label) {
         location_label: "停車場",
         status: "詢價中",
         description: "照明故障",
+      },
+    ],
+    timeline_updates: [
+      { id: 3, location_label: "大廳", status: "已發包", note: "已通知廠商" },
+      {
+        id: 7,
+        location_label: "頂樓",
+        status: "待處理",
+        note: "到場勘查，待報價",
       },
     ],
   };

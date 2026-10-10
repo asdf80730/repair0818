@@ -291,19 +291,15 @@ statsRoutes.get("/daily-report", requireAuth(), async (c) => {
     })),
   );
 
-  // 6. 抓兩種模板內容（v1.1.20：type 欄當鍵、label 欄存內容；v1.1.16：new_case / timeline，各別走類別專用 / 全域預設）
-  //    回應形狀不變：{ id, body }，body 現在取自 label 欄（內容），key 由 type 導出
+  // 6. 抓合併模板（v1.1.33：new_case/timeline 併為單一支 daily，body 內含 header/兩段 each/連結）
   //    v1.1.22：all 時 categoryId=-1 → 無任何 option_categories 匹配 → 固定取全域預設模板
-  const [new_case_tpl, timeline_tpl] = await Promise.all([
-    getPreferredTemplate(c, categoryId, "new_case"),
-    getPreferredTemplate(c, categoryId, "timeline"),
-  ]);
+  const daily_tpl = await getPreferredTemplate(c, categoryId, "daily");
 
   return ok(c, {
     date,
     category_id: isAll ? null : categoryId, // v1.1.22：all → null
     category_label: categoryLabel,
-    // v1.1.16：前端自行渲染兩種模板並拼成成品（砍後端 templateEngine）
+    // v1.1.33：前端以合併模板（daily）單支渲染並拼成成品
     new_cases: newTickets.map((t) => ({
       id: t.id,
       location_label: t.location_label,
@@ -312,6 +308,6 @@ statsRoutes.get("/daily-report", requireAuth(), async (c) => {
     })),
     timeline_updates,
     has_content: newTickets.length > 0 || timeline_updates.length > 0, // v1.1.16：前端據此決定是否放總系統連結
-    templates: { new_case: new_case_tpl, timeline: timeline_tpl },
+    templates: { daily: daily_tpl },
   });
 });

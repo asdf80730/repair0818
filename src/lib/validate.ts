@@ -189,9 +189,9 @@ export const listTemplatesQuerySchema = z.object({
   label: z.preprocess(
     (v) => (v === "" ? undefined : v),
     z
-      .enum(["new_case", "timeline"], {
-        message: "label 必須為 new_case|timeline",
+      .enum(["daily"], {
+        message: "label 必須為 daily",
       })
-      .default("new_case"),
+      .default("daily"),
   ),
 });
