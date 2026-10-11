@@ -1413,6 +1413,31 @@ function fmtTime(iso) {
   return d.toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false });
 }
 
+const DAY_MS = 24 * 3600 * 1000;
+// ⚠「N 天未更新」規則（列表卡片）：未完成且最後活動超過 STALE_AFTER_DAYS 天
+const STALE_AFTER_DAYS = 7;
+function activityStale(t) {
+  return (
+    (t.status === "open" || t.status === "in_progress") &&
+    Date.now() - new Date(t.last_activity_at).getTime() >
+      STALE_AFTER_DAYS * DAY_MS
+  );
+}
+
+/** 日曆日差（本機時間）：昨天建＝1 天、今天建＝0 天（非 24 小時差） */
+function dayDiff(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 0;
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const startOfCreated = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((startOfToday - startOfCreated) / DAY_MS);
+}
+
 function statusBadge(status) {
   // 色表單源見 public/status-meta.js（措辭＝業主 v1.1.12 拍板，不動）
   const [label, color] = STATUS_META[status] || [status, "gray"];
@@ -1679,35 +1704,15 @@ pages.list = function () {
   }
 
   function renderTicketCard(t) {
-    const stale =
-      (t.status === "open" || t.status === "in_progress") &&
-      Date.now() - new Date(t.last_activity_at).getTime() >
-        7 * 24 * 3600 * 1000;
+    const stale = activityStale(t);
     const staleDays = Math.floor(
-      (Date.now() - new Date(t.last_activity_at).getTime()) /
-        (24 * 3600 * 1000),
+      (Date.now() - new Date(t.last_activity_at).getTime()) / DAY_MS,
     );
     // v1.1.13：標題後補「建立至今 N 天」顯示 (N 天)；建立/最後活動只顯示日期（省空間、同行）
     // 用「日曆日差」（台灣時區）而非 24 小時差：昨天建的顯示 1 天、今天建的顯示 0 天
     const dateOnly = (iso) => {
       const d = new Date(iso);
       return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-    };
-    const dayDiff = (iso) => {
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return 0;
-      const now = new Date();
-      const startOfToday = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-      );
-      const startOfCreated = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-      );
-      return Math.round((startOfToday - startOfCreated) / (24 * 3600 * 1000));
     };
     const createdDays = dayDiff(t.created_at);
     const age = `(${createdDays} 天)`;
