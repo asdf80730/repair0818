@@ -40,8 +40,8 @@ let mockTickets = [
     id: 1,
     title: "電梯－停車場 #0001",
     status: "open",
-    category_label: "電梯",
-    location_label: "停車場",
+    category_id: 1,
+    location_id: 1, // 電梯－停車場（目錄存在）
     description: "電梯無法關門",
     vendor_name: null,
     amount: null,
@@ -53,8 +53,8 @@ let mockTickets = [
     id: 2,
     title: "門禁－大廳 #0002",
     status: "in_progress",
-    category_label: "門禁",
-    location_label: "大廳",
+    category_id: 2,
+    location_id: 2, // 門禁－大廳（目錄存在）
     description: "大門感應故障",
     vendor_name: "測試廠商",
     amount: 12000,
@@ -66,8 +66,8 @@ let mockTickets = [
     id: 3,
     title: "門禁－車道 #0003",
     status: "void",
-    category_label: "門禁",
-    location_label: "車道",
+    category_id: 2,
+    location_id: null, // 「車道」不在 mock 目錄——貼合真實「選項已移除」態
     description: null,
     vendor_name: null,
     amount: null,
@@ -79,8 +79,8 @@ let mockTickets = [
     id: 4,
     title: "其他－中庭 #0004",
     status: "open",
-    category_label: "其他",
-    location_label: "中庭",
+    category_id: null,
+    location_id: null, // 「其他／中庭」不在 mock 目錄——貼合真實「選項已移除」態
     description: "地磚破損",
     vendor_name: "測試廠商",
     amount: null,
@@ -92,8 +92,8 @@ let mockTickets = [
     id: 5,
     title: "水泵－頂樓 #0005",
     status: "done",
-    category_label: "水泵",
-    location_label: "頂樓",
+    category_id: 3,
+    location_id: 3, // 水泵－頂樓（目錄存在）
     description: "水泵漏水",
     vendor_name: null,
     amount: 8000,
@@ -105,8 +105,8 @@ let mockTickets = [
     id: 6,
     title: "水泵－頂樓 #0006",
     status: "open",
-    category_label: "水泵",
-    location_label: "頂樓",
+    category_id: 3,
+    location_id: 3, // 水泵－頂樓（目錄存在）
     description: "頂樓水塔噪音",
     vendor_name: null,
     amount: null,
@@ -119,8 +119,8 @@ let mockTickets = [
     id: 99,
     title: "電梯－停車場 #0099",
     status: "in_progress",
-    category_label: "電梯",
-    location_label: "停車場",
+    category_id: 1,
+    location_id: 1, // 電梯－停車場（目錄存在）
     description: "門開關異常",
     vendor_name: "測試廠商",
     amount: null,
@@ -133,8 +133,8 @@ let mockTickets = [
     id: 98,
     title: "門禁－大廳 #0098",
     status: "in_progress",
-    category_label: "門禁",
-    location_label: "大廳",
+    category_id: 2,
+    location_id: 2, // 門禁－大廳（目錄存在）
     description: "大門感應故障（既有）",
     vendor_name: "測試廠商",
     amount: 15000,
@@ -442,6 +442,8 @@ function mockApi(path, options = {}) {
       status: "open",
       category_label: cat?.label,
       location_label: loc?.label,
+      category_id: body.category_id, // 契約貼合真實後端：詳情要能依 id 還原下拉
+      location_id: body.location_id,
       vendor_name: null,
       amount: null,
       amount_at: null,
@@ -1343,6 +1345,20 @@ async function ensureCatalog(force) {
   return catalogLoading;
 }
 
+// ── v1.1.34 FE1：「該類別關聯＋通用」規則單一定義 ───────────────────
+// catalog 下拉的規則唯一實現：category_ids 為空＝通用（所有類別可用），
+// 否則必須含該類別。建單／編輯兩頁與未來的連動下拉共用此一处。
+// （後端同規則權威：src/lib/db.ts optionAllowedInCategory——規則變更兩處同動。）
+function optionsInCategory(type, catId) {
+  const items =
+    (catalogCache || { categories: [], locations: [], descriptions: [] })[
+      type
+    ] || [];
+  return items.filter(
+    (o) => o.category_ids.length === 0 || o.category_ids.includes(catId),
+  );
+}
+
 // 共用載入指示（v1.1.9：各頁面 await API 時避免白屏；v1.1.15 D9 加 200ms 防抖）
 const LOADING_DELAY_MS = 200;
 function renderLoading(root, text) {
@@ -1681,17 +1697,7 @@ pages.new = function () {
   catSelect.appendChild(el("option", { value: "", text: "載入類別中…" }));
   let selectedCat = null;
 
-  // 本地過濾：回該類別關聯＋通用
-  const filterByCat = (type, catId) => {
-    const items =
-      (catalogCache || { categories: [], locations: [], descriptions: [] })[
-        type
-      ] || [];
-    return items.filter((o) => {
-      if (o.category_ids.length === 0) return true; // 通用
-      return o.category_ids.includes(catId);
-    });
-  };
+  // 本地過濾規則見檔頭 optionsInCategory（FE1 單一定義）
 
   // 地點下拉（依類別本地過濾，未選類別 disabled）
   const locSelect = el("select", { class: "select" });
@@ -1702,7 +1708,7 @@ pages.new = function () {
     selectedLoc = null;
   };
   const renderLoc = (catId) => {
-    const items = filterByCat("locations", catId);
+    const items = optionsInCategory("locations", catId);
     if (items.length === 0) {
       resetLoc("此類別暫無地點");
       locSelect.disabled = true;
@@ -1729,7 +1735,7 @@ pages.new = function () {
   const renderDesc = (catId) => {
     descSelect.innerHTML = "";
     descSelect.appendChild(el("option", { value: "", text: "使用範本…" }));
-    for (const o of filterByCat("descriptions", catId)) {
+    for (const o of optionsInCategory("descriptions", catId)) {
       descSelect.appendChild(el("option", { value: o.label, text: o.label }));
     }
     descSelect.disabled = false;
@@ -1766,8 +1772,8 @@ pages.new = function () {
       descSelect.disabled = true;
       return;
     }
-    const locs = filterByCat("locations", selectedCat);
-    const descs = filterByCat("descriptions", selectedCat);
+    const locs = optionsInCategory("locations", selectedCat);
+    const descs = optionsInCategory("descriptions", selectedCat);
     // F6：僅在「快取可能過期」時重抓一次；重抓後仍空則改為非阻斷提示，不再重複 alert
     if ((locs.length === 0 || descs.length === 0) && !zeroAssocRetried) {
       zeroAssocRetried = true;
@@ -2341,25 +2347,25 @@ pages.edit = async function (id) {
   const catSelect = el("select", { class: "select" });
   const locSelect = el("select", { class: "select" });
   // D2：編輯頁地點依類別連動（比照建單頁），避免選到不屬類別的地點送出 400
-  const filterByCat = (type, catId) => {
-    const items =
-      (catalogCache || { categories: [], locations: [], descriptions: [] })[
-        type
-      ] || [];
-    return items.filter((o) => {
-      if (o.category_ids.length === 0) return true; // 通用
-      return o.category_ids.includes(catId);
-    });
-  };
   const renderLoc = (catId) => {
     locSelect.innerHTML = "";
+    const items = optionsInCategory("locations", catId);
+    if (items.length === 0) {
+      // 比照建單頁：零關聯類別給顯性可見提示而非只剩空白 placeholder
+      locSelect.appendChild(
+        el("option", { value: "", text: "此類別暫無地點" }),
+      );
+      locSelect.disabled = true;
+      return;
+    }
+    locSelect.disabled = false;
     locSelect.appendChild(el("option", { value: "", text: "請選擇地點" }));
-    for (const o of filterByCat("locations", catId)) {
+    for (const o of items) {
       locSelect.appendChild(
         el("option", {
           value: String(o.id),
           text: o.label,
-          selected: o.label === t.location_label ? "selected" : null,
+          selected: Number(o.id) === Number(t.location_id) ? "selected" : null,
         }),
       );
     }
@@ -2372,15 +2378,13 @@ pages.edit = async function (id) {
           el("option", {
             value: String(o.id),
             text: o.label,
-            selected: o.label === t.category_label ? "selected" : null,
+            selected:
+              Number(o.id) === Number(t.category_id) ? "selected" : null,
           }),
         );
       }
-      // 依目前類別渲染地點（D2）
-      const curCat = (catalogCache?.categories || []).find(
-        (o) => o.label === t.category_label,
-      );
-      renderLoc(curCat ? curCat.id : 0);
+      // 依目前類別渲染地點（D2）：以 id 還原（詳情回應本帶 category_id），不走 label 字串比對
+      renderLoc(t.category_id ? Number(t.category_id) : 0);
     })
     .catch(() => {
       // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
