@@ -60,6 +60,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   <div id="share-app">
     <p class="loading">載入中…</p>
   </div>
+  <!-- 狀態色表單源（架構候選 #7；先於 share.js） -->
+  <script src="/status-meta.js?v=${version}"></script>
   <script src="/share.js?v=${version}"></script>
 </body>
 </html>`;

@@ -96,6 +96,7 @@ export async function createTicket(
 export const APP_PATH = "public/app.js";
 export const CSS_PATH = "public/style.css";
 export const TPL_PATH = "public/templateEngine.js";
+export const STATUS_META_PATH = "public/status-meta.js";
 /** jsdom 僅 node pool 可用；本檔用 try/catch 讓 workers pool 平退。 */
 export async function hasJsdom(): Promise<boolean> {
   const m = await import("jsdom").catch(() => null);
@@ -110,6 +111,7 @@ export async function bootMock(hash: string) {
   // 對應 production dynamic-index：templateEngine.js 必在 app.js 之前載入（掛 globalThis.templateEngine）
   // 缺它＝composeDailyMessage 的 try/catch 吞掉 render 例外、恆回空案 fallback 文案
   const tpl = fs.readFileSync(TPL_PATH, "utf8") as string;
+  const statusMeta = fs.readFileSync(STATUS_META_PATH, "utf8") as string;
   const css = fs.readFileSync(CSS_PATH, "utf8") as string;
   const html =
     `<!doctype html><html><head><style>${css}</style></head><body>` +
@@ -137,6 +139,7 @@ export async function bootMock(hash: string) {
   // Program 頂時才提升 function 宣告——串接會把 app.js 第 5 行 "use strict" 降為普通
   // 陳述（全 script 變 sloppy）→ boot 等宣告全數消失。tpl 為 IIFE 掛 globalThis，獨立 eval 即可。
   win.eval(tpl);
+  win.eval(statusMeta + "\nwindow.STATUS_META = STATUS_META;");
   win.eval(
     app +
       "\nwindow.initModal = initModal;window.restoreKey = restoreKey;" +

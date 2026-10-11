@@ -1414,14 +1414,8 @@ function fmtTime(iso) {
 }
 
 function statusBadge(status) {
-  // v1.1.12：open 改「詢價中」；in_progress「處理中」維持（代表已發包）
-  const map = {
-    open: ["詢價中", "red"],
-    in_progress: ["處理中", "yellow"],
-    done: ["已完成", "green"],
-    void: ["已作廢", "black"],
-  };
-  const [label, color] = map[status] || [status, "gray"];
+  // 色表單源見 public/status-meta.js（措辭＝業主 v1.1.12 拍板，不動）
+  const [label, color] = STATUS_META[status] || [status, "gray"];
   return el("span", { class: `badge badge-${color}`, text: label });
 }
 

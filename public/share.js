@@ -29,14 +29,7 @@ function fmtTime(iso) {
     hour12: false,
   });
 }
-
-const statusMap = {
-  open: ["詢價中", "red"],
-  in_progress: ["處理中", "yellow"],
-  done: ["已完成", "green"],
-  void: ["已作廢", "black"],
-};
-
+// 狀態 label／色表：單源 public/status-meta.js（本頁 HTML 已先於此載入）
 // H2：公開派工頁照片 Lightbox（與 app.js 一致）
 function openLightbox(src) {
   const mask = el("div", { class: "lightbox", onclick: () => mask.remove() }, [
@@ -82,7 +75,7 @@ async function load() {
     }
     const body = await res.json();
     const t = body.data;
-    const [statusLabel, statusColor] = statusMap[t.status] || [
+    const [statusLabel, statusColor] = STATUS_META[t.status] || [
       t.status,
       "gray",
     ];
