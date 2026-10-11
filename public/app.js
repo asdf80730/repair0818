@@ -1413,6 +1413,25 @@ function fmtTime(iso) {
   return d.toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false });
 }
 
+/** 變更端點單一入口（v1.1.33 候選 #4）：送出→成功走 onDone 刷新／失敗 toast 錯誤。
+ *  回傳 true＝成功。需要自訂錯誤文案、失敗回滾、submitting 旗標的站點留用 api()，
+ *  本入口只收編「api → 刷新／否則 toast(e.message)」的單形語意。 */
+async function mutate(path, { method = "POST", body, onDone } = {}) {
+  try {
+    await api(path, { method, ...(body ? { body } : {}) });
+    if (onDone) await onDone();
+    return true;
+  } catch (e) {
+    toast(e.message);
+    return false;
+  }
+}
+
+/** E10：後端選項／關聯變更後清全域目錄快取（與 ensureCatalog(true) 互補） */
+function invalidateCatalog() {
+  catalogCache = null;
+}
+
 const DAY_MS = 24 * 3600 * 1000;
 // ⚠「N 天未更新」規則（列表卡片）：未完成且最後活動超過 STALE_AFTER_DAYS 天
 const STALE_AFTER_DAYS = 7;
@@ -2142,15 +2161,10 @@ pages.ticket = function (id) {
                   const note = prompt("作廢原因（選填）");
                   if (note === null) return;
                   if (!confirm("確定作廢此案件？")) return;
-                  try {
-                    await api(`/api/tickets/${id}/void`, {
-                      method: "POST",
-                      body: JSON.stringify({ note: note || undefined }),
-                    });
-                    router(); /* A5 v1.1.15：局部刷新 */
-                  } catch (e) {
-                    toast(e.message);
-                  }
+                  await mutate(`/api/tickets/${id}/void`, {
+                    body: JSON.stringify({ note: note || undefined }),
+                    onDone: () => router(), // A5 v1.1.15：局部刷新
+                  });
                 },
               }),
             );
@@ -2190,18 +2204,13 @@ pages.ticket = function (id) {
                           class: "btn btn-primary",
                           text: "確認重新開啟",
                           onclick: async () => {
-                            try {
-                              await api(`/api/tickets/${id}/reopen`, {
-                                method: "POST",
-                                body: JSON.stringify({
-                                  status: sel.value,
-                                  note: noteEl.value || undefined,
-                                }),
-                              });
-                              router(); /* A5 v1.1.15：局部刷新 */
-                            } catch (e) {
-                              toast(e.message);
-                            }
+                            await mutate(`/api/tickets/${id}/reopen`, {
+                              body: JSON.stringify({
+                                status: sel.value,
+                                note: noteEl.value || undefined,
+                              }),
+                              onDone: () => router(), // A5 v1.1.15：局部刷新
+                            });
                           },
                         }),
                       ]),
@@ -2633,15 +2642,13 @@ pages.edit = function (id) {
         const curIds = [...editPhotoIds].sort().join(",");
         if (initIds !== curIds)
           body.photo_ids = editPhotoIds.length ? editPhotoIds : [];
-        try {
-          await api(`/api/tickets/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
-          location.hash = "#/ticket/" + id;
-        } catch (e) {
-          toast(e.message);
-        }
+        await mutate(`/api/tickets/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          onDone: () => {
+            location.hash = "#/ticket/" + id;
+          },
+        });
       }
 
       root.appendChild(
@@ -3090,31 +3097,27 @@ pages.users = function () {
             );
           }
           roleSelect.addEventListener("change", async () => {
-            try {
-              await api("/api/users/" + u.id, {
-                method: "PATCH",
-                body: JSON.stringify({ role: roleSelect.value }),
-              });
-              u.role = roleSelect.value;
-              render();
-            } catch (e) {
-              toast(e.message);
-              render();
-            } // D7：失敗回滾下拉到實際角色
+            const ok = await mutate("/api/users/" + u.id, {
+              method: "PATCH",
+              body: JSON.stringify({ role: roleSelect.value }),
+              onDone: () => {
+                u.role = roleSelect.value;
+                render();
+              },
+            });
+            if (!ok) render(); // D7：失敗回滾下拉到實際角色
           });
           const activeBtn = el("button", {
             class: "btn " + (u.active ? "btn-danger" : "btn-primary"), // 問題15：停用紅/啟用藍
             text: u.active ? "停用" : "啟用",
             onclick: async () => {
-              try {
-                await api("/api/users/" + u.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ active: u.active ? 0 : 1 }),
-                });
+              const ok = await mutate("/api/users/" + u.id, {
+                method: "PATCH",
+                body: JSON.stringify({ active: u.active ? 0 : 1 }),
+              });
+              if (ok) {
                 u.active = u.active ? 0 : 1;
                 render();
-              } catch (e) {
-                toast(e.message);
               }
             },
           });
@@ -3515,15 +3518,11 @@ pages.admin = function () {
                 class: "btn " + (v.active ? "btn-danger" : "btn-primary"),
                 text: v.active ? "停用" : "啟用",
                 onclick: async () => {
-                  try {
-                    await api("/api/vendors/" + v.id, {
-                      method: "PATCH",
-                      body: JSON.stringify({ active: v.active ? 0 : 1 }),
-                    });
-                    renderVendors();
-                  } catch (e) {
-                    toast(e.message);
-                  }
+                  await mutate("/api/vendors/" + v.id, {
+                    method: "PATCH",
+                    body: JSON.stringify({ active: v.active ? 0 : 1 }),
+                    onDone: () => renderVendors(),
+                  });
                 },
               }),
             ]),
@@ -3545,16 +3544,13 @@ pages.admin = function () {
               text: "新增廠商",
               onclick: async () => {
                 if (!newVendor.value.trim()) return;
-                try {
-                  await api("/api/vendors", {
-                    method: "POST",
-                    body: JSON.stringify({ name: newVendor.value.trim() }),
-                  });
-                  newVendor.value = "";
-                  renderVendors();
-                } catch (e) {
-                  toast(e.message);
-                }
+                await mutate("/api/vendors", {
+                  body: JSON.stringify({ name: newVendor.value.trim() }),
+                  onDone: () => {
+                    newVendor.value = "";
+                    renderVendors();
+                  },
+                });
               },
             }),
           ]),
@@ -3591,16 +3587,14 @@ pages.admin = function () {
                   )
                     return;
                 }
-                try {
-                  await api("/api/options/" + o.id, {
-                    method: "PATCH",
-                    body: JSON.stringify({ active: o.active ? 0 : 1 }),
-                  });
-                  catalogCache = null; // E10：停用/啟用後清全域快取，避免建單/詳情頁讀舊
-                  renderOptions();
-                } catch (e) {
-                  toast(e.message);
-                }
+                await mutate("/api/options/" + o.id, {
+                  method: "PATCH",
+                  body: JSON.stringify({ active: o.active ? 0 : 1 }),
+                  onDone: () => {
+                    invalidateCatalog(); // E10：避免建單／詳情頁讀舊
+                    renderOptions();
+                  },
+                });
               },
             }),
           ]);
@@ -3653,28 +3647,28 @@ pages.admin = function () {
       text: "載入中…",
       disabled: "true",
       onclick: async () => {
-        try {
-          const locIds = [...locWrap.querySelectorAll("input:checked")].map(
-            (i) => Number(i.value),
-          );
-          const descIds = [...descWrap.querySelectorAll("input:checked")].map(
-            (i) => Number(i.value),
-          );
-          // 以類別為中心，全量覆寫該類別的地點/說明關聯
-          await api(`/api/options/${cat.id}/assoc`, {
-            method: "POST",
+        const locIds = [...locWrap.querySelectorAll("input:checked")].map((i) =>
+          Number(i.value),
+        );
+        const descIds = [...descWrap.querySelectorAll("input:checked")].map(
+          (i) => Number(i.value),
+        );
+        // 以類別為中心，全量覆寫該類別的地點／說明關聯（任一失敗即停＝原 throw 語意）
+        if (
+          !(await mutate(`/api/options/${cat.id}/assoc`, {
             body: JSON.stringify({ type: "location", option_ids: locIds }),
-          });
-          await api(`/api/options/${cat.id}/assoc`, {
-            method: "POST",
+          }))
+        )
+          return;
+        if (
+          !(await mutate(`/api/options/${cat.id}/assoc`, {
             body: JSON.stringify({ type: "description", option_ids: descIds }),
-          });
-          catalogCache = null; // E10：關聯變更後清全域快取
-          mask.remove();
-          renderOptions();
-        } catch (e) {
-          toast(e.message);
-        }
+          }))
+        )
+          return;
+        invalidateCatalog();
+        mask.remove();
+        renderOptions();
       },
     });
     modal.appendChild(
@@ -3792,21 +3786,18 @@ pages.admin = function () {
       text: "新增",
       onclick: async () => {
         if (!newLabel.value.trim()) return;
-        try {
-          await api("/api/options", {
-            method: "POST",
-            body: JSON.stringify({
-              type: currentType,
-              label: newLabel.value.trim(),
-              sort_order: 0,
-            }),
-          });
-          newLabel.value = "";
-          catalogCache = null; // E10：新增選項後清全域快取
-          renderOptions();
-        } catch (e) {
-          toast(e.message);
-        }
+        await mutate("/api/options", {
+          body: JSON.stringify({
+            type: currentType,
+            label: newLabel.value.trim(),
+            sort_order: 0,
+          }),
+          onDone: () => {
+            newLabel.value = "";
+            invalidateCatalog();
+            renderOptions();
+          },
+        });
       },
     }),
   ]);
