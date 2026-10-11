@@ -4,31 +4,9 @@
 import { Hono } from "hono";
 import { ok, fail } from "../lib/respond";
 import { requireAuth } from "../lib/auth";
-import {
-  taipeiMonthRangeUtc,
-  taipeiDayRangeUtc,
-  isValidDate,
-  toTaipeiDisplay,
-  taipeiToday,
-} from "../lib/time";
-import { nowIso } from "../lib/time";
+import { taipeiMonthRangeUtc, isValidDate, taipeiToday } from "../lib/time";
 import type { Env } from "../lib/env";
-import { getPreferredTemplate } from "../lib/messageTemplates";
-
-// F1（v1.1.15）：status 字串 → 顯示用 label
-// 與前端 public/app.js 頂部 `STATUS_LABEL`（同 4 值）對齊；badge 層 label 見 `statusBadge()`（v1.1.12 刻意異字）
-const STATUS_LABEL: Record<string, string> = {
-  open: "詢價中",
-  in_progress: "已發包",
-  done: "已完成",
-  void: "已作廢",
-};
-
-// F1（v1.1.15）：detail_url base，env 未設 fallback 為正式網域
-const DEFAULT_BASE_URL = "https://repair-system-4re.pages.dev";
-
-// F1（v1.1.15）：每筆 existing_ticket 的 updates_today 上限
-const UPDATES_PER_TICKET_LIMIT = 3;
+import { buildDailyReport } from "../lib/dailyReport";
 
 export const statsRoutes = new Hono<Env>();
 
@@ -113,8 +91,8 @@ statsRoutes.get("/amount-by-category", requireAuth(), async (c) => {
 
 // GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15；v1.1.16 簡化回應格式）
 // Query 必填：date=YYYY-MM-DD、category_id=N 或 'all'（v1.1.22：全部類別，固定用全域預設模板）
-// 回傳純資料 + 合併模板 daily 單支 body（v1.1.33：new_case/timeline 併為單支；v1.1.16：前端自行渲染並拼成成品）
-// 用途：保全每天對委員發 LINE 群組報告該類別（或全部類別）當日案件動態
+// 回應形狀 §4.7；組裝邏輯收攏於 src/lib/dailyReport.ts（2026-10-11 B1 深化）——
+// route 職責＝信封：date/category 的 400 系、類別不存在 404、ok()。
 const ALL_CATEGORIES = "all";
 statsRoutes.get("/daily-report", requireAuth(), async (c) => {
   const date = c.req.query("date");
@@ -132,182 +110,18 @@ statsRoutes.get("/daily-report", requireAuth(), async (c) => {
     return fail(c, 400, "DATE_FUTURE", "date 不可晚於今天（台灣）");
   if (!categoryIdStr)
     return fail(c, 400, "VALIDATION_ERROR", "category_id 必填");
-  const isAll = categoryIdStr === ALL_CATEGORIES;
-  const categoryId = isAll ? -1 : Number(categoryIdStr); // -1：all 時當「不存在」的 category_id 用（SQL 過濾跳過、模板取樣落全域）
-  if (!isAll && (!Number.isInteger(categoryId) || categoryId <= 0)) {
-    return fail(c, 400, "VALIDATION_ERROR", 'category_id 需為正整數或 "all"');
+
+  let categoryId: number | "all";
+  if (categoryIdStr === ALL_CATEGORIES) {
+    categoryId = ALL_CATEGORIES;
+  } else {
+    const n = Number(categoryIdStr);
+    if (!Number.isInteger(n) || n <= 0)
+      return fail(c, 400, "VALIDATION_ERROR", 'category_id 需為正整數或 "all"');
+    categoryId = n;
   }
 
-  const { startMs, endMs } = taipeiDayRangeUtc(date);
-  if (startMs === 0)
-    return fail(c, 400, "INVALID_DATE", "date 格式需為 YYYY-MM-DD");
-  const startIso = new Date(startMs).toISOString();
-  const endIso = new Date(endMs).toISOString();
-
-  // 撈類別 label（all：固定「全部類別」，不查 DB）
-  let categoryLabel = "全部類別";
-  if (!isAll) {
-    const cat = await c.env.DB.prepare(
-      "SELECT label FROM options WHERE type='category' AND id = ? AND active = 1",
-    )
-      .bind(categoryId)
-      .first<{ label: string }>();
-    if (!cat) return fail(c, 404, "NOT_FOUND", "類別不存在或已停用");
-    categoryLabel = cat.label;
-  }
-
-  const baseUrl = c.env.BASE_URL || DEFAULT_BASE_URL;
-  const catFilter = isAll ? "" : "t.category_id = ? AND ";
-
-  // 1. 新建：當日 created_at 在區間內、屬該類別（all：不限類別）的 tickets
-  const newTicketsRaw = await c.env.DB.prepare(
-    `SELECT t.id, t.category_label, t.location_label, t.description, t.status,
-            t.created_at, u.display_name AS creator_name
-     FROM tickets t
-     JOIN users u ON u.id = t.created_by
-     WHERE ${catFilter}t.created_at >= ? AND t.created_at < ?
-     ORDER BY t.id ASC`,
-  )
-    .bind(...(isAll ? [] : [categoryId]), startIso, endIso)
-    .all<{
-      id: number;
-      category_label: string;
-      location_label: string;
-      description: string | null;
-      status: string;
-      created_at: string;
-      creator_name: string;
-    }>();
-
-  // 標題格式由 lib/db 的 makeTitle 唯一定義（全形「－」）
-
-  const newTickets = newTicketsRaw.results.map((t) => ({
-    id: t.id,
-    location_label: t.location_label,
-    description: t.description ?? "",
-    creator_name: t.creator_name,
-    created_at: t.created_at,
-    created_at_time: toTaipeiDisplay(t.created_at).slice(11), // HH:MM
-    status: t.status,
-    detail_url: `${baseUrl}/#/ticket/${t.id}`,
-  }));
-
-  // 2. 既有：last_activity_at 落在當日、屬該類別（all：不限類別）、且**非當日新建**
-  const existingTicketsRaw = await c.env.DB.prepare(
-    `SELECT t.id, t.category_label, t.location_label, t.status
-     FROM tickets t
-     WHERE ${catFilter}t.last_activity_at >= ? AND t.last_activity_at < ?
-       AND t.created_at < ?
-     ORDER BY t.id ASC`,
-  )
-    .bind(...(isAll ? [] : [categoryId]), startIso, endIso, startIso)
-    .all<{
-      id: number;
-      category_label: string;
-      location_label: string;
-      status: string;
-    }>();
-
-  // 3. updates_today：撈上述既有案件的當日所有 update（按時間正序）
-  let existingTickets: Array<{
-    id: number;
-    location_label: string;
-    current_status: string;
-    status_label: string;
-    detail_url: string;
-    updates_today: Array<{
-      kind: string;
-      status: string | null;
-      actor_name: string;
-      time: string;
-      note: string | null;
-      amount: number | null;
-    }>;
-  }> = [];
-
-  if (existingTicketsRaw.results.length > 0) {
-    const existingIds = existingTicketsRaw.results.map((t) => t.id);
-    const placeholders = existingIds.map(() => "?").join(",");
-    // F12-1：每張 ticket 取**最新 3 筆**（DESC LIMIT 3），應用層再 .reverse() 回時間正序輸出
-    // （DESC 是撈最新用，輸出按 F12-1 時間正序——避免雙重排序出錯）
-    const updatesRaw = await c.env.DB.prepare(
-      `SELECT u.ticket_id, u.kind, u.status, u.note, u.amount, u.created_at,
-              usr.display_name AS actor_name
-       FROM ticket_updates u
-       JOIN users usr ON usr.id = u.user_id
-       WHERE u.ticket_id IN (${placeholders})
-         AND u.created_at >= ? AND u.created_at < ?
-       ORDER BY u.ticket_id ASC, u.created_at DESC`,
-    )
-      .bind(...existingIds, startIso, endIso)
-      .all<{
-        ticket_id: number;
-        kind: string;
-        status: string | null;
-        note: string | null;
-        amount: number | null;
-        created_at: string;
-        actor_name: string;
-      }>();
-
-    // 按 ticket_id 分組（DESC 順序 = 每組第一筆是最新），slice 0..3、reverse 回 ASC 輸出
-    const byTicket = new Map<number, typeof updatesRaw.results>();
-    for (const u of updatesRaw.results) {
-      const arr = byTicket.get(u.ticket_id) ?? [];
-      if (arr.length < UPDATES_PER_TICKET_LIMIT) arr.push(u);
-      byTicket.set(u.ticket_id, arr);
-    }
-
-    existingTickets = existingTicketsRaw.results.map((t) => {
-      const updates = (byTicket.get(t.id) ?? [])
-        .slice(0, UPDATES_PER_TICKET_LIMIT)
-        .reverse();
-      return {
-        id: t.id,
-        location_label: t.location_label,
-        current_status: t.status,
-        status_label: STATUS_LABEL[t.status] ?? t.status,
-        detail_url: `${baseUrl}/#/ticket/${t.id}`,
-        updates_today: updates.map((u) => ({
-          kind: u.kind,
-          status: u.status,
-          actor_name: u.actor_name,
-          time: toTaipeiDisplay(u.created_at).slice(11), // HH:MM
-          note: u.note,
-          amount: u.amount,
-        })),
-      };
-    });
-  }
-
-  // 5. timeline_updates：把既有案件的今日 update 拉平（v1.1.16：時間軸模板用 flat list）
-  //    每筆 { id(案件編號), location_label, status(顯示 label), note }；note 空值轉 ''
-  const timeline_updates = existingTickets.flatMap((t) =>
-    t.updates_today.map((u) => ({
-      id: t.id,
-      location_label: t.location_label,
-      status: t.status_label,
-      note: u.note ?? "",
-    })),
-  );
-
-  // 6. 抓合併模板（v1.1.33：new_case/timeline 併為單一支 daily，body 內含 header/兩段 each/連結）
-  //    v1.1.22：all 時 categoryId=-1 → 無任何 option_categories 匹配 → 固定取全域預設模板
-  const daily_tpl = await getPreferredTemplate(c, categoryId, "daily");
-
-  return ok(c, {
-    date,
-    category_id: isAll ? null : categoryId, // v1.1.22：all → null
-    category_label: categoryLabel,
-    // v1.1.33：前端以合併模板（daily）單支渲染並拼成成品
-    new_cases: newTickets.map((t) => ({
-      id: t.id,
-      location_label: t.location_label,
-      status: "詢價中", // v1.1.16：新案件預設狀態
-      description: t.description ?? "",
-    })),
-    timeline_updates,
-    has_content: newTickets.length > 0 || timeline_updates.length > 0, // v1.1.16：前端據此決定是否放總系統連結
-    templates: { daily: daily_tpl },
-  });
+  const data = await buildDailyReport(c, { date, categoryId });
+  if (data === null) return fail(c, 404, "NOT_FOUND", "類別不存在或已停用");
+  return ok(c, data);
 });
