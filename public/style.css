@@ -350,9 +350,12 @@ button {
   display: flex;
   gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-4);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .seg button {
+  flex-shrink: 0;
   padding: 6px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 999px;
