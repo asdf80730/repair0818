@@ -23,6 +23,10 @@ jobs:
 
       - name: Check formatting
         run: npm run format:check
+      # v1.1.33 後續（retro 2026-10-11 #1）：SPEC 檔頭版本須等於 §0.1 最新列，
+      # 防「改內容沒帶到檔頭」的文件漂移（本輪審查實際抓到 v1.1.32 滯留）。
+      - name: Check doc version consistency
+        run: python3 scripts/check-doc-versions.py
 
       - name: Run unit tests
         run: npm test

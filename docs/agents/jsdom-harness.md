@@ -28,3 +28,7 @@
 1. **A/B sheet 對照需 fresh tab**：同 tab 內改 `link.href` 换 sheet，時序不稳（舊版式未即卸）→ 每個 sheet 開一個 fresh tab（URL query 決定 sheet），且在頁內以標記斷言生效與否（掃 `document.styleSheets` 找目標規則）。
 2. **`Bun.serve` 同 port 重建需先 `server.stop()`**；kernel 內 `globalThis.server` 跨 cell 存活。
 3. 假綠來源：替換 sheet 後未重排 → 以標記位（如 `min-width` 計算值 `0px` vs `NO`）為準，不以 rect 數值單一佐証。
+
+### 佈局 pre-deploy 驗證（內聯 probe，免 server 免部署）
+
+CSS 排布改動驗不了：production e2e 打的是舊 CSS、本機 `wrangler pages dev` 在 Bun 下崩（CLAUDE.md 已記）。正解＝**內聯 probe**：`bun -e` 起 `playwright` 的 `chromium.launch()`，`page.setContent(html)` 塞「真實 CSS 變數＋真實 pill 文案」的最小組裝頁，390／360 viewport 測三數：列數（`getBoundingClientRect().top` 去重）、`docW == vw`（document 無超寬，v1.1.31 收口邏輯）、容器 `scrollWidth/clientWidth`（內部滾動量）。30 秒得實測值，改動未定版也不用碰 repo。注意 `page.evaluate` 回傳要 `JSON.stringify` 現值。`.seg` 單列改動即此法驗證（2026-10-11，retro #4）。
