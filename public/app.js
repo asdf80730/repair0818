@@ -3253,63 +3253,64 @@ pages.messageTemplates = async function () {
     fullPreview.textContent = fullPreviewText();
   }
 
-  async function loadList() {
-    listBox.innerHTML = "";
-    listBox.appendChild(el("div", { class: "loading-text", text: "載入中…" }));
-    try {
-      const rows = [];
-      for (const label of ["daily"]) {
-        const r = await api(
-          `/api/message-templates?category_id=${catId}&label=${label}`,
-        );
-        const t = (r.data.templates || [])[0];
-        if (t) {
-          tmplData[label] = t;
-          rows.push(t);
+  function loadList() {
+    return loadInto(
+      listBox,
+      async () => {
+        const rows = [];
+        for (const label of ["daily"]) {
+          const r = await api(
+            `/api/message-templates?category_id=${catId}&label=${label}`,
+          );
+          const t = (r.data.templates || [])[0];
+          if (t) {
+            tmplData[label] = t;
+            rows.push(t);
+          }
         }
-      }
-      listBox.innerHTML = "";
-      if (rows.length === 0) {
-        listBox.appendChild(
-          el("p", {
-            class: "empty",
-            text: "目前無啟用模板（請確認 migration 0012 已套用）",
-          }),
-        );
-      }
-      for (const label of ["daily"]) {
-        const t = tmplData[label];
-        if (!t) continue;
-        // 行：名稱（超連結→開編輯 modal）+ 範圍說明
-        const nameLink = el("a", {
-          class: "tmpl-name tmpl-link",
-          text: LABEL_META[label],
-          href: "javascript:void(0)",
-          onclick: (e) => {
-            e.preventDefault();
-            openEdit(label);
-          },
-        });
-        listBox.appendChild(
-          el("div", { class: "tmpl-row" }, [
-            nameLink,
-            el("div", {
-              class: "tmpl-meta",
-              text: t.is_category_specific ? "此類別專用" : "全域預設",
+        return { rows };
+      },
+      async ({ rows }) => {
+        listBox.innerHTML = "";
+        if (rows.length === 0) {
+          listBox.appendChild(
+            el("p", {
+              class: "empty",
+              text: "目前無啟用模板（請確認 migration 0012 已套用）",
             }),
-            el("button", {
-              class: "btn btn-ghost",
-              text: "編輯",
-              onclick: () => openEdit(label),
-            }),
-          ]),
-        );
-      }
-      refreshPreview();
-    } catch (e) {
-      listBox.innerHTML = "";
-      listBox.appendChild(el("p", { class: "error", text: e.message }));
-    }
+          );
+        }
+        for (const label of ["daily"]) {
+          const t = tmplData[label];
+          if (!t) continue;
+          // 行：名稱（超連結→開編輯 modal）+ 範圍說明
+          const nameLink = el("a", {
+            class: "tmpl-name tmpl-link",
+            text: LABEL_META[label],
+            href: "javascript:void(0)",
+            onclick: (e) => {
+              e.preventDefault();
+              openEdit(label);
+            },
+          });
+          listBox.appendChild(
+            el("div", { class: "tmpl-row" }, [
+              nameLink,
+              el("div", {
+                class: "tmpl-meta",
+                text: t.is_category_specific ? "此類別專用" : "全域預設",
+              }),
+              el("button", {
+                class: "btn btn-ghost",
+                text: "編輯",
+                onclick: () => openEdit(label),
+              }),
+            ]),
+          );
+        }
+        refreshPreview();
+      },
+    );
   }
 
   // 編輯 modal（v1.1.21：改回 modal-mask 定位，置中彈窗；舊 modal-bg 非既有 class，會掉進文件流）
