@@ -17,6 +17,11 @@ import {
 } from "../lib/db";
 import { nowIso } from "../lib/time";
 import {
+  loadTicketForWrite,
+  timelineInsert,
+  conditionalTransition,
+} from "../lib/timeline";
+import {
   ACTIVE_IN_SQL,
   CLOSED_IN_SQL,
   isOpen,
@@ -37,6 +42,18 @@ import {
 import type { Env } from "../lib/env";
 
 export const ticketRoutes = new Hono<Env>();
+
+/** D7：can_edit 單源布爾式——GET 回應欄位與 PATCH 閘門共用（committee 僅自己建的單；manager/admin 全部） */
+export function canEditTicket(
+  user: { role: string; id: number },
+  ticket: { created_by: number },
+): boolean {
+  return (
+    user.role === "manager" ||
+    user.role === "admin" ||
+    (user.role === "committee" && ticket.created_by === user.id)
+  );
+}
 
 // POST /api/tickets — 三角色（§4.3）
 ticketRoutes.post("/", zv("json", createTicketSchema), async (c) => {
@@ -271,11 +288,8 @@ ticketRoutes.get("/:id", zv("param", idParam), async (c) => {
   return ok(c, {
     id: ticket.id,
     title: makeTitle(ticket.category_label, ticket.location_label, ticket.id),
-    // E1 方案B：由後端算 can_edit，不回傳 created_by（更封閉）
-    can_edit:
-      user.role === "manager" ||
-      user.role === "admin" ||
-      (user.role === "committee" && ticket.created_by === user.id),
+    // E1 方案B：由後端算 can_edit，不回傳 created_by（更封閉）；布爾式與 PATCH 閘門單源
+    can_edit: canEditTicket(user, ticket),
     category_id: ticket.category_id,
     category_label: ticket.category_label,
     location_id: ticket.location_id,
@@ -336,8 +350,8 @@ ticketRoutes.patch(
       }>();
     if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-    // D7：committee 僅自己建的單；manager/admin 全部
-    if (user.role === "committee" && ticket.created_by !== user.id) {
+    // D7：committee 僅自己建的單；manager/admin 全部（布爾式與 GET can_edit 單源）
+    if (!canEditTicket(user, ticket)) {
       return fail(c, 403, "FORBIDDEN", "權限不足");
     }
 
@@ -488,10 +502,10 @@ ticketRoutes.patch(
         id,
       ),
       // system 時間軸留痕
-      c.env.DB.prepare(
-        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'system', NULL, ?, ?)`,
-      ).bind(id, user.id, `已修改：${changes.join("；")}`, now),
+      timelineInsert(c, id, user.id, now, {
+        kind: "system",
+        note: `已修改：${changes.join("；")}`,
+      }),
       ...photoStmts,
     ]);
     // D1（v1.1.15）：photo 綁定任一失敗回 400 防 race
@@ -514,12 +528,9 @@ ticketRoutes.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    const ticket = await c.env.DB.prepare(
-      "SELECT id, status FROM tickets WHERE id = ?",
-    )
-      .bind(id)
-      .first<{ id: number; status: string }>();
-    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
+    const guard = await loadTicketForWrite(c, id);
+    if (!guard.ok) return guard.response;
+    const ticket = guard.ticket;
 
     // 已結案（done）或作廢（void）不可回報（§4.3；結算語意 → ticketStatus.isClosed）
     if (isClosed(ticket.status)) {
@@ -568,17 +579,12 @@ ticketRoutes.post(
         id,
       ),
       // 寫入時間軸（kind=status），含發包金額
-      c.env.DB.prepare(
-        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at, amount)
-       VALUES (?, ?, 'status', ?, ?, ?, ?)`,
-      ).bind(
-        id,
-        user.id,
-        body.status,
-        body.note ?? null,
-        now,
-        isContracted ? body.amount : null,
-      ),
+      timelineInsert(c, id, user.id, now, {
+        kind: "status",
+        status: body.status,
+        note: body.note ?? null,
+        amount: isContracted ? body.amount : null,
+      }),
     ];
 
     // 多步驟寫入用 env.DB.batch()（原子），從 batch 回傳結果拿 last_row_id（避免並發回報時 ORDER BY DESC 抓錯）
@@ -606,12 +612,9 @@ ticketRoutes.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    const ticket = await c.env.DB.prepare(
-      "SELECT id, status FROM tickets WHERE id = ?",
-    )
-      .bind(id)
-      .first<{ id: number; status: string }>();
-    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
+    const guard = await loadTicketForWrite(c, id);
+    if (!guard.ok) return guard.response;
+    const ticket = guard.ticket;
 
     // void 不可留言（§4.3）
     if (ticket.status === "void") {
@@ -629,10 +632,7 @@ ticketRoutes.post(
 
     // D9：INSERT + UPDATE last_activity_at 用 env.DB.batch() 一次包住（原子，符合 CLAUDE 規則 2）
     const batchRes = await c.env.DB.batch([
-      c.env.DB.prepare(
-        `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-       VALUES (?, ?, 'comment', NULL, ?, ?)`,
-      ).bind(id, user.id, body.note, now),
+      timelineInsert(c, id, user.id, now, { kind: "comment", note: body.note }),
       c.env.DB.prepare(
         "UPDATE tickets SET last_activity_at = ? WHERE id = ?",
       ).bind(now, id),
@@ -663,12 +663,9 @@ ticketRoutes.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    const ticket = await c.env.DB.prepare(
-      "SELECT id, status FROM tickets WHERE id = ?",
-    )
-      .bind(id)
-      .first<{ id: number; status: string }>();
-    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
+    const guard = await loadTicketForWrite(c, id);
+    if (!guard.ok) return guard.response;
+    const ticket = guard.ticket;
 
     // 已結案或已作廢不可再作廢（active 語意 → ticketStatus.isOpen）
     if (!isOpen(ticket.status)) {
@@ -679,21 +676,16 @@ ticketRoutes.post(
     // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時作廢造成重複寫入
     // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT。
     //   不能用 batch + INSERT...WHERE EXISTS：batch 內依序執行，UPDATE 先改狀態後 EXISTS 已讀到新狀態→永遠 false。
-    const upd = await c.env.DB.prepare(
-      `UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ${ACTIVE_IN_SQL}`,
-    )
-      .bind("void", now, user.id, now, id)
-      .run();
-    if (upd.meta.changes === 0) {
-      return fail(c, 400, "VALIDATION_ERROR", "案件狀態已變更，請重新整理");
-    }
-    // 狀態確已變更，寫入時間軸（此處不再有競態——上一步已原子變更）
-    await c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-     VALUES (?, ?, 'status', 'void', ?, ?)`,
-    )
-      .bind(id, user.id, body.note ?? null, now)
-      .run();
+    const lockFail = await conditionalTransition(c, {
+      set: "status = ?, closed_at = ?, closed_by = ?",
+      values: ["void", now, user.id],
+      guardSql: ACTIVE_IN_SQL,
+      id,
+      now,
+      userId: user.id,
+      timeline: { kind: "status", status: "void", note: body.note ?? null },
+    });
+    if (lockFail) return lockFail;
 
     return ok(c, { status: "void" });
   },
@@ -710,12 +702,9 @@ ticketRoutes.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    const ticket = await c.env.DB.prepare(
-      "SELECT id, status FROM tickets WHERE id = ?",
-    )
-      .bind(id)
-      .first<{ id: number; status: string }>();
-    if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
+    const guard = await loadTicketForWrite(c, id);
+    if (!guard.ok) return guard.response;
+    const ticket = guard.ticket;
 
     // 僅限 done / void 的案件（結算語意 → ticketStatus.isClosed）
     if (!isClosed(ticket.status)) {
@@ -733,27 +722,20 @@ ticketRoutes.post(
 
     // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
     // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT（理由同 void）
-    const upd = await c.env.DB.prepare(
-      `UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ${CLOSED_IN_SQL}`,
-    )
-      .bind(targetStatus, now, id)
-      .run();
-    if (upd.meta.changes === 0) {
-      return fail(c, 400, "VALIDATION_ERROR", "案件狀態已變更，請重新整理");
-    }
-    // 狀態確已變更，寫入時間軸
-    await c.env.DB.prepare(
-      `INSERT INTO ticket_updates (ticket_id, user_id, kind, status, note, created_at)
-     VALUES (?, ?, 'status', ?, ?, ?)`,
-    )
-      .bind(
-        id,
-        user.id,
-        targetStatus,
-        `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ""}`,
-        now,
-      )
-      .run();
+    const lockFail = await conditionalTransition(c, {
+      set: "status = ?, closed_at = NULL, closed_by = NULL",
+      values: [targetStatus],
+      guardSql: CLOSED_IN_SQL,
+      id,
+      now,
+      userId: user.id,
+      timeline: {
+        kind: "status",
+        status: targetStatus,
+        note: `重新開啟（原狀態：${prevStatusLabel}）${body.note ? `：${body.note}` : ""}`,
+      },
+    });
+    if (lockFail) return lockFail;
 
     return ok(c, { status: targetStatus });
   },
