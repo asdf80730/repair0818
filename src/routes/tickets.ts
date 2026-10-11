@@ -10,8 +10,20 @@ import {
   makeTitle,
   validateOwnUnboundPhotos,
   optionAllowedInCategory,
+  photoBindStmts,
+  photoUnbindStmts,
+  photoCasMissed,
+  PHOTO_RACE_MSG,
 } from "../lib/db";
 import { nowIso } from "../lib/time";
+import {
+  ACTIVE_IN_SQL,
+  CLOSED_IN_SQL,
+  isOpen,
+  isClosed,
+  canTransit,
+  statusLabel,
+} from "../lib/ticketStatus";
 import {
   createTicketSchema,
   updateTicketSchema,
@@ -99,24 +111,13 @@ ticketRoutes.post(
       .run();
     const ticketId = insertResult.meta.last_row_id;
 
-    // 綁定照片（target_type='ticket'，target_id=ticketId）
-    // #2 CAS：加 AND target_id IS NULL，防止兩分頁同時送同張照片被第二次覆蓋綁定
+    // 綁定照片（target_type='ticket'，target_id=ticketId）；CAS helper → lib/db
     if (photoIds.length > 0) {
-      const photoStmts = photoIds.map((pid) =>
-        c.env.DB.prepare(
-          "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
-        ).bind("ticket", ticketId, pid),
+      const photoResults = await c.env.DB.batch(
+        photoBindStmts(c, "ticket", ticketId, photoIds),
       );
-      const photoResults = await c.env.DB.batch(photoStmts);
-      // D1（v1.1.15）：逐筆檢查 meta.changes，不足回 400（防止 race 被搶走綁定）
-      if (photoResults.some((r) => r.meta.changes === 0)) {
-        return fail(
-          c,
-          400,
-          "VALIDATION_ERROR",
-          "部分照片已被其他案件綁定，請重新整理",
-        );
-      }
+      if (photoCasMissed(photoResults))
+        return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
     }
 
     const title = makeTitle(categoryLabel, locationLabel, ticketId);
@@ -133,11 +134,11 @@ ticketRoutes.get(
     const { status, category_id, page, limit } = c.req.valid("query");
 
     // status 允許值：active(預設)/open/in_progress/done/void/all
-    // active = open + in_progress
+    // active = open + in_progress（語意單一定義 → lib/ticketStatus）
     let where = "WHERE 1=1";
     const binds: unknown[] = [];
     if (status === "active") {
-      where += " AND t.status IN ('open','in_progress')";
+      where += ` AND t.status IN ${ACTIVE_IN_SQL}`;
     } else if (status !== "all") {
       where += " AND t.status = ?";
       binds.push(status);
@@ -351,8 +352,8 @@ ticketRoutes.patch(
       return fail(c, 403, "FORBIDDEN", "權限不足");
     }
 
-    // 僅 open / in_progress 可編輯（已結案/作廢不可改）
-    if (ticket.status !== "open" && ticket.status !== "in_progress") {
+    // 僅 open / in_progress 可編輯（已結案/作廢不可改；active 語意 → ticketStatus.isOpen）
+    if (!isOpen(ticket.status)) {
       return fail(c, 400, "VALIDATION_ERROR", "已結案或已作廢的案件不可編輯");
     }
 
@@ -468,23 +469,11 @@ ticketRoutes.patch(
       }
 
       if (newOnes.length > 0) {
-        for (const pid of newOnes) {
-          photoStmts.push(
-            c.env.DB.prepare(
-              "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
-            ).bind("ticket", id, pid),
-          );
-        }
+        photoStmts.push(...photoBindStmts(c, "ticket", id, newOnes));
         changes.push(`新增 ${newOnes.length} 張照片`);
       }
       if (removed.length > 0) {
-        for (const pid of removed) {
-          photoStmts.push(
-            c.env.DB.prepare(
-              "UPDATE photos SET target_type = NULL, target_id = NULL WHERE id = ? AND target_type = ? AND target_id = ?",
-            ).bind(pid, "ticket", id),
-          );
-        }
+        photoStmts.push(...photoUnbindStmts(c, "ticket", id, removed));
         changes.push(`移除 ${removed.length} 張照片`);
       }
     }
@@ -516,17 +505,10 @@ ticketRoutes.patch(
       ).bind(id, user.id, `已修改：${changes.join("；")}`, now),
       ...photoStmts,
     ]);
-    // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-    // batch 順序：[ticketUpdate, systemInsert, ...photoStmts]，photo 在 index 2 起
-    const photoBatchResults = batchRes.slice(2);
-    if (photoBatchResults.some((r) => r.meta.changes === 0)) {
-      return fail(
-        c,
-        400,
-        "VALIDATION_ERROR",
-        "部分照片已被其他案件綁定，請重新整理",
-      );
-    }
+    // D1（v1.1.15）：photo 綁定任一失敗回 400 防 race
+    // batch 順序：[ticketUpdate, systemInsert, ...photoStmts]，photo 自 index 2
+    if (photoCasMissed(batchRes.slice(2)))
+      return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
 
     return ok(c, { id, updated: true, changes });
   },
@@ -550,18 +532,14 @@ ticketRoutes.post(
       .first<{ id: number; status: string }>();
     if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-    // 已結案（done）或作廢（void）不可回報（§4.3）
-    if (ticket.status === "done" || ticket.status === "void") {
+    // 已結案（done）或作廢（void）不可回報（§4.3；結算語意 → ticketStatus.isClosed）
+    if (isClosed(ticket.status)) {
       return fail(c, 400, "VALIDATION_ERROR", "已結案或已作廢的案件不可回報");
     }
 
-    // F3（v1.1.14 決策）：狀態流限制——鎖死退回（in_progress→open 禁）；允許 open→done 直接結案。
-    //   in_progress→in_progress 允許（多次發包覆寫 amount，v1.1.13 語意鎖死，勿禁）。
-    const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-      open: ["in_progress", "done"],
-      in_progress: ["in_progress", "done"],
-    };
-    if (!(ALLOWED_TRANSITIONS[ticket.status] || []).includes(body.status)) {
+    // F3（v1.1.14 決策）：流轉規則收攏於 lib/ticketStatus.canTransit——
+    //   鎖死退回（in_progress→open 禁）；允許 open→done；in_progress→in_progress 覆寫 amount 允許
+    if (!canTransit(ticket.status, body.status)) {
       return fail(
         c,
         400,
@@ -619,21 +597,10 @@ ticketRoutes.post(
     const inserted = batchRes[1].meta.last_row_id as number | undefined;
     if (photoIds.length > 0 && inserted) {
       const photoRes = await c.env.DB.batch(
-        photoIds.map((pid) =>
-          c.env.DB.prepare(
-            "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
-          ).bind("update", inserted, pid),
-        ),
+        photoBindStmts(c, "update", inserted, photoIds),
       );
-      // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-      if (photoRes.some((r) => r.meta.changes === 0)) {
-        return fail(
-          c,
-          400,
-          "VALIDATION_ERROR",
-          "部分照片已被其他案件綁定，請重新整理",
-        );
-      }
+      if (photoCasMissed(photoRes))
+        return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
     }
 
     return ok(c, { updated: true, status: body.status });
@@ -684,24 +651,13 @@ ticketRoutes.post(
     ]);
     const updateId = batchRes[0].meta.last_row_id as number;
 
-    // 留言照片一律 target_type='update' + target_id=留言 id
+    // 留言照片一律 target_type='update' + target_id=留言 id（CAS helper → lib/db）
     if (photoIds.length > 0) {
       const photoRes = await c.env.DB.batch(
-        photoIds.map((pid) =>
-          c.env.DB.prepare(
-            "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
-          ).bind("update", updateId, pid),
-        ),
+        photoBindStmts(c, "update", updateId, photoIds),
       );
-      // D1（v1.1.15）：逐筆檢查 photo 綁定是否成功，失敗回 400 防 race
-      if (photoRes.some((r) => r.meta.changes === 0)) {
-        return fail(
-          c,
-          400,
-          "VALIDATION_ERROR",
-          "部分照片已被其他案件綁定，請重新整理",
-        );
-      }
+      if (photoCasMissed(photoRes))
+        return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
     }
 
     return ok(c, { id: updateId, kind: "comment" }, 201);
@@ -726,8 +682,8 @@ ticketRoutes.post(
       .first<{ id: number; status: string }>();
     if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-    // 已結案或已作廢不可再作廢
-    if (ticket.status === "done" || ticket.status === "void") {
+    // 已結案或已作廢不可再作廢（active 語意 → ticketStatus.isOpen）
+    if (!isOpen(ticket.status)) {
       return fail(c, 400, "VALIDATION_ERROR", "僅 open/in_progress 可作廢");
     }
 
@@ -736,7 +692,7 @@ ticketRoutes.post(
     // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT。
     //   不能用 batch + INSERT...WHERE EXISTS：batch 內依序執行，UPDATE 先改狀態後 EXISTS 已讀到新狀態→永遠 false。
     const upd = await c.env.DB.prepare(
-      "UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ('open','in_progress')",
+      `UPDATE tickets SET status = ?, closed_at = ?, closed_by = ?, last_activity_at = ? WHERE id = ? AND status IN ${ACTIVE_IN_SQL}`,
     )
       .bind("void", now, user.id, now, id)
       .run();
@@ -773,8 +729,8 @@ ticketRoutes.post(
       .first<{ id: number; status: string }>();
     if (!ticket) return fail(c, 404, "NOT_FOUND", "案件不存在");
 
-    // 僅限 done / void 的案件
-    if (ticket.status !== "done" && ticket.status !== "void") {
+    // 僅限 done / void 的案件（結算語意 → ticketStatus.isClosed）
+    if (!isClosed(ticket.status)) {
       return fail(
         c,
         400,
@@ -785,12 +741,12 @@ ticketRoutes.post(
 
     const now = nowIso();
     const targetStatus = body.status ?? "in_progress";
-    const prevStatusLabel = ticket.status === "done" ? "已完成" : "已作廢";
+    const prevStatusLabel = statusLabel(ticket.status); // done→已完成／void→已作廢（label 單一定義）
 
     // #1：樂觀鎖——UPDATE 帶狀態條件，防止雙 admin 同時 reopen 造成重複寫入
     // E3（v1.1.14）：先 UPDATE 判斷影響筆數，成功才寫時間軸 INSERT（理由同 void）
     const upd = await c.env.DB.prepare(
-      "UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ('done','void')",
+      `UPDATE tickets SET status = ?, closed_at = NULL, closed_by = NULL, last_activity_at = ? WHERE id = ? AND status IN ${CLOSED_IN_SQL}`,
     )
       .bind(targetStatus, now, id)
       .run();

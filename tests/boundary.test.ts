@@ -2,7 +2,13 @@
 // 依 F.I.R.S.T：涵蓋邊界與例外，這些才是 bug 的溫床
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { mockLineVerify, loginAs, getOptionId, createTicket } from "./harness";
+import {
+  mockLineVerify,
+  mockLineVerifyRaw,
+  loginAs,
+  getOptionId,
+  createTicket,
+} from "./harness";
 
 const worker = SELF;
 
@@ -400,23 +406,12 @@ describe("photos 其他邊界（§4.4）", () => {
 
 describe("auth/session 邊界（§3.1）", () => {
   it("aud 不符 → 401", async () => {
-    mockLineVerify("U-bd-a1", "aud錯");
-    // 覆寫 mock 回傳錯誤 aud
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = new URL(String(input));
-      if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-        return new Response(
-          JSON.stringify({
-            iss: "https://access.line.me",
-            sub: "U-bd-a1",
-            aud: "wrong-channel",
-            exp: Math.floor(Date.now() / 1000) + 3600,
-            name: "aud錯",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      throw new Error("No mock found for " + url.href);
+    mockLineVerifyRaw({
+      iss: "https://access.line.me",
+      sub: "U-bd-a1",
+      aud: "wrong-channel",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      name: "aud錯",
     });
     const r = await worker.fetch("http://example.com/api/auth/session", {
       method: "POST",
@@ -430,21 +425,12 @@ describe("auth/session 邊界（§3.1）", () => {
   });
 
   it("exp 過期 → 401", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = new URL(String(input));
-      if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-        return new Response(
-          JSON.stringify({
-            iss: "https://access.line.me",
-            sub: "U-bd-a2",
-            aud: "test-channel",
-            exp: Math.floor(Date.now() / 1000) - 3600,
-            name: "過期",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      throw new Error("No mock found for " + url.href);
+    mockLineVerifyRaw({
+      iss: "https://access.line.me",
+      sub: "U-bd-a2",
+      aud: "test-channel",
+      exp: Math.floor(Date.now() / 1000) - 3600,
+      name: "過期",
     });
     const r = await worker.fetch("http://example.com/api/auth/session", {
       method: "POST",
@@ -458,20 +444,11 @@ describe("auth/session 邊界（§3.1）", () => {
   });
 
   it("name 缺省 → display_name 回「LINE 用戶」", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = new URL(String(input));
-      if (url.href.startsWith("https://api.line.me/oauth2/v2.1/verify")) {
-        return new Response(
-          JSON.stringify({
-            iss: "https://access.line.me",
-            sub: "U-bd-a3",
-            aud: "test-channel",
-            exp: Math.floor(Date.now() / 1000) + 3600,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      throw new Error("No mock found for " + url.href);
+    mockLineVerifyRaw({
+      iss: "https://access.line.me",
+      sub: "U-bd-a3",
+      aud: "test-channel",
+      exp: Math.floor(Date.now() / 1000) + 3600,
     });
     const session = await worker.fetch("http://example.com/api/auth/session", {
       method: "POST",

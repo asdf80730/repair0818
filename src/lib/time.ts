@@ -53,6 +53,22 @@ export function taipeiMonthRangeUtc(month?: string): {
 }
 
 /**
+ * 台灣月邊界直出 ISO 字串（2026-10-11 locality 小賺點：呼叫端不再 new Date(ms).toISOString()）。
+ * 非法 month → 空字串 sentinel（呼應 taipeiMonthRangeUtc 的 0）；未帶入＝台灣當月。
+ */
+export function taipeiMonthRangeIso(month?: string): {
+  startIso: string;
+  endIso: string;
+} {
+  const { startMs, endMs } = taipeiMonthRangeUtc(month);
+  if (startMs === 0) return { startIso: "", endIso: "" };
+  return {
+    startIso: new Date(startMs).toISOString(),
+    endIso: new Date(endMs).toISOString(),
+  };
+}
+
+/**
  * 將「台灣時區的某日 00:00」換算成 UTC 毫秒。
  * 透過 Date 的 reverse-zone offset 技巧（無第三方套件）。
  */

@@ -166,7 +166,7 @@ export async function buildDailyReport(
   const new_cases = newTicketsRaw.results.map((t) => ({
     id: t.id,
     location_label: t.location_label,
-    status: "詢價中", // v1.1.16：新案件預設狀態
+    status: statusLabel("open"), // v1.1.16：新案件預設狀態（label 單一定義 → ticketStatus）
     description: t.description ?? "",
   }));
 

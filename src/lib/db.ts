@@ -67,6 +67,48 @@ export async function validateOwnUnboundPhotos(
   return true;
 }
 
+// ── 照片 CAS 綁定（2026-10-11 locality 小賺點：#2／D1 六處 race 防範收攏）──
+// 語意：綁定採 CAS（target_id IS NULL 才改），任一行 changes===0 即代表
+// 被並發搶走——回 400 請使用者重整（規則 2：呼叫端放 batch 內、逐筆驗 meta）。
+
+/** 綁定語句群：target_type/target_id 由呼叫端指定（'ticket' 或 'update'） */
+export function photoBindStmts(
+  c: AppContext,
+  targetType: "ticket" | "update",
+  targetId: number,
+  photoIds: number[],
+) {
+  return photoIds.map((pid) =>
+    c.env.DB.prepare(
+      "UPDATE photos SET target_type = ?, target_id = ? WHERE id = ? AND target_id IS NULL",
+    ).bind(targetType, targetId, pid),
+  );
+}
+
+/** 解除綁定語句群：仍屬該 target 才清，避免誤清他人綁定 */
+export function photoUnbindStmts(
+  c: AppContext,
+  targetType: "ticket" | "update",
+  targetId: number,
+  photoIds: number[],
+) {
+  return photoIds.map((pid) =>
+    c.env.DB.prepare(
+      "UPDATE photos SET target_type = NULL, target_id = NULL WHERE id = ? AND target_type = ? AND target_id = ?",
+    ).bind(pid, targetType, targetId),
+  );
+}
+
+/** batch 結果 CAS 檢查：任一行 changes===0 ＝ 被並發搶走綁定 */
+export function photoCasMissed(
+  results: Array<{ meta: { changes: number } }>,
+): boolean {
+  return results.some((r) => r.meta.changes === 0);
+}
+
+/** 綁定競態的對外訊息（fail 信封 contract 的一部分，五處共用） */
+export const PHOTO_RACE_MSG = "部分照片已被其他案件綁定，請重新整理";
+
 /** 驗證 location 是否屬於 category 或為通用（§4.1 v1.1.7） */
 export async function optionAllowedInCategory(
   c: AppContext,

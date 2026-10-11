@@ -4,8 +4,9 @@
 import { Hono } from "hono";
 import { ok, fail } from "../lib/respond";
 import { requireAuth } from "../lib/auth";
-import { taipeiMonthRangeUtc, isValidDate, taipeiToday } from "../lib/time";
+import { taipeiMonthRangeIso, isValidDate, taipeiToday } from "../lib/time";
 import type { Env } from "../lib/env";
+import { CLOSED_IN_SQL } from "../lib/ticketStatus";
 import { buildDailyReport } from "../lib/dailyReport";
 
 export const statsRoutes = new Hono<Env>();
@@ -14,11 +15,9 @@ export const statsRoutes = new Hono<Env>();
 // 支援 ?month=YYYY-MM（缺省為當月）——A4 月份切換（v1.1.14）
 statsRoutes.get("/summary", requireAuth(), async (c) => {
   const month = c.req.query("month"); // YYYY-MM，缺省為當月
-  const { startMs, endMs } = taipeiMonthRangeUtc(month);
-  if (startMs === 0)
+  const { startIso, endIso } = taipeiMonthRangeIso(month);
+  if (startIso === "")
     return fail(c, 400, "VALIDATION_ERROR", "月份格式需為 YYYY-MM");
-  const startIso = new Date(startMs).toISOString();
-  const endIso = new Date(endMs).toISOString();
 
   const [open, inProgress, monthNew, monthDone, monthInitialOpen] =
     await Promise.all([
@@ -47,7 +46,7 @@ statsRoutes.get("/summary", requireAuth(), async (c) => {
       c.env.DB.prepare(
         `SELECT COUNT(*) AS n FROM tickets
        WHERE created_at < ?
-         AND (status NOT IN ('done','void')
+         AND (status NOT IN ${CLOSED_IN_SQL}
               OR (closed_at IS NOT NULL AND closed_at >= ?))`,
       )
         .bind(startIso, startIso)
@@ -68,12 +67,9 @@ statsRoutes.get("/summary", requireAuth(), async (c) => {
 // 例：?month=2026-08 → 2026-08 台灣當月發包的案件，各類別 amount 加總
 statsRoutes.get("/amount-by-category", requireAuth(), async (c) => {
   const month = c.req.query("month"); // YYYY-MM，缺省為當月
-  const { startMs, endMs } = taipeiMonthRangeUtc(month);
-  if (startMs === 0)
+  const { startIso, endIso } = taipeiMonthRangeIso(month);
+  if (startIso === "")
     return fail(c, 400, "VALIDATION_ERROR", "月份格式需為 YYYY-MM");
-
-  const startIso = new Date(startMs).toISOString();
-  const endIso = new Date(endMs).toISOString();
 
   // 以 amount_at（發包時間）為基準，各類別金額加總
   const rows = await c.env.DB.prepare(

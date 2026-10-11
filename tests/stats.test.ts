@@ -7,17 +7,18 @@
 // month_done 分子（時間軸視角）與 month_initial_open 分母（現狀快照視角）。
 // 本測試**記錄**這個失真，不修正 SQL（修正列入「更完整解法」v1.1.16 待評估）。
 //
-// ⚠️ 時間戳邊界提醒：src/routes/stats.ts 用 taipeiMonthRangeUtc() 計算月份邊界，
-// SQL 範圍是 [當月 1 日 00:00 台灣的 UTC, 下月 1 日 00:00 台灣的 UTC)。
-//   當月 1 日 00:00 台灣  = 當月 1 日 00:00 UTC − 8h
-//                        = 前月最後一天 16:00 UTC
-//   所以 SQL 月初邊界是「前月 16:00 UTC」而非「當月 00:00 UTC」。
-// 本測試 ticket 建單時間一律用 monthStart - 16h 保證落在月初前；
-// 事件時間用 monthStart + 1s 起跳，保證落在 SQL 月初之後。
+// ⚠️ 時間戳邊界提醒：SQL 認定的月初邊界直接取自 taipeiMonthRangeIso().startIso——
+// SQL 範圍是 [當月 1 日 00:00 台灣的 ISO, 下月 1 日 00:00 台灣的 ISO)。
+//   當月 1 日 00:00 台灣 = 前月最後一天 16:00 UTC（台灣 UTC+8）。
+// 注意：舊版手算「monthStart − 16h」其實多扣了一倍時差（正確是 −8h），只是恰好
+// 仍落在邊界之前才沒出事。建單要落在「月初前」（SQL 嚴格 created_at < startIso），
+// 本測試以 startIso − 1 分鐘保證嚴格小於；事件時間用 monthStart + 1s 起跳，
+// 保證落在 SQL 月初之後。
 
 import { SELF, env } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { mockLineVerify, loginAs } from "./harness";
+import { taipeiMonthRangeIso } from "../src/lib/time";
 
 const worker = SELF;
 
@@ -172,12 +173,14 @@ describe("A1 GET /api/stats/summary 行為鎖定（v1.1.15）", () => {
       month_new: number;
     };
 
-    // 建單時間：必須比 SQL 認定的「月初」（台灣 1 日 00:00 的 UTC，即前月最後一天 16:00 UTC）更早
-    // monthStart 只是「當月 1 日 00:00 UTC」的標籤；SQL 真正的邊界是 taipeiMonthRangeUtc()
-    // 算出的台灣當月 1 日 00:00 → UTC。我們用 monthStart 減 16 小時，保證落在 SQL 月初前。
+    // 建單時間：必須嚴格早於 SQL 月初邊界 startIso（台灣 1 日 00:00 ＝前月最後一天 16:00 UTC）。
+    // 邊界本身由 taipeiMonthRangeIso().startIso 直取（不再猜「monthStart−16h」的手算值——
+    // 那其實比邊界還早 8 小時，等於拿邊界的邊界用）；這裡取 startIso 再退 1 分鐘，
+    // 保證「嚴格小於」條件與真實世界「月初前建單」語意一致。
     const monthStart = currentMonth() + "-01T00:00:00.000Z";
+    const startIso = taipeiMonthRangeIso(currentMonth()).startIso;
     const beforeMonthStart = new Date(
-      Date.parse(monthStart) - 16 * 3600 * 1000,
+      Date.parse(startIso) - 60 * 1000,
     ).toISOString();
     const ticketIns = await env.DB.prepare(
       `INSERT INTO tickets (category_id, category_label, location_id, location_label, description,

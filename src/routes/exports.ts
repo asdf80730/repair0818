@@ -8,6 +8,7 @@ import { requireAuth, resolveUser } from "../lib/auth";
 import { exportQuerySchema } from "../lib/validate";
 import { toTaipeiDisplay, taipeiDate, taipeiDayRangeUtc } from "../lib/time";
 import { ticketNo } from "../lib/db";
+import { ACTIVE_IN_SQL } from "../lib/ticketStatus";
 import type { AppContext, Env } from "../lib/env";
 
 export const exportRoutes = new Hono<Env>();
@@ -162,7 +163,7 @@ async function buildCsv(c: AppContext) {
     sql += " AND t.status = ?";
     binds.push(status);
   } else if (status === "active") {
-    sql += " AND t.status IN ('open','in_progress')";
+    sql += ` AND t.status IN ${ACTIVE_IN_SQL}`;
   }
   if (from) {
     sql += " AND t.created_at >= ?";
