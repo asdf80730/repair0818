@@ -1,6 +1,6 @@
 # 擑機 DOM probe（jsdom 30）
 
-前端（`public/app.js`）的 DOM／focus／捲動行為用一支擑機 `.mjs` 核對，走 `jsdom`（`package.json` 的 dev 依賴）。九條不相容點（實測，jsdom 30.1.1）：
+前端（`public/app.js`）的 DOM／focus／捲動行為用一支擑機 `.mjs` 核對，走 `jsdom`（`package.json` 的 dev 依賴）。十條不相容點（實測，jsdom 30.1.1）：
 
 1. **`runScripts` 必填 `"dangerously"`**，否則 `window.eval(...)` 回 `null`，随后的 `TypeError: null is not an object` 出在 `helpers/runtime-script-errors.js`：
    `new JSDOM(html, { url: "http://localhost:8788/?mock=true#/list", runScripts: "dangerously" })`。
@@ -13,7 +13,8 @@
 6. **時序**：`localStorage` 需在 `w.eval(app)` **之前**寫好（頁面在 eval 期就讀），例元覆寫也在 eval 前；`app.js` 底本身會跑 `boot()`，故 eval 後再多排幾輪 `setTimeout(…, 0)` 讓 `fetch` 鏈落地。
 7. **`win.eval` 的宣告不落 `window`**（isolated context）→ 需真身函式時在**同一 eval 串**內顯式掛上：`window.initModal = initModal;`（`tests/harness.ts` 的 `bootMock` 已內建）。
 8. **JSDOM 實例的 `.document` 是 `undefined`**：`new JSDOM(...)` 只保證 `.window`；document 走 `w.window.document`。
-9. **多檔要逐檔 eval**：`win.eval(te + "\n" + app)` 會令尾段宣告失聯（例：`boot is not a function`）；逐檔分開——`win.eval(te); win.eval(pre); win.eval(app);`——同 window 即同 realm，宣告彼此可見。
+9. **多檔要逐檔 eval**：`win.eval(te + "\n" + app)` 會令尾段宣告失聯（例：`boot is not a function`）；逐檔分開——`win.eval(te); win.eval(pre); win.eval(app);`——同 window 即同 realm，宣告彼此可見。**機制（實測 2026-10-11）**：jsdom×Bun 的 `window.eval` 只在 strict directive 位於 Program 頂時提升 function 宣告——串接字串＝只有第一段享有頂部地位，後段 `app.js:5` 的 `"use strict"` 降為普通陳述、全 script 變 sloppy 語意，宣告全數失聯。
+10. **harness 必須載入 `templateEngine.js`**（先於 `app.js`）：production 由 `dynamic-index.ts` 以 `<script>` 先載；缺載時 `composeDailyMessage` 的 `globalThis.templateEngine.render` 拋例外被自家 try/catch 吞掉，**恆回硬編空案文案**——所有 daily-report 相關 jsdom probe 會假綠（資料對、渲染斷）。`tests/harness.ts` 已比照 production 順序補上 `win.eval(tpl)`。
 
 範本：`tests/init-modal.test.ts` 採雙池——node pool 以 jsdom（harness `bootMock`）測真身 `initModal`，workers pool 走內聯 shim。兩階層（workers pool／node shim）仍以 `bun run test`、`bun run test:local` 為準。
 

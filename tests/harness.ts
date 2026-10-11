@@ -95,7 +95,7 @@ export async function createTicket(
 // ── jsdom 裝載器（node pool 專屬；workers pool 無 jsdom/fs，以 hasJsdom 探測後跳過）─
 export const APP_PATH = "public/app.js";
 export const CSS_PATH = "public/style.css";
-
+export const TPL_PATH = "public/templateEngine.js";
 /** jsdom 僅 node pool 可用；本檔用 try/catch 讓 workers pool 平退。 */
 export async function hasJsdom(): Promise<boolean> {
   const m = await import("jsdom").catch(() => null);
@@ -107,6 +107,9 @@ export async function bootMock(hash: string) {
   const { JSDOM } = await import("jsdom");
   const fs = await import("node:fs");
   const app = fs.readFileSync(APP_PATH, "utf8") as string;
+  // 對應 production dynamic-index：templateEngine.js 必在 app.js 之前載入（掛 globalThis.templateEngine）
+  // 缺它＝composeDailyMessage 的 try/catch 吞掉 render 例外、恆回空案 fallback 文案
+  const tpl = fs.readFileSync(TPL_PATH, "utf8") as string;
   const css = fs.readFileSync(CSS_PATH, "utf8") as string;
   const html =
     `<!doctype html><html><head><style>${css}</style></head><body>` +
@@ -130,10 +133,15 @@ export async function bootMock(hash: string) {
     configurable: true,
   });
   // jsdom 30：win.eval 為 isolated context，宣告不落 window——同 eval 內顯式掛上
+  // 兩次 eval（非字串串接）：jsdom×Bun 的 window.eval 只有在 strict directive 位於
+  // Program 頂時才提升 function 宣告——串接會把 app.js 第 5 行 "use strict" 降為普通
+  // 陳述（全 script 變 sloppy）→ boot 等宣告全數消失。tpl 為 IIFE 掛 globalThis，獨立 eval 即可。
+  win.eval(tpl);
   win.eval(
     app +
       "\nwindow.initModal = initModal;window.restoreKey = restoreKey;" +
-      "window.remember = remember;window.loadInto = loadInto;",
+      "window.remember = remember;window.loadInto = loadInto;" +
+      "window.mockApi = mockApi;",
   );
   for (let i = 0; i < 12; i++) await new Promise((r) => win.setTimeout(r, 0));
   return { win, doc };
