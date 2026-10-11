@@ -361,7 +361,7 @@ function mockApi(path, options = {}) {
     });
   }
   // options（v1.1.7：支援 category_id 過濾、include_inactive、assoc=0 零關聯）
-  if (pathname === "/api/options") {
+  if (pathname === "/api/options" && method === "GET") {
     const type = url.searchParams.get("type");
     const categoryId = url.searchParams.get("category_id");
     const includeInactive = url.searchParams.get("include_inactive") === "1";
@@ -433,7 +433,21 @@ function mockApi(path, options = {}) {
   // 以類別為中心設定關聯（P7 modal，v1.1.7）
   const assocMatch = pathname.match(/^\/api\/options\/(\d+)\/assoc$/);
   if (assocMatch && method === "POST") {
-    return mok({ category_id: Number(assocMatch[1]), count: 0 });
+    const cid = Number(assocMatch[1]);
+    const body = JSON.parse(options.body || "{}");
+    const arr = mockOptions[body.type];
+    if (!arr) return merr("VALIDATION_ERROR", "type 不合法");
+    const memberIds = new Set(arr.map((x) => x.id));
+    // 以類別為中心全量覆寫：移除此類別該型別舊關聯再插入（對齊後端 assertValidAssoc 後的重寫）
+    for (let i = mockAssoc.length - 1; i >= 0; i--)
+      if (
+        mockAssoc[i].category_id === cid &&
+        memberIds.has(mockAssoc[i].option_id)
+      )
+        mockAssoc.splice(i, 1);
+    for (const oid of body.option_ids || [])
+      mockAssoc.push({ option_id: oid, category_id: cid });
+    return mok({ category_id: cid, count: (body.option_ids || []).length });
   }
   // tickets 列表
   if (pathname === "/api/tickets" && method === "GET") {
@@ -495,6 +509,46 @@ function mockApi(path, options = {}) {
       can_edit: true,
       updates,
     });
+  }
+  // FE3：編輯案件 PATCH——照真實 contract 套欄位＋system 留痕（原先走 catch-all 假成功）
+  if (detailMatch && method === "PATCH") {
+    const t = mockTickets.find((x) => x.id === Number(detailMatch[1]));
+    if (!t) return merr("NOT_FOUND", "案件不存在");
+    const body = JSON.parse(options.body || "{}");
+    if (body.category_id) {
+      const cat = mockOptions.category.find((o) => o.id === body.category_id);
+      if (cat) {
+        t.category_id = cat.id;
+        t.category_label = cat.label;
+      }
+    }
+    if (body.location_id) {
+      const loc = mockOptions.location.find((o) => o.id === body.location_id);
+      if (loc) {
+        t.location_id = loc.id;
+        t.location_label = loc.label;
+      }
+    }
+    if (body.description !== undefined) t.description = body.description;
+    if (body.vendor_id !== undefined) {
+      const v = body.vendor_id
+        ? mockVendors.find((x) => x.id === body.vendor_id)
+        : null;
+      t.vendor_name = v ? v.name : null;
+    }
+    t.last_activity_at = new Date().toISOString();
+    mockUpdates.unshift({
+      id: mockUpdates.length + 1,
+      ticket_id: t.id,
+      kind: "system",
+      status: t.status,
+      note: "編輯案件",
+      amount: null,
+      display_name: "測試用戶",
+      created_at: new Date().toISOString(),
+      photo_urls: [],
+    });
+    return mok({ ...t });
   }
   // v1.1.12：回報/留言（測已發包必填金額）
   const updatesMatch = pathname.match(/^\/api\/tickets\/(\d+)\/updates$/);
@@ -797,12 +851,106 @@ function mockApi(path, options = {}) {
     const id = 100 + (mockPhotosCount = (mockPhotosCount || 0) + 1);
     return mok({ id, url: `/api/photos/${id}` });
   }
-  // 其他 mutation 一律成功
-  if (method !== "GET") {
-    return mok({ ok: true });
+  // FE3（v1.1.35）：補齊曾被 catch-all 放行、前端實際會打的 mutation handler——寫入語意照
+  // 真實 contract（admin 保底／關聯全量覆寫）。未知路徑不再靜默：catch-all 假成功是
+  // e2e／mock 模式假綠的共同源頭，綠燈必須意味著「契约仍存在」。
+  const usersPatch = pathname.match(/^\/api\/users\/(\d+)$/);
+  if (usersPatch && method === "PATCH") {
+    const u = mockUsers.find((x) => x.id === Number(usersPatch[1]));
+    if (!u) return merr("NOT_FOUND", "用戶不存在");
+    const body = JSON.parse(options.body || "{}");
+    // admin 保底（與後端同語意）：唯一 active 管理員被降等／停用 → 擋
+    const wasAdmin = u.role === "admin" && u.active === 1;
+    const willLose =
+      (body.role !== undefined && body.role !== "admin") ||
+      (body.active !== undefined && Number(body.active) !== 1);
+    if (
+      wasAdmin &&
+      willLose &&
+      mockUsers.filter((x) => x.role === "admin" && x.active === 1).length <= 1
+    )
+      return merr("FORBIDDEN", "必須保留至少一位 active 管理員");
+    if (body.role !== undefined) u.role = body.role;
+    if (body.active !== undefined) u.active = Number(body.active);
+    return mok({ id: u.id, role: u.role, active: u.active });
   }
-  // 未知 GET → 空
-  return mok([]);
+  const nextOptionId = () =>
+    Math.max(
+      0,
+      ...Object.values(mockOptions)
+        .flat()
+        .map((x) => x.id),
+    ) + 1;
+  if (pathname === "/api/options" && method === "POST") {
+    const body = JSON.parse(options.body || "{}");
+    const arr = mockOptions[body.type];
+    if (!arr || !body.label)
+      return merr("VALIDATION_ERROR", "type/label 不合法");
+    const o = {
+      id: nextOptionId(),
+      label: body.label,
+      sort_order: body.sort_order ?? arr.length,
+      active: 1,
+    };
+    arr.push(o); // 全域唯一 id 使 mockAssoc 依 option_id 消歧義如真後端
+    if (Array.isArray(body.category_ids))
+      for (const cid of body.category_ids)
+        mockAssoc.push({ option_id: o.id, category_id: cid });
+    return mok(o);
+  }
+  const optionsPatch = pathname.match(/^\/api\/options\/(\d+)$/);
+  if (optionsPatch && method === "PATCH") {
+    const id = Number(optionsPatch[1]);
+    let o = null;
+    for (const [k, arr] of Object.entries(mockOptions)) {
+      if (k === "message_template") continue;
+      const hit = arr.find((x) => x.id === id);
+      if (hit) {
+        o = hit;
+        break;
+      }
+    }
+    if (!o) return merr("NOT_FOUND", "選項不存在");
+    const body = JSON.parse(options.body || "{}");
+    if (body.label !== undefined) o.label = body.label;
+    if (body.active !== undefined) o.active = Number(body.active);
+    if (Array.isArray(body.category_ids)) {
+      // 三態之一：全量覆寫此選項的關聯（id 全域唯一，無跨型歧義）
+      for (let i = mockAssoc.length - 1; i >= 0; i--)
+        if (mockAssoc[i].option_id === id) mockAssoc.splice(i, 1);
+      for (const cid of body.category_ids)
+        mockAssoc.push({ option_id: id, category_id: cid });
+    }
+    return mok(o);
+  }
+  if (pathname === "/api/vendors" && method === "POST") {
+    const body = JSON.parse(options.body || "{}");
+    if (!body.name) return merr("VALIDATION_ERROR", "name 必填");
+    const v = {
+      id: Math.max(0, ...mockVendors.map((x) => x.id)) + 1,
+      name: body.name,
+      sort_order: mockVendors.length,
+      active: 1,
+    };
+    mockVendors.push(v);
+    return mok(v);
+  }
+  const vendorPatch = pathname.match(/^\/api\/vendors\/(\d+)$/);
+  if (vendorPatch && method === "PATCH") {
+    const v = mockVendors.find((x) => x.id === Number(vendorPatch[1]));
+    if (!v) return merr("NOT_FOUND", "廠商不存在");
+    const body = JSON.parse(options.body || "{}");
+    if (body.name !== undefined) v.name = body.name;
+    if (body.active !== undefined) v.active = Number(body.active);
+    return mok(v);
+  }
+  // 未知路徑：顯性失敗，別讓綠燈說謊
+  if (method !== "GET")
+    return merr(
+      "NOT_IMPLEMENTED",
+      "mock 未實作此端點：" + method + " " + pathname,
+    );
+  return merr("NOT_FOUND", "mock 無此 GET 路由：" + pathname);
 }
 
 async function api(path, options = {}) {
