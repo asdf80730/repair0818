@@ -26,7 +26,7 @@
   ⚠ 執行環境需求：workerd 是 glibc binary，需在 glibc 環境（本機 mac/Windows/Linux、
   GitHub Actions 等）跑 `npm test`；Alpine musl 沙箱無法執行（缺 glibc + 1GB 對齊 mmap）。
   測試設定見 vitest.config.ts（main=Pages Functions build+asset binding + D1 migrations）。
-- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒；本專案 13 支 `tests/*.test.ts`、175 tests）。
+- **本地快速迴圈：`npm run test:local`**（v1.1.15 新增，不用 workerd，~10–60 秒；`tests/*.test.ts` 逐檔增補、別在此數檔數）。
   - 原理：vitest.node.config.ts 用 resolve.alias 把 `cloudflare:test` 指到
     `tests/node/cloudflare-test-shim.ts`——測試檔零改動。SELF.fetch 轉發到 Hono
     `app.request()`；D1 用 `node:sqlite` in-memory shim（tests/node/d1.ts）；R2 用 Map stub。
@@ -117,15 +117,15 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 ```
 
 **解法**：
-1. 環境變數有專案專用 token：`GITHUB_TOKEN_REPAIR0818`（**不可 echo / cat / print 它的值**；只引用 `$GITHUB_TOKEN_REPAIR0818`）
+1. 環境變數 `GH_TOKEN`（origin 內嵌 token 同名變數；本沙箱**只設這支**——文獻舊稿的 `GITHUB_TOKEN_REPAIR0818` 已不存在，實測 unset。值不可 echo／cat／print，只引用 `$GH_TOKEN`）
 2. push 時用注入式 URL（避免污染 `git remote` config）：
    ```bash
-   REMOTE_URL="https://x-access-token:${GITHUB_TOKEN_REPAIR0818}@github.com/asdf80730/repair0818.git"
+   REMOTE_URL="https://x-access-token:${GH_TOKEN}@github.com/asdf80730/repair0818.git"
    git -c user.name='asdf80730' -c user.email='asdf80730@users.noreply.github.com' push "$REMOTE_URL" main
    ```
 3. 身份用 `-c user.name/-c user.email` 注入，**不要** `git config --global` 改（會污染未來所有 commit）
 4. 身份用**遠端歷史最後一位作者**（`git log -1 --format='%an <%ae>' origin/main`），不要自己掰
-5. token **值**不寫進 memory / CLAUDE.md / commit message（可能 rotate；每次 push 前重新讀 env）；變數名（`GITHUB_TOKEN_REPAIR0818`）可寫，方便未來 AI 知道要用哪個
+5. token **值**不寫進 memory / CLAUDE.md / commit message（可能 rotate；每次 push 前重新讀 env）；變數名（`GH_TOKEN`）可寫，方便未來 AI 知道要用哪個
 
 ## 類別關聯（v1.1.7 起，AI 動作約束；設計契約見 SPEC §P7 與 §4.x API）
 - **`migrations/0001_initial.sql`（squash，含全部 schema＋seed）一字不可改**（已套用到 production，D1 `d1_migrations` 只套未套用）。任何變更一律寫新的 migration（0002 起）。
