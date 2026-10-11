@@ -2941,7 +2941,10 @@ pages.stats = function () {
   reportBox.appendChild(preview);
 
   // F4（v1.1.33）：載入並渲染 — 合併模板（daily）單支即拼出整篇成品
+  // stale 守衛：date/catSel 快改時舊回應丟棄；失敗不抹掉已渲染的好內容
+  let reportLoadToken = 0;
   async function loadReport() {
+    const token = ++reportLoadToken;
     const date = dateInput.value;
     const categoryId = catSel.value; // v1.1.22：'all'（全部類別）或類別 id 字串
     if (!date || !categoryId) {
@@ -2952,6 +2955,7 @@ pages.stats = function () {
       const r = await api(
         `/api/stats/daily-report?date=${date}&category_id=${encodeURIComponent(categoryId)}`,
       );
+      if (token !== reportLoadToken) return;
       const data = r.data;
       const tplBody =
         (data.templates && data.templates.daily && data.templates.daily.body) ||
@@ -2962,7 +2966,8 @@ pages.stats = function () {
         timeline_updates: data.timeline_updates,
       });
     } catch (e) {
-      preview.value = "";
+      if (token !== reportLoadToken) return;
+      reportBox.querySelectorAll(".error").forEach((n) => n.remove());
       reportBox.appendChild(
         el("p", {
           class: "error",
@@ -3688,8 +3693,11 @@ pages.admin = function () {
     // 載入該類別的地點（含 associated）；兩區都載完才啟用儲存（F1）
     let locLoaded = false;
     let descLoaded = false;
+    // F1 補強：載入失敗＝內容不可信，儲存保持停用（否則空 checkbox 集會被當
+    // 成「全部取消勾選」全量覆寫清空關聯——靜默 data loss 閘門）
+    let loadFailed = false;
     const maybeEnable = () => {
-      if (locLoaded && descLoaded) {
+      if (locLoaded && descLoaded && !loadFailed) {
         saveBtn.disabled = false;
         saveBtn.textContent = "儲存";
       }
@@ -3711,9 +3719,12 @@ pages.admin = function () {
         locLoaded = true;
         maybeEnable();
       })
-      .catch(() => {
+      .catch((e) => {
         locLoaded = true;
+        loadFailed = true;
+        saveBtn.textContent = "載入失敗";
         maybeEnable();
+        toast("關聯載入失敗：" + e.message);
       });
     // 載入該類別的說明（含 associated）
     api(
@@ -3735,9 +3746,12 @@ pages.admin = function () {
         descLoaded = true;
         maybeEnable();
       })
-      .catch(() => {
+      .catch((e) => {
         descLoaded = true;
+        loadFailed = true;
+        saveBtn.textContent = "載入失敗";
         maybeEnable();
+        toast("關聯載入失敗：" + e.message);
       });
   }
 
