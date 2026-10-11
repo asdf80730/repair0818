@@ -669,6 +669,7 @@ function mockApi(path, options = {}) {
       category_label: isAll ? "全部類別" : cat.label,
       new_cases,
       timeline_updates,
+      has_content: new_cases.length > 0 || timeline_updates.length > 0,
       templates: { daily: tpl("daily") },
     });
   }

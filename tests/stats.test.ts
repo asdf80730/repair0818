@@ -786,7 +786,7 @@ describe("F1 GET /api/stats/daily-report 行為鎖定（v1.1.15）", () => {
     expect(body.data.timeline_updates).toEqual([]);
     expect(typeof body.data.has_content).toBe("boolean");
     expect(body.data.has_content).toBe(false);
-    // v1.1.32：合併模板（daily）同時含兩段 each（seed 於 migration 0003）
+    // v1.1.33：合併模板（daily）同時含兩段 each（seed 於 migration 0003）
     expect(body.data.templates.daily.body).toContain("{{#each new_cases}}");
     expect(body.data.templates.daily.body).toContain(
       "{{#each timeline_updates}}",

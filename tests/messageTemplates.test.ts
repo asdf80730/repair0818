@@ -1,6 +1,6 @@
 // tests/messageTemplates.test.ts — F6 訊息模板 CRUD 測試（v1.1.15）
 //
-// 沿用既有 options 字典表（v1.1.20：type='message_template_new_case'/'message_template_timeline' 當鍵、label 欄存內容）
+// 沿用既有 options 字典表（v1.1.20：type 當鍵、label 欄存內容；v1.1.33：合併單支 type='message_template_daily'）
 // GET 三角色可讀，PUT 限 manager/admin
 // 不做新增、不做刪除、不做啟用切換（F7 業主決策）
 
@@ -36,7 +36,7 @@ describe("F6 GET /api/message-templates 行為鎖定（v1.1.15）", () => {
     expect(r.status).toBe(400);
   });
 
-  it("label 不在白名單（report/empty）→ 400", async () => {
+  it("label 不在白名單（v1.1.33：僅 daily）→ 400", async () => {
     const { cookie } = await loginAs("U-f6-badlabel", "管", "admin");
     const cat = await ensureCat("F6-test-badlabel");
     const r = await worker.fetch(

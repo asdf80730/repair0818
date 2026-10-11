@@ -1,6 +1,6 @@
 # 社區修繕管理系統 開發文件
 
-**版本：v1.1.32（定稿，可施工）** ｜ 日期：2026-10-08
+**版本：v1.1.33（定稿，可施工）** ｜ 日期：2026-10-10
 
 > 本文件為 v1.0～v1.1.25 各版合併後的完整規格，單獨即可作為施工依據；逐版變更見 §0.1 版本歷程，無需回查舊版。
 
@@ -251,7 +251,7 @@ CREATE TABLE options (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   type       TEXT NOT NULL,                        -- category / location / description / comment_desc
                                                    -- ＋ message_template_daily（v1.1.33 合併單支；v1.1.20 起 type 當鍵）
-  label      TEXT NOT NULL,                        -- 選項文字；message_template_% 列存模板內容（v1.1.20，body 欄已被 0013 砍掉）
+  label      TEXT NOT NULL,                        -- 選項文字；message_template_% 列存模板內容（v1.1.20，body 欄歷史 0013 已 squash 入 0001）
   sort_order INTEGER NOT NULL DEFAULT 0,
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -772,7 +772,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 - **回應結構**（v1.1.33：純資料 + 合併模板 daily 單支 body，前端負責渲染成品）：
   ```jsonc
   {
-    "date": 1787414400000, // taipeiDayRangeUtc(date).startMs（UTC 毫秒數字）
+    "date": "2026-08-18", // 同 query 原值（YYYY-MM-DD 字串）；區間由 taipeiDayRangeUtc 換算 startMs/endMs
     "category_id": 1, // v1.1.22：category_id=all 時回 null
     "category_label": "水電", // v1.1.22：all 時固定「全部類別」
     "new_cases": [
@@ -856,7 +856,7 @@ GROUP BY category_label ORDER BY total_amount DESC
 ### 4.9 訊息模板 CRUD（F6/F8，v1.1.15；v1.1.20 欄位重新分配）
 
 > 不新開表，沿用既有 `options` 字典表。F12-2 業主決策。
-> **v1.1.20（業主決策）**：`type` 欄直接當模板鍵（前綴 `message_template_`）、`label` 欄存模板內容，**砍掉 `body` 欄**（migration 0013）。舊的 `type='message_template'`＋`label` 當鍵＋`body` 存內容設計廢止；v1.1.15 的 `report` / `empty` 兩行一併刪除（無用途）。
+> **v1.1.20（業主決策）**：`type` 欄直接當模板鍵（前綴 `message_template_`）、`label` 欄存模板內容，**砍掉 `body` 欄**（歷史 migration 0013，已 squash 入 0001）。舊的 `type='message_template'`＋`label` 當鍵＋`body` 存內容設計廢止；v1.1.15 的 `report` / `empty` 兩行一併刪除（無用途）。
 > **v1.1.33（業主拍板）**：兩支模板合併為單一支 `message_template_daily`（migration 0003 幂等：DELETE 舊鍵＋`INSERT OR IGNORE` 新列）。對外 API 形狀不變：query/response 的 `label` 是鍵、`body` 是內容（取自 `label` 欄）。
 
 **GET `/api/message-templates?category_id=N&label=daily`（`label` 選填，預設 `daily`）；`ALLOWED_LABELS = [daily]`，其它值 → `400 VALIDATION_ERROR`**

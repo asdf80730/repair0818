@@ -113,7 +113,7 @@ statsRoutes.get("/amount-by-category", requireAuth(), async (c) => {
 
 // GET /api/stats/daily-report — 三角色皆可（F1 v1.1.15；v1.1.16 簡化回應格式）
 // Query 必填：date=YYYY-MM-DD、category_id=N 或 'all'（v1.1.22：全部類別，固定用全域預設模板）
-// 回傳純資料 + new_case / timeline 兩模板 body（v1.1.16：前端自行渲染並拼成成品）
+// 回傳純資料 + 合併模板 daily 單支 body（v1.1.33：new_case/timeline 併為單支；v1.1.16：前端自行渲染並拼成成品）
 // 用途：保全每天對委員發 LINE 群組報告該類別（或全部類別）當日案件動態
 const ALL_CATEGORIES = "all";
 statsRoutes.get("/daily-report", requireAuth(), async (c) => {
