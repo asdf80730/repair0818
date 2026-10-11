@@ -14,27 +14,49 @@ import {
 import { nowIso } from "../lib/time";
 import { assertValidAssoc, assertCategoryIds, buildPatch } from "../lib/db";
 import type { Env } from "../lib/env";
+import type { AppContext } from "../lib/env";
 
-// E5：D1 batch 對單次語句數有上限（約 100 條），把 INSERT OR IGNORE 分批（每批 ≤50），避免超出
-const ASSOC_BATCH_SIZE = 50;
-async function writeOptionAssociations(
-  c: import("../lib/env").AppContext,
-  optionId: number,
-  categoryIds: number[],
+// chunk 上限單源（E5：D1 batch 單次語句數 ~100；B4：IN 綁定參數上限同量級）
+// —— INSERT OR IGNORE 分批與 IN 存在性讀一律走這個數
+const ASSOC_CHUNK = 50;
+// 關聯關聯表寫入的唯一 INSERT（:33 與旧 assoc 內聯版原本各寫一份，消重於此）
+const ASSOC_INSERT_SQL =
+  "INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)";
+
+/** 關聯全量覆寫的共用寫法：先跑呼叫端備好的 DELETE，再以 pairs 分批 INSERT OR IGNORE。
+ *  正向（option→categories）與反向（category→options）只差在 DELETE 形狀與 pairs 的鍵序，
+ *  chunk 上限與 INSERT SQL 單源在此。 */
+async function rewriteAssociations(
+  c: AppContext,
+  opts: {
+    deleteStmt: D1PreparedStatement;
+    /** [option_id, category_id] 成對；空陣串＝只清舊關聯 */
+    pairs: [number, number][];
+  },
 ): Promise<void> {
-  await c.env.DB.prepare("DELETE FROM option_categories WHERE option_id = ?")
-    .bind(optionId)
-    .run();
-  for (let i = 0; i < categoryIds.length; i += ASSOC_BATCH_SIZE) {
-    const chunk = categoryIds.slice(i, i + ASSOC_BATCH_SIZE);
+  await opts.deleteStmt.run();
+  for (let i = 0; i < opts.pairs.length; i += ASSOC_CHUNK) {
+    const chunk = opts.pairs.slice(i, i + ASSOC_CHUNK);
     await c.env.DB.batch(
-      chunk.map((cid) =>
-        c.env.DB.prepare(
-          "INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)",
-        ).bind(optionId, cid),
+      chunk.map(([optionId, categoryId]) =>
+        c.env.DB.prepare(ASSOC_INSERT_SQL).bind(optionId, categoryId),
       ),
     );
   }
+}
+
+/** 以 option 為中心的全量覆寫（POST/PATCH 的 category_ids 三態由呼叫端把關） */
+async function writeOptionAssociations(
+  c: AppContext,
+  optionId: number,
+  categoryIds: number[],
+): Promise<void> {
+  await rewriteAssociations(c, {
+    deleteStmt: c.env.DB.prepare(
+      "DELETE FROM option_categories WHERE option_id = ?",
+    ).bind(optionId),
+    pairs: categoryIds.map((cid): [number, number] => [optionId, cid]),
+  });
 }
 
 export const optionRoutes = new Hono<Env>();
@@ -300,9 +322,8 @@ optionRoutes.post(
 
     // 驗證所有 option_ids 都是指定 type（純讀，任何寫入之前；B4：IN 分塊避免超綁定上限）
     if (optionIds.length > 0) {
-      const IN_CHUNK = 50;
-      for (let i = 0; i < optionIds.length; i += IN_CHUNK) {
-        const chunk = optionIds.slice(i, i + IN_CHUNK);
+      for (let i = 0; i < optionIds.length; i += ASSOC_CHUNK) {
+        const chunk = optionIds.slice(i, i + ASSOC_CHUNK);
         const placeholders = chunk.map(() => "?").join(",");
         const opts = await c.env.DB.prepare(
           `SELECT id FROM options WHERE id IN (${placeholders}) AND type = ?`,
@@ -319,23 +340,14 @@ optionRoutes.post(
       }
     }
 
-    // 全量覆寫：先刪該類別對該 type 的所有關聯，再分批插入（E5：避免超過 D1 batch 語句上限）
-    await c.env.DB.prepare(
-      `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
-      (SELECT id FROM options WHERE type = ?)`,
-    )
-      .bind(id, body.type)
-      .run();
-    for (let i = 0; i < optionIds.length; i += ASSOC_BATCH_SIZE) {
-      const chunk = optionIds.slice(i, i + ASSOC_BATCH_SIZE);
-      await c.env.DB.batch(
-        chunk.map((oid) =>
-          c.env.DB.prepare(
-            "INSERT OR IGNORE INTO option_categories (option_id, category_id) VALUES (?, ?)",
-          ).bind(oid, id),
-        ),
-      );
-    }
+    // 全量覆寫：DELETE 形狀由此端點決定，chunk＋INSERT SQL 單源走 rewriteAssociations
+    await rewriteAssociations(c, {
+      deleteStmt: c.env.DB.prepare(
+        `DELETE FROM option_categories WHERE category_id = ? AND option_id IN
+        (SELECT id FROM options WHERE type = ?)`,
+      ).bind(id, body.type),
+      pairs: optionIds.map((oid): [number, number] => [oid, id]),
+    });
 
     return ok(c, { category_id: id, type: body.type, count: optionIds.length });
   },
