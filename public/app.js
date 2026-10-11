@@ -2052,392 +2052,400 @@ pages.new = function () {
 };
 
 // P3 案件詳情（§5.3）
-pages.ticket = async function (id) {
+pages.ticket = function (id) {
   const root = document.getElementById("page");
-  renderLoading(root, "載入案件…");
+  return loadInto(
+    root,
+    () => api("/api/tickets/" + id),
+    async (body) => {
+      root.innerHTML = "";
+      const t = body.data;
 
-  let body;
-  try {
-    body = await api("/api/tickets/" + id);
-  } catch (e) {
-    clearLoading(root);
-    root.appendChild(el("p", { class: "error", text: e.message }));
-    return;
-  }
-  const t = body.data;
+      // ---- 權限 ----
+      const isMgr = me && (me.role === "manager" || me.role === "admin");
+      const canStatus =
+        isMgr && (t.status === "open" || t.status === "in_progress");
+      const canShare = !!me;
+      const canEdit = t.can_edit; // E1 方案B：後端已算好（manager/admin 全改、committee 僅自己建的單）
+      const canVoid = me && (me.role === "manager" || me.role === "admin");
+      const canReopen =
+        me &&
+        me.role === "admin" &&
+        (t.status === "done" || t.status === "void");
+      const canReshare = me && (me.role === "manager" || me.role === "admin");
+      const canDo = canShare || canEdit || canVoid || canReopen || canReshare;
 
-  // ---- 權限 ----
-  const isMgr = me && (me.role === "manager" || me.role === "admin");
-  const canStatus =
-    isMgr && (t.status === "open" || t.status === "in_progress");
-  const canShare = !!me;
-  const canEdit = t.can_edit; // E1 方案B：後端已算好（manager/admin 全改、committee 僅自己建的單）
-  const canVoid = me && (me.role === "manager" || me.role === "admin");
-  const canReopen =
-    me && me.role === "admin" && (t.status === "done" || t.status === "void");
-  const canReshare = me && (me.role === "manager" || me.role === "admin");
-  const canDo = canShare || canEdit || canVoid || canReopen || canReshare;
+      // ---- Topbar：返回 + 標題 + 右上 ⋮（點 ⋮ 才建選單）----
+      const topbar = el("header", { class: "topbar" }, [
+        el("button", {
+          class: "btn btn-ghost",
+          text: "← 返回",
+          onclick: () => {
+            location.hash = "#/";
+          },
+        }),
+        el("h1", { text: "案件詳情" }),
+      ]);
+      if (canDo) {
+        const menuBtn = el("button", {
+          class: "btn btn-ghost btn-icon",
+          text: "⋮",
+          "aria-label": "更多操作",
+        });
+        menuBtn.addEventListener("click", () => {
+          const overlay = el("div", {
+            class: "menu-overlay",
+            onclick: (e) => {
+              if (e.target === overlay) overlay.remove();
+            },
+          });
+          const menu = el("div", { class: "menu-popover" });
+          let shareInput = null;
+          if (canShare) {
+            shareInput = el("input", {
+              class: "input",
+              value: location.origin + t.share_url,
+              readonly: "true",
+            });
+            menu.appendChild(
+              el("div", { class: "menu-item" }, [
+                el("span", { text: "分享連結" }),
+                el("div", { class: "share-row" }, [
+                  shareInput,
+                  el("button", {
+                    class: "btn",
+                    text: "複製",
+                    onclick: () => copyText(shareInput.value),
+                  }),
+                ]),
+              ]),
+            );
+          }
+          if (canEdit && (t.status === "open" || t.status === "in_progress")) {
+            menu.appendChild(
+              el("button", {
+                class: "menu-item",
+                text: "✏️ 編輯案件",
+                onclick: () => {
+                  overlay.remove();
+                  location.hash = `#/edit/${id}`;
+                },
+              }),
+            );
+          }
+          if (canVoid && (t.status === "open" || t.status === "in_progress")) {
+            menu.appendChild(
+              el("button", {
+                class: "menu-item danger",
+                text: "🗑 作廢案件",
+                onclick: async () => {
+                  overlay.remove();
+                  const note = prompt("作廢原因（選填）");
+                  if (note === null) return;
+                  if (!confirm("確定作廢此案件？")) return;
+                  try {
+                    await api(`/api/tickets/${id}/void`, {
+                      method: "POST",
+                      body: JSON.stringify({ note: note || undefined }),
+                    });
+                    router(); /* A5 v1.1.15：局部刷新 */
+                  } catch (e) {
+                    toast(e.message);
+                  }
+                },
+              }),
+            );
+          }
+          if (canReopen) {
+            menu.appendChild(
+              el("button", {
+                class: "menu-item",
+                text: "↩️ 重新開啟",
+                onclick: () => {
+                  overlay.remove();
+                  const sel = el("select", { class: "select" });
+                  sel.appendChild(
+                    el("option", { value: "in_progress", text: "處理中" }),
+                  );
+                  sel.appendChild(
+                    el("option", { value: "open", text: "待處理" }),
+                  );
+                  const noteEl = el("textarea", {
+                    class: "textarea",
+                    placeholder: "備註（選填）",
+                  });
+                  const modal = el("div", { class: "modal-mask" }, [
+                    el("div", { class: "modal" }, [
+                      el("h3", { text: "重新開啟案件" }),
+                      el("label", { text: "狀態" }),
+                      sel,
+                      el("label", { text: "備註" }),
+                      noteEl,
+                      el("div", { class: "modal-actions" }, [
+                        el("button", {
+                          class: "btn btn-ghost",
+                          text: "取消",
+                          onclick: () => modal.remove(),
+                        }),
+                        el("button", {
+                          class: "btn btn-primary",
+                          text: "確認重新開啟",
+                          onclick: async () => {
+                            try {
+                              await api(`/api/tickets/${id}/reopen`, {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  status: sel.value,
+                                  note: noteEl.value || undefined,
+                                }),
+                              });
+                              router(); /* A5 v1.1.15：局部刷新 */
+                            } catch (e) {
+                              toast(e.message);
+                            }
+                          },
+                        }),
+                      ]),
+                    ]),
+                  ]);
+                  initModal(modal, sel);
+                },
+              }),
+            );
+          }
+          if (canReshare) {
+            menu.appendChild(
+              el("button", {
+                class: "menu-item",
+                text: "🔄 重新產生分享連結",
+                onclick: async () => {
+                  try {
+                    const b = await api(`/api/tickets/${id}/share-token`, {
+                      method: "POST",
+                    });
+                    if (shareInput)
+                      shareInput.value = location.origin + b.data.share_url;
+                  } catch (e) {
+                    toast(e.message);
+                  }
+                },
+              }),
+            );
+          }
+          overlay.appendChild(menu);
+          document.body.appendChild(overlay);
+        });
+        topbar.appendChild(menuBtn);
+      }
+      root.appendChild(topbar);
 
-  // ---- Topbar：返回 + 標題 + 右上 ⋮（點 ⋮ 才建選單）----
-  const topbar = el("header", { class: "topbar" }, [
-    el("button", {
-      class: "btn btn-ghost",
-      text: "← 返回",
-      onclick: () => {
-        location.hash = "#/";
-      },
-    }),
-    el("h1", { text: "案件詳情" }),
-  ]);
-  if (canDo) {
-    const menuBtn = el("button", {
-      class: "btn btn-ghost btn-icon",
-      text: "⋮",
-      "aria-label": "更多操作",
-    });
-    menuBtn.addEventListener("click", () => {
-      const overlay = el("div", {
-        class: "menu-overlay",
-        onclick: (e) => {
-          if (e.target === overlay) overlay.remove();
+      // ---- 案件資訊（緊湊）----
+      const info = el("div", { class: "card ticket-detail" }, [
+        el("div", { class: "detail-head" }, [
+          el("h2", { text: t.title }),
+          statusBadge(t.status),
+        ]),
+        el("p", {
+          class: "detail-line",
+          text: `類別：${t.category_label}｜地點：${t.location_label}`,
+        }),
+        el("p", {
+          class: "detail-line",
+          text: `廠商：${t.vendor_name || "未指派"}`,
+        }),
+        t.amount != null
+          ? el("p", {
+              class: "detail-line amount-line",
+              text: `發包金額：$${t.amount.toLocaleString()}`,
+            })
+          : null,
+        t.description ? el("p", { class: "desc", text: t.description }) : null,
+        el("p", {
+          class: "meta",
+          text: `建立 ${fmtTime(t.created_at)} · 最後活動 ${fmtTime(t.last_activity_at)}`,
+        }),
+      ]);
+      root.appendChild(info);
+
+      // ---- 照片牆（F7：主照片也用 thumb() 支援 Lightbox，與時間軸一致）----
+      if (t.photos && t.photos.length) {
+        const wall = el("div", { class: "photo-wall" });
+        for (const p of t.photos) wall.appendChild(thumb(p.url)); // v1.1.13：photos 為 {id,url}
+        root.appendChild(wall);
+      }
+
+      // ---- 時間軸（主角）----
+      root.appendChild(el("h3", { class: "section-title", text: "時間軸" }));
+      const timeline = el("div", { class: "timeline" });
+      for (const u of t.updates) timeline.appendChild(renderUpdate(u));
+      root.appendChild(timeline);
+
+      // ---- 隱藏式留言/回報（點按鈕展開）----
+      const commentWrap = el("div", { class: "comment-hidden" });
+      const commentToggle = el("button", {
+        class: "btn btn-primary btn-block",
+        text: canStatus ? "💬 留言／回報" : "💬 留言",
+        onclick: () => {
+          if (commentWrap.style.display === "block") {
+            commentWrap.style.display = "none";
+            commentToggle.textContent = canStatus ? "💬 留言／回報" : "💬 留言";
+            return;
+          }
+          commentWrap.style.display = "block";
+          commentToggle.textContent = "收起";
         },
       });
-      const menu = el("div", { class: "menu-popover" });
-      let shareInput = null;
-      if (canShare) {
-        shareInput = el("input", {
-          class: "input",
-          value: location.origin + t.share_url,
-          readonly: "true",
-        });
-        menu.appendChild(
-          el("div", { class: "menu-item" }, [
-            el("span", { text: "分享連結" }),
-            el("div", { class: "share-row" }, [
-              shareInput,
-              el("button", {
-                class: "btn",
-                text: "複製",
-                onclick: () => copyText(shareInput.value),
-              }),
-            ]),
-          ]),
+      const commentInput = el("textarea", {
+        class: "textarea",
+        placeholder: "留言…",
+      });
+      const commentPhotos = [];
+      let commentSubmitting = false; // D5：防重複點擊
+      // 共用 photo picker（v1.1.13）
+      const commentPicker = attachPhotoPicker(commentPhotos);
+      const commentFile = commentPicker.input;
+      const commentPreview = commentPicker.preview;
+
+      // 回報範本下拉＋附加（manager/admin，v1.1.9；改 type='comment_desc'，通用不依類別過濾）
+      let commentDescRow = null;
+      if (isMgr) {
+        const cDescSelect = el("select", { class: "select" });
+        cDescSelect.appendChild(
+          el("option", { value: "", text: "選擇回報範本…" }),
         );
-      }
-      if (canEdit && (t.status === "open" || t.status === "in_progress")) {
-        menu.appendChild(
-          el("button", {
-            class: "menu-item",
-            text: "✏️ 編輯案件",
-            onclick: () => {
-              overlay.remove();
-              location.hash = `#/edit/${id}`;
-            },
-          }),
-        );
-      }
-      if (canVoid && (t.status === "open" || t.status === "in_progress")) {
-        menu.appendChild(
-          el("button", {
-            class: "menu-item danger",
-            text: "🗑 作廢案件",
-            onclick: async () => {
-              overlay.remove();
-              const note = prompt("作廢原因（選填）");
-              if (note === null) return;
-              if (!confirm("確定作廢此案件？")) return;
-              try {
-                await api(`/api/tickets/${id}/void`, {
-                  method: "POST",
-                  body: JSON.stringify({ note: note || undefined }),
-                });
-                router(); /* A5 v1.1.15：局部刷新 */
-              } catch (e) {
-                toast(e.message);
-              }
-            },
-          }),
-        );
-      }
-      if (canReopen) {
-        menu.appendChild(
-          el("button", {
-            class: "menu-item",
-            text: "↩️ 重新開啟",
-            onclick: () => {
-              overlay.remove();
-              const sel = el("select", { class: "select" });
-              sel.appendChild(
-                el("option", { value: "in_progress", text: "處理中" }),
+        ensureCatalog()
+          .then(() => {
+            const allDescs = catalogCache?.comment_descs || [];
+            for (const o of allDescs) {
+              cDescSelect.appendChild(
+                el("option", { value: o.label, text: o.label }),
               );
-              sel.appendChild(el("option", { value: "open", text: "待處理" }));
-              const noteEl = el("textarea", {
-                class: "textarea",
-                placeholder: "備註（選填）",
-              });
-              const modal = el("div", { class: "modal-mask" }, [
-                el("div", { class: "modal" }, [
-                  el("h3", { text: "重新開啟案件" }),
-                  el("label", { text: "狀態" }),
-                  sel,
-                  el("label", { text: "備註" }),
-                  noteEl,
-                  el("div", { class: "modal-actions" }, [
-                    el("button", {
-                      class: "btn btn-ghost",
-                      text: "取消",
-                      onclick: () => modal.remove(),
-                    }),
-                    el("button", {
-                      class: "btn btn-primary",
-                      text: "確認重新開啟",
-                      onclick: async () => {
-                        try {
-                          await api(`/api/tickets/${id}/reopen`, {
-                            method: "POST",
-                            body: JSON.stringify({
-                              status: sel.value,
-                              note: noteEl.value || undefined,
-                            }),
-                          });
-                          router(); /* A5 v1.1.15：局部刷新 */
-                        } catch (e) {
-                          toast(e.message);
-                        }
-                      },
-                    }),
-                  ]),
-                ]),
-              ]);
-              initModal(modal, sel);
-            },
-          }),
-        );
+            }
+          })
+          .catch(() => {});
+        const cDescAdd = el("button", {
+          class: "btn",
+          text: "＋ 附加",
+          onclick: () => {
+            const label = cDescSelect.value;
+            if (!label) return;
+            const cur = commentInput.value;
+            if (hasSegment(cur, label)) return;
+            commentInput.value = cur ? cur + "、" + label : label;
+            cDescSelect.value = "";
+          },
+        });
+        commentDescRow = el("div", { class: "add-row" }, [
+          cDescSelect,
+          cDescAdd,
+        ]);
       }
-      if (canReshare) {
-        menu.appendChild(
-          el("button", {
-            class: "menu-item",
-            text: "🔄 重新產生分享連結",
-            onclick: async () => {
-              try {
-                const b = await api(`/api/tickets/${id}/share-token`, {
-                  method: "POST",
-                });
-                if (shareInput)
-                  shareInput.value = location.origin + b.data.share_url;
-              } catch (e) {
-                toast(e.message);
-              }
-            },
-          }),
-        );
-      }
-      overlay.appendChild(menu);
-      document.body.appendChild(overlay);
-    });
-    topbar.appendChild(menuBtn);
-  }
-  clearLoading(root);
-  root.appendChild(topbar);
-
-  // ---- 案件資訊（緊湊）----
-  const info = el("div", { class: "card ticket-detail" }, [
-    el("div", { class: "detail-head" }, [
-      el("h2", { text: t.title }),
-      statusBadge(t.status),
-    ]),
-    el("p", {
-      class: "detail-line",
-      text: `類別：${t.category_label}｜地點：${t.location_label}`,
-    }),
-    el("p", {
-      class: "detail-line",
-      text: `廠商：${t.vendor_name || "未指派"}`,
-    }),
-    t.amount != null
-      ? el("p", {
-          class: "detail-line amount-line",
-          text: `發包金額：$${t.amount.toLocaleString()}`,
-        })
-      : null,
-    t.description ? el("p", { class: "desc", text: t.description }) : null,
-    el("p", {
-      class: "meta",
-      text: `建立 ${fmtTime(t.created_at)} · 最後活動 ${fmtTime(t.last_activity_at)}`,
-    }),
-  ]);
-  root.appendChild(info);
-
-  // ---- 照片牆（F7：主照片也用 thumb() 支援 Lightbox，與時間軸一致）----
-  if (t.photos && t.photos.length) {
-    const wall = el("div", { class: "photo-wall" });
-    for (const p of t.photos) wall.appendChild(thumb(p.url)); // v1.1.13：photos 為 {id,url}
-    root.appendChild(wall);
-  }
-
-  // ---- 時間軸（主角）----
-  root.appendChild(el("h3", { class: "section-title", text: "時間軸" }));
-  const timeline = el("div", { class: "timeline" });
-  for (const u of t.updates) timeline.appendChild(renderUpdate(u));
-  root.appendChild(timeline);
-
-  // ---- 隱藏式留言/回報（點按鈕展開）----
-  const commentWrap = el("div", { class: "comment-hidden" });
-  const commentToggle = el("button", {
-    class: "btn btn-primary btn-block",
-    text: canStatus ? "💬 留言／回報" : "💬 留言",
-    onclick: () => {
-      if (commentWrap.style.display === "block") {
-        commentWrap.style.display = "none";
-        commentToggle.textContent = canStatus ? "💬 留言／回報" : "💬 留言";
-        return;
-      }
-      commentWrap.style.display = "block";
-      commentToggle.textContent = "收起";
-    },
-  });
-  const commentInput = el("textarea", {
-    class: "textarea",
-    placeholder: "留言…",
-  });
-  const commentPhotos = [];
-  let commentSubmitting = false; // D5：防重複點擊
-  // 共用 photo picker（v1.1.13）
-  const commentPicker = attachPhotoPicker(commentPhotos);
-  const commentFile = commentPicker.input;
-  const commentPreview = commentPicker.preview;
-
-  // 回報範本下拉＋附加（manager/admin，v1.1.9；改 type='comment_desc'，通用不依類別過濾）
-  let commentDescRow = null;
-  if (isMgr) {
-    const cDescSelect = el("select", { class: "select" });
-    cDescSelect.appendChild(el("option", { value: "", text: "選擇回報範本…" }));
-    ensureCatalog()
-      .then(() => {
-        const allDescs = catalogCache?.comment_descs || [];
-        for (const o of allDescs) {
-          cDescSelect.appendChild(
-            el("option", { value: o.label, text: o.label }),
+      const statusSelect = el("select", { class: "select" });
+      statusSelect.appendChild(
+        el("option", { value: "", text: "僅留言（不更新狀態）" }),
+      );
+      if (canStatus) {
+        // F3（v1.1.14 決策）：依案件狀態決定可轉移目標
+        //   open→[in_progress,done]；in_progress→[in_progress(多次發包覆寫),done]
+        if (t.status === "open") {
+          statusSelect.appendChild(
+            el("option", { value: "in_progress", text: "🟡 標記已發包" }),
+          );
+          statusSelect.appendChild(
+            el("option", { value: "done", text: "🟢 標記完成並結案" }),
+          );
+        } else if (t.status === "in_progress") {
+          statusSelect.appendChild(
+            el("option", { value: "in_progress", text: "🟡 更新發包金額" }),
+          );
+          statusSelect.appendChild(
+            el("option", { value: "done", text: "🟢 標記完成並結案" }),
           );
         }
-      })
-      .catch(() => {});
-    const cDescAdd = el("button", {
-      class: "btn",
-      text: "＋ 附加",
-      onclick: () => {
-        const label = cDescSelect.value;
-        if (!label) return;
-        const cur = commentInput.value;
-        if (hasSegment(cur, label)) return;
-        commentInput.value = cur ? cur + "、" + label : label;
-        cDescSelect.value = "";
-      },
-    });
-    commentDescRow = el("div", { class: "add-row" }, [cDescSelect, cDescAdd]);
-  }
-  const statusSelect = el("select", { class: "select" });
-  statusSelect.appendChild(
-    el("option", { value: "", text: "僅留言（不更新狀態）" }),
+      }
+      // v1.1.12：選「已發包」時顯示金額輸入框（必填）
+      const amountInput = el("input", {
+        type: "number",
+        class: "input",
+        placeholder: "發包金額（必填）",
+        style: "display:none",
+      });
+      statusSelect.addEventListener("change", () => {
+        amountInput.style.display =
+          statusSelect.value === "in_progress" ? "" : "none";
+      });
+      const fileRow = el("div", { class: "file-row" }, [
+        commentFile,
+        el("span", { text: "可附照片" }),
+      ]);
+      commentWrap.appendChild(
+        el("div", { class: "comment-box" }, [
+          commentInput,
+          commentDescRow,
+          fileRow,
+          commentPreview,
+          canStatus ? statusSelect : null,
+          canStatus ? amountInput : null,
+          el("button", {
+            class: "btn btn-primary",
+            text: "送出",
+            onclick: async () => {
+              if (commentSubmitting) return; // D5：防重複點擊
+              if (!commentInput.value.trim()) {
+                toast("請輸入留言");
+                return;
+              }
+              const status = statusSelect.value;
+              if (status === "done" && !confirm("標記為已完成並結案？")) return;
+              // v1.1.12：已發包必填金額
+              if (
+                status === "in_progress" &&
+                (!amountInput.value || Number(amountInput.value) <= 0)
+              ) {
+                toast("已發包需填寫金額");
+                return;
+              }
+              commentSubmitting = true;
+              try {
+                if (status) {
+                  const payload = {
+                    status,
+                    note: commentInput.value.trim(),
+                    photo_ids: commentPhotos.length ? commentPhotos : undefined,
+                  };
+                  if (status === "in_progress")
+                    payload.amount = Number(amountInput.value);
+                  await api(`/api/tickets/${id}/updates`, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                  });
+                } else {
+                  await api(`/api/tickets/${id}/comments`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      note: commentInput.value.trim(),
+                      photo_ids: commentPhotos.length
+                        ? commentPhotos
+                        : undefined,
+                    }),
+                  });
+                }
+                // A5（v1.1.15）：不再 location.reload()，改用 router() 局部刷新時間軸
+                router();
+              } catch (e) {
+                commentSubmitting = false;
+                toast(e.message);
+              }
+            },
+          }),
+        ]),
+      );
+      commentWrap.style.display = "none";
+      root.appendChild(commentToggle);
+      root.appendChild(commentWrap);
+    },
+    { label: "載入案件…" },
   );
-  if (canStatus) {
-    // F3（v1.1.14 決策）：依案件狀態決定可轉移目標
-    //   open→[in_progress,done]；in_progress→[in_progress(多次發包覆寫),done]
-    if (t.status === "open") {
-      statusSelect.appendChild(
-        el("option", { value: "in_progress", text: "🟡 標記已發包" }),
-      );
-      statusSelect.appendChild(
-        el("option", { value: "done", text: "🟢 標記完成並結案" }),
-      );
-    } else if (t.status === "in_progress") {
-      statusSelect.appendChild(
-        el("option", { value: "in_progress", text: "🟡 更新發包金額" }),
-      );
-      statusSelect.appendChild(
-        el("option", { value: "done", text: "🟢 標記完成並結案" }),
-      );
-    }
-  }
-  // v1.1.12：選「已發包」時顯示金額輸入框（必填）
-  const amountInput = el("input", {
-    type: "number",
-    class: "input",
-    placeholder: "發包金額（必填）",
-    style: "display:none",
-  });
-  statusSelect.addEventListener("change", () => {
-    amountInput.style.display =
-      statusSelect.value === "in_progress" ? "" : "none";
-  });
-  const fileRow = el("div", { class: "file-row" }, [
-    commentFile,
-    el("span", { text: "可附照片" }),
-  ]);
-  commentWrap.appendChild(
-    el("div", { class: "comment-box" }, [
-      commentInput,
-      commentDescRow,
-      fileRow,
-      commentPreview,
-      canStatus ? statusSelect : null,
-      canStatus ? amountInput : null,
-      el("button", {
-        class: "btn btn-primary",
-        text: "送出",
-        onclick: async () => {
-          if (commentSubmitting) return; // D5：防重複點擊
-          if (!commentInput.value.trim()) {
-            toast("請輸入留言");
-            return;
-          }
-          const status = statusSelect.value;
-          if (status === "done" && !confirm("標記為已完成並結案？")) return;
-          // v1.1.12：已發包必填金額
-          if (
-            status === "in_progress" &&
-            (!amountInput.value || Number(amountInput.value) <= 0)
-          ) {
-            toast("已發包需填寫金額");
-            return;
-          }
-          commentSubmitting = true;
-          try {
-            if (status) {
-              const payload = {
-                status,
-                note: commentInput.value.trim(),
-                photo_ids: commentPhotos.length ? commentPhotos : undefined,
-              };
-              if (status === "in_progress")
-                payload.amount = Number(amountInput.value);
-              await api(`/api/tickets/${id}/updates`, {
-                method: "POST",
-                body: JSON.stringify(payload),
-              });
-            } else {
-              await api(`/api/tickets/${id}/comments`, {
-                method: "POST",
-                body: JSON.stringify({
-                  note: commentInput.value.trim(),
-                  photo_ids: commentPhotos.length ? commentPhotos : undefined,
-                }),
-              });
-            }
-            // A5（v1.1.15）：不再 location.reload()，改用 router() 局部刷新時間軸
-            router();
-          } catch (e) {
-            commentSubmitting = false;
-            toast(e.message);
-          }
-        },
-      }),
-    ]),
-  );
-  commentWrap.style.display = "none";
-  root.appendChild(commentToggle);
-  root.appendChild(commentWrap);
 };
 
 function renderUpdate(u) {
@@ -2481,186 +2489,195 @@ function renderUpdate(u) {
 }
 
 // P3.5 編輯案件（問題5：詳情頁「編輯」原本跳 #/edit 但無此頁面）
-pages.edit = async function (id) {
+pages.edit = function (id) {
   const root = document.getElementById("page");
-  renderLoading(root, "載入案件…");
-  root.appendChild(
-    el("header", { class: "topbar" }, [
-      el("button", {
-        class: "btn btn-ghost",
-        text: "← 返回",
-        onclick: () => {
-          location.hash = "#/ticket/" + id;
-        },
-      }),
-      el("h1", { text: "編輯案件" }),
-    ]),
-  );
-
-  let t;
-  try {
-    const body = await api("/api/tickets/" + id);
-    t = body.data;
-  } catch (e) {
-    // E4（v1.1.14）：錯誤時清 loading，避免「載入案件」與錯誤訊息並存
-    clearLoading(root);
-    root.appendChild(el("p", { class: "error", text: e.message }));
-    return;
-  }
-
-  const catSelect = el("select", { class: "select" });
-  const locSelect = el("select", { class: "select" });
-  // D2：編輯頁地點依類別連動（比照建單頁），避免選到不屬類別的地點送出 400
-  const renderLoc = (catId) => {
-    locSelect.innerHTML = "";
-    const items = optionsInCategory("locations", catId);
-    if (items.length === 0) {
-      // 比照建單頁：零關聯類別給顯性可見提示而非只剩空白 placeholder
-      locSelect.appendChild(
-        el("option", { value: "", text: "此類別暫無地點" }),
-      );
-      locSelect.disabled = true;
-      return;
-    }
-    locSelect.disabled = false;
-    locSelect.appendChild(el("option", { value: "", text: "請選擇地點" }));
-    for (const o of items) {
-      locSelect.appendChild(
-        el("option", {
-          value: String(o.id),
-          text: o.label,
-          selected: Number(o.id) === Number(t.location_id) ? "selected" : null,
-        }),
-      );
-    }
-  };
-  // 編輯頁：強制重讀（category/location 後端驗證），一次載入
-  ensureCatalog(true)
-    .then(() => {
-      for (const o of catalogCache?.categories || []) {
-        catSelect.appendChild(
-          el("option", {
-            value: String(o.id),
-            text: o.label,
-            selected:
-              Number(o.id) === Number(t.category_id) ? "selected" : null,
+  return loadInto(
+    root,
+    () => api("/api/tickets/" + id),
+    async (body) => {
+      root.innerHTML = "";
+      const t = body.data;
+      root.appendChild(
+        el("header", { class: "topbar" }, [
+          el("button", {
+            class: "btn btn-ghost",
+            text: "← 返回",
+            onclick: () => {
+              location.hash = "#/ticket/" + id;
+            },
           }),
-        );
-      }
-      // 依目前類別渲染地點（D2）：以 id 還原（詳情回應本帶 category_id），不走 label 字串比對
-      renderLoc(t.category_id ? Number(t.category_id) : 0);
-    })
-    .catch(() => {
-      // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
-      catSelect.innerHTML = "";
-      catSelect.appendChild(
-        el("option", { value: "", text: "載入類別失敗，請重整頁面" }),
+          el("h1", { text: "編輯案件" }),
+        ]),
       );
-    });
-  // D2：切換類別時連動地點
-  catSelect.addEventListener("change", () => {
-    const catId = catSelect.value ? Number(catSelect.value) : 0;
-    renderLoc(catId);
-  });
 
-  const descEl = el("textarea", {
-    class: "textarea",
-    value: t.description || "",
-  });
-
-  // 照片管理（v1.1.13）：顯示既有 + 可刪除 + 可補上傳；submit 送 photo_ids 全量覆寫
-  const initialPhotos = (t.photos || []).map((p) => ({ id: p.id, url: p.url }));
-  const editPhotoIds = []; // 最終要保留的案件照片 id（attachPhotoPicker 會填 initialPhotos）
-  // 共用 photo picker（v1.1.13：帶既有照片）
-  const editPicker = attachPhotoPicker(editPhotoIds, initialPhotos);
-  const photoPreview = editPicker.preview;
-  const photoInput = editPicker.input;
-
-  // 指派廠商（保全/秘書 manager 層級，即 manager/admin；問題3：放進編輯頁）
-  const canAssignVendor = me && (me.role === "manager" || me.role === "admin");
-  const vendorSelect = el("select", { class: "select" });
-  if (canAssignVendor) {
-    // E5（v1.1.14）：placeholder 加「清空指派」選項（值 _clear），讓前端能送 vendor_id:null
-    vendorSelect.appendChild(
-      el("option", {
-        value: "",
-        text: t.vendor_name ? `目前：${t.vendor_name}` : "不變更廠商",
-      }),
-    );
-    if (t.vendor_name) {
-      vendorSelect.appendChild(
-        el("option", { value: "_clear", text: "— 清空指派 —" }),
-      );
-    }
-    api("/api/vendors")
-      .then((b) => {
-        for (const v of b.data) {
-          if (!v.active) continue;
-          vendorSelect.appendChild(
+      const catSelect = el("select", { class: "select" });
+      const locSelect = el("select", { class: "select" });
+      // D2：編輯頁地點依類別連動（比照建單頁），避免選到不屬類別的地點送出 400
+      const renderLoc = (catId) => {
+        locSelect.innerHTML = "";
+        const items = optionsInCategory("locations", catId);
+        if (items.length === 0) {
+          // 比照建單頁：零關聯類別給顯性可見提示而非只剩空白 placeholder
+          locSelect.appendChild(
+            el("option", { value: "", text: "此類別暫無地點" }),
+          );
+          locSelect.disabled = true;
+          return;
+        }
+        locSelect.disabled = false;
+        locSelect.appendChild(el("option", { value: "", text: "請選擇地點" }));
+        for (const o of items) {
+          locSelect.appendChild(
             el("option", {
-              value: String(v.id),
-              text: v.name,
-              selected: v.name === t.vendor_name ? "selected" : null,
+              value: String(o.id),
+              text: o.label,
+              selected:
+                Number(o.id) === Number(t.location_id) ? "selected" : null,
             }),
           );
         }
-      })
-      .catch(() => {});
-  }
-
-  async function submit() {
-    const body = {};
-    if (catSelect.value) body.category_id = Number(catSelect.value);
-    if (locSelect.value) body.location_id = Number(locSelect.value);
-    if (descEl.value !== (t.description || "")) body.description = descEl.value;
-    if (canAssignVendor) {
-      if (vendorSelect.value === "_clear") body.vendor_id = null;
-      else if (vendorSelect.value) body.vendor_id = Number(vendorSelect.value);
-    }
-    // 照片有增刪才送（photo_ids 全量覆寫綁定）
-    const initIds = (t.photos || [])
-      .map((p) => p.id)
-      .sort()
-      .join(",");
-    const curIds = [...editPhotoIds].sort().join(",");
-    if (initIds !== curIds)
-      body.photo_ids = editPhotoIds.length ? editPhotoIds : [];
-    try {
-      await api(`/api/tickets/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
+      };
+      // 編輯頁：強制重讀（category/location 後端驗證），一次載入
+      ensureCatalog(true)
+        .then(() => {
+          for (const o of catalogCache?.categories || []) {
+            catSelect.appendChild(
+              el("option", {
+                value: String(o.id),
+                text: o.label,
+                selected:
+                  Number(o.id) === Number(t.category_id) ? "selected" : null,
+              }),
+            );
+          }
+          // 依目前類別渲染地點（D2）：以 id 還原（詳情回應本帶 category_id），不走 label 字串比對
+          renderLoc(t.category_id ? Number(t.category_id) : 0);
+        })
+        .catch(() => {
+          // catalog 載入失敗：恢復可選狀態並提示（避免卡在「載入類別中…」）
+          catSelect.innerHTML = "";
+          catSelect.appendChild(
+            el("option", { value: "", text: "載入類別失敗，請重整頁面" }),
+          );
+        });
+      // D2：切換類別時連動地點
+      catSelect.addEventListener("change", () => {
+        const catId = catSelect.value ? Number(catSelect.value) : 0;
+        renderLoc(catId);
       });
-      location.hash = "#/ticket/" + id;
-    } catch (e) {
-      toast(e.message);
-    }
-  }
 
-  clearLoading(root);
+      const descEl = el("textarea", {
+        class: "textarea",
+        value: t.description || "",
+      });
 
-  root.appendChild(
-    el("div", { class: "form" }, [
-      el("div", { class: "defrow" }, [
-        el("label", { text: "類別" }),
-        catSelect,
-      ]),
-      el("div", { class: "defrow" }, [
-        el("label", { text: "地點" }),
-        locSelect,
-      ]),
-      el("div", { class: "defrow" }, [el("label", { text: "說明" }), descEl]),
-      el("div", { class: "defrow" }, [
-        el("label", { text: "照片" }),
-        el("div", {}, [photoInput, photoPreview]),
-      ]),
-      canAssignVendor
-        ? el("div", { class: "defrow" }, [
-            el("label", { text: "指派廠商" }),
-            vendorSelect,
-          ])
-        : null,
-      el("button", { class: "btn btn-primary", text: "儲存", onclick: submit }),
-    ]),
+      // 照片管理（v1.1.13）：顯示既有 + 可刪除 + 可補上傳；submit 送 photo_ids 全量覆寫
+      const initialPhotos = (t.photos || []).map((p) => ({
+        id: p.id,
+        url: p.url,
+      }));
+      const editPhotoIds = []; // 最終要保留的案件照片 id（attachPhotoPicker 會填 initialPhotos）
+      // 共用 photo picker（v1.1.13：帶既有照片）
+      const editPicker = attachPhotoPicker(editPhotoIds, initialPhotos);
+      const photoPreview = editPicker.preview;
+      const photoInput = editPicker.input;
+
+      // 指派廠商（保全/秘書 manager 層級，即 manager/admin；問題3：放進編輯頁）
+      const canAssignVendor =
+        me && (me.role === "manager" || me.role === "admin");
+      const vendorSelect = el("select", { class: "select" });
+      if (canAssignVendor) {
+        // E5（v1.1.14）：placeholder 加「清空指派」選項（值 _clear），讓前端能送 vendor_id:null
+        vendorSelect.appendChild(
+          el("option", {
+            value: "",
+            text: t.vendor_name ? `目前：${t.vendor_name}` : "不變更廠商",
+          }),
+        );
+        if (t.vendor_name) {
+          vendorSelect.appendChild(
+            el("option", { value: "_clear", text: "— 清空指派 —" }),
+          );
+        }
+        api("/api/vendors")
+          .then((b) => {
+            for (const v of b.data) {
+              if (!v.active) continue;
+              vendorSelect.appendChild(
+                el("option", {
+                  value: String(v.id),
+                  text: v.name,
+                  selected: v.name === t.vendor_name ? "selected" : null,
+                }),
+              );
+            }
+          })
+          .catch(() => {});
+      }
+
+      async function submit() {
+        const body = {};
+        if (catSelect.value) body.category_id = Number(catSelect.value);
+        if (locSelect.value) body.location_id = Number(locSelect.value);
+        if (descEl.value !== (t.description || ""))
+          body.description = descEl.value;
+        if (canAssignVendor) {
+          if (vendorSelect.value === "_clear") body.vendor_id = null;
+          else if (vendorSelect.value)
+            body.vendor_id = Number(vendorSelect.value);
+        }
+        // 照片有增刪才送（photo_ids 全量覆寫綁定）
+        const initIds = (t.photos || [])
+          .map((p) => p.id)
+          .sort()
+          .join(",");
+        const curIds = [...editPhotoIds].sort().join(",");
+        if (initIds !== curIds)
+          body.photo_ids = editPhotoIds.length ? editPhotoIds : [];
+        try {
+          await api(`/api/tickets/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+          location.hash = "#/ticket/" + id;
+        } catch (e) {
+          toast(e.message);
+        }
+      }
+
+      root.appendChild(
+        el("div", { class: "form" }, [
+          el("div", { class: "defrow" }, [
+            el("label", { text: "類別" }),
+            catSelect,
+          ]),
+          el("div", { class: "defrow" }, [
+            el("label", { text: "地點" }),
+            locSelect,
+          ]),
+          el("div", { class: "defrow" }, [
+            el("label", { text: "說明" }),
+            descEl,
+          ]),
+          el("div", { class: "defrow" }, [
+            el("label", { text: "照片" }),
+            el("div", {}, [photoInput, photoPreview]),
+          ]),
+          canAssignVendor
+            ? el("div", { class: "defrow" }, [
+                el("label", { text: "指派廠商" }),
+                vendorSelect,
+              ])
+            : null,
+          el("button", {
+            class: "btn btn-primary",
+            text: "儲存",
+            onclick: submit,
+          }),
+        ]),
+      );
+    },
+    { label: "載入案件…" },
   );
 };
 
