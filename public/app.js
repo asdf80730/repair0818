@@ -3819,10 +3819,12 @@ function renderNav() {
     ["#/new", "＋ 建單"],
     ["#/stats", "📊 統計"],
   ];
-  if (me && (me.role === "manager" || me.role === "admin"))
+  // 入口可見性＝PAGE_ACCESS 單源（與直接吃 hash 的攔截同源）
+  if (me && PAGE_ACCESS.admin.includes(me.role))
     items.push(["#/admin", "⚙ 管理"]);
   // F11-1：訊息模板從 admin 內 tab 進，不放 nav（committee 不該看到入口）
-  if (me && me.role === "admin") items.push(["#/users", "👥 成員"]);
+  if (me && PAGE_ACCESS.users.includes(me.role))
+    items.push(["#/users", "👥 成員"]);
   // v1.1.26：以 hash 前綴匹配作為 active 判準，補 aria-current
   const curHash = (location.hash || "#/").split("?")[0];
   const matchPrefix = (href) => {
@@ -3950,8 +3952,21 @@ function wireRefresh(isMock) {
   window.addEventListener("pageshow", refresh);
 }
 
+// 路由級權限宣告表（v1.1.33 候選 #8）：導航入口與直接吃 hash 共用單源。
+// 後端每請求仍會重驗——本表只負責不該進的頁面不渲染＋明示提示。
+const PAGE_ACCESS = {
+  admin: ["manager", "admin"],
+  users: ["admin"],
+};
 // route 分派（自 router() 提出，便於取回傳值做還原）
 function dispatchPage(path, param) {
+  const allowed = PAGE_ACCESS[path];
+  if (allowed && !allowed.includes(me.role)) {
+    document
+      .getElementById("page")
+      .appendChild(el("p", { class: "error", text: "您沒有權限檢視此頁面" }));
+    return;
+  }
   switch (path) {
     case "":
     case "list":
@@ -4011,6 +4026,23 @@ function cleanUrlParams() {
   if (window.location.search) {
     const url = window.location.pathname + window.location.hash;
     history.replaceState(null, "", url);
+  }
+}
+/** §3.1 續命中：用既有 id_token 換 session cookie 再取 me。
+ *  成功回 true 並已完成 router() 進頁；回 false 由呼叫端決定重新授權路徑。
+ *  （v1.1.33 候選 #8：兩條 boot 分支的手刻交換收攏至此。） */
+async function resumeSession() {
+  const idToken = liff.getIDToken();
+  if (!idToken) return false;
+  if (!(await postSession(idToken))) return false;
+  try {
+    me = (await api("/api/auth/me")).data;
+    resetRelogin();
+    router();
+    return true;
+  } catch (e2) {
+    // session cookie 未生效（極罕見）——呼叫端改走 forceFreshLogin
+    return false;
   }
 }
 
@@ -4074,18 +4106,8 @@ async function boot() {
     if (e.code === "UNAUTHORIZED") {
       // 未登入 → 嘗試 LINE 登入（§3.1 標準流程：isLoggedIn → getIDToken / liff.login）
       if (liffReady && liff.isLoggedIn()) {
-        const idToken = liff.getIDToken();
-        // 用既有 id_token（可能已過期）換 session；後端拒收 → logout 清快取後重新授權
-        if (idToken && (await postSession(idToken))) {
-          try {
-            me = (await api("/api/auth/me")).data;
-            resetRelogin();
-            router();
-            return;
-          } catch (e2) {
-            // session cookie 未生效（極罕見）→ 走下方 forceFreshLogin 重新授權
-          }
-        }
+        // 用既有 id_token 換 session 續命中（拒收→下方 forceFreshLogin 重新授權）
+        if (await resumeSession()) return;
         if (!forceFreshLogin()) {
           root.innerHTML = "";
           root.appendChild(
@@ -4108,18 +4130,8 @@ async function boot() {
           await liff.init({ liffId: LIFF_ID });
           liffReady = true;
           if (liff.isLoggedIn()) {
-            const idToken = liff.getIDToken();
-            // §3.1：用既有 id_token（可能已過期）換 session；後端拒收 → logout 清快取後重新授權
-            if (idToken && (await postSession(idToken))) {
-              try {
-                me = (await api("/api/auth/me")).data;
-                resetRelogin();
-                router();
-                return;
-              } catch (e2) {
-                /* session cookie 未生效（極罕見）→ 走下方重新授權 */
-              }
-            }
+            // §3.1：用既有 id_token（可能已過期）換 session 續命中已失效
+            if (await resumeSession()) return;
             if (!forceFreshLogin()) throw new Error("session failed"); // 達上限才至此 → 錯誤卡，不無限重導
           }
           // OAuth 回跳後拿不到有效 id_token（init 失敗）→ 受次數上限保護，避免無限重導
