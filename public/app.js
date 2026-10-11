@@ -1366,6 +1366,31 @@ function clearLoading(root) {
   root.querySelector(".loading-wrap")?.remove();
 }
 
+// ── v1.1.34 FE2：非同步面板載入統一 seam ─────────────────────────────
+// 政策一处：D9 防閃 loading → 請求 → token 認領回應 → 成功 render(body)／失敗錯誤上面板。
+// stale 守衛：panel 掛單調遞增 token；晚到的回應若 token 已非本次 → 整筆丟棄（不渲染、不報錯）。
+// 呼叫端不必再手刻 spinner 或寫「if (tab 切走) return」；列表 loadMore（append 語意）屬例外不經此。
+function loadInto(panel, fetcher, render, { label = "載入中…" } = {}) {
+  const token = (panel._loadToken = (panel._loadToken || 0) + 1);
+  const isLatest = () => panel._loadToken === token;
+  renderLoading(panel, label); // 內部已清 panel 內容＋200ms 防閃
+  return Promise.resolve()
+    .then(fetcher)
+    .then(
+      async (body) => {
+        if (!isLatest()) return; // 已被更新的請求取代，此回應無權動 DOM
+        clearLoading(panel);
+        await render(body);
+      },
+      async (e) => {
+        if (!isLatest()) return;
+        clearLoading(panel);
+        panel.innerHTML = "";
+        panel.appendChild(el("p", { class: "error", text: e.message }));
+      },
+    );
+}
+
 // 空狀態（Empty State）：列表無資料時統一提示，避免白畫面
 function renderEmpty(root, text) {
   root.appendChild(
@@ -1449,31 +1474,33 @@ pages.list = function () {
       limit: "20",
     });
     if (currentCategory) qs.set("category_id", currentCategory);
-    // 首次載入或切換篩選（page=1）時顯示 loading；載入更多（page>1）不遮已有列表
     if (page === 1) {
-      listEl.innerHTML = "";
-      listEl.appendChild(
-        el("div", { class: "loading-wrap" }, [
-          el("div", { class: "spinner" }),
-          el("div", { class: "loading-text", text: "載入中…" }),
-        ]),
+      // v1.1.34：防閃與 stale 守衛走 loadInto——快速切篩選不會被舊回應蓋掉
+      await loadInto(
+        listEl,
+        () => api("/api/tickets?" + qs.toString()),
+        (body) => {
+          const items = body.data.items;
+          hasMore = body.data.has_more;
+          listEl.innerHTML = "";
+          for (const t of items) listEl.appendChild(renderTicketCard(t));
+          if (items.length === 0) {
+            renderEmpty(listEl, "沒有符合條件的案件"); // 空狀態
+          }
+          loadMoreBtn.style.display = hasMore ? "" : "none";
+        },
       );
-    }
-    try {
-      const body = await api("/api/tickets?" + qs.toString());
-      const items = body.data.items;
-      hasMore = body.data.has_more;
-      if (page === 1) listEl.innerHTML = ""; // 清掉 loading
-      for (const t of items) {
-        listEl.appendChild(renderTicketCard(t));
+    } else {
+      // 載入更多（page>1）：append 語意，不遮已有列表、不顯示 loading
+      try {
+        const body = await api("/api/tickets?" + qs.toString());
+        hasMore = body.data.has_more;
+        for (const t of body.data.items)
+          listEl.appendChild(renderTicketCard(t));
+        loadMoreBtn.style.display = hasMore ? "" : "none";
+      } catch (e) {
+        listEl.appendChild(el("p", { class: "error", text: e.message }));
       }
-      if (items.length === 0 && page === 1) {
-        renderEmpty(listEl, "沒有符合條件的案件"); // 空狀態
-      }
-      loadMoreBtn.style.display = hasMore ? "" : "none";
-    } catch (e) {
-      if (page === 1) listEl.innerHTML = ""; // 清掉 loading
-      listEl.appendChild(el("p", { class: "error", text: e.message }));
     }
   }
 
@@ -2485,12 +2512,7 @@ pages.stats = function () {
       el("h1", { text: "統計" }),
     ]),
   );
-  root.appendChild(
-    el("div", { class: "loading-wrap" }, [
-      el("div", { class: "spinner" }),
-      el("div", { class: "loading-text", text: "載入統計…" }),
-    ]),
-  );
+  // （v1.1.34）初始 spinner 由 load(curMonth) 內 loadInto 提供——D9 防閃自動生效，不手刻 markup
 
   // v1.1.21：月度統計／案件動態拆成 sub-tab（手機單屏可讀；記住上次選擇）。
   // 兩塊原本摺在同一條滾動軸（6 卡+金額表+日報框），手機要滑兩三屏；現在一次只看一塊。
@@ -2560,72 +2582,78 @@ pages.stats = function () {
   monthlyPanel.appendChild(amountBox);
 
   async function load(month) {
-    clearLoading(root);
-    grid.innerHTML = "";
-    amountBox.innerHTML = "";
-    try {
+    await loadInto(
+      grid,
       // A4：Promise.all 同步刷新，避免上下月份不一致
-      const [sum, amt] = await Promise.all([
-        api(`/api/stats/summary?month=${month}`),
-        api(`/api/stats/amount-by-category?month=${month}`),
-      ]);
-      const s = sum.data;
-      const openTotal = s.open_count + s.in_progress_count;
-      // A3（v1.1.14 方案②）：完成率 = 本月結案 / (期初未結案 + 本月新增)
-      const denom = (s.month_initial_open ?? 0) + s.month_new;
-      const doneRate =
-        denom > 0 ? Math.round((s.month_done / denom) * 100) : "—";
-      const cards = [
-        ["詢價中", s.open_count, "red"],
-        ["處理中", s.in_progress_count, "yellow"],
-        ["未結案總數", openTotal, "blue"],
-        ["本月新增", s.month_new, "blue"],
-        ["本月完成", s.month_done, "green"],
-        ["本月完成率", doneRate + "%", "green"],
-      ];
-      for (const [label, val, color] of cards) {
-        grid.appendChild(
-          el("div", { class: "stat-card" }, [
-            el("div", { class: "stat-num", text: String(val) }),
-            el("div", { class: "stat-label", text: label }),
-          ]),
-        );
-      }
-      // 各類別金額
-      amountTitle.textContent = `各類別金額（${month}，以發包時間計）`;
-      const items = amt.data.items;
-      if (!items || items.length === 0) {
+      () =>
+        Promise.all([
+          api(`/api/stats/summary?month=${month}`),
+          api(`/api/stats/amount-by-category?month=${month}`),
+        ]).catch((e) => {
+          // 出錯時連舊金額表一起清掉：錯誤訊息與舊資料不同時出現（grid 由 loadInto 清）
+          amountBox.innerHTML = "";
+          throw e;
+        }),
+      ([sum, amt]) => {
+        const s = sum.data;
+        grid.innerHTML = "";
+        amountBox.innerHTML = "";
+        const openTotal = s.open_count + s.in_progress_count;
+        // A3（v1.1.14 方案②）：完成率 = 本月結案 / (期初未結案 + 本月新增)
+        const denom = (s.month_initial_open ?? 0) + s.month_new;
+        const doneRate =
+          denom > 0 ? Math.round((s.month_done / denom) * 100) : "—";
+        const cards = [
+          ["詢價中", s.open_count, "red"],
+          ["處理中", s.in_progress_count, "yellow"],
+          ["未結案總數", openTotal, "blue"],
+          ["本月新增", s.month_new, "blue"],
+          ["本月完成", s.month_done, "green"],
+          ["本月完成率", doneRate + "%", "green"],
+        ];
+        for (const [label, val, color] of cards) {
+          grid.appendChild(
+            el("div", { class: "stat-card" }, [
+              el("div", { class: "stat-num", text: String(val) }),
+              el("div", { class: "stat-label", text: label }),
+            ]),
+          );
+        }
+        // 各類別金額
+        amountTitle.textContent = `各類別金額（${month}，以發包時間計）`;
+        const items = amt.data.items;
+        if (!items || items.length === 0) {
+          amountBox.appendChild(
+            el("p", { class: "empty", text: "本月尚無已發包案件" }),
+          );
+          return;
+        }
+        let grand = 0;
+        for (const it of items) {
+          grand += it.total_amount;
+          amountBox.appendChild(
+            el("div", { class: "amount-row" }, [
+              el("span", { text: it.category_label }),
+              el("span", { text: `${it.count} 件` }),
+              el("span", {
+                class: "amount-val",
+                text: `$${it.total_amount.toLocaleString()}`,
+              }),
+            ]),
+          );
+        }
         amountBox.appendChild(
-          el("p", { class: "empty", text: "本月尚無已發包案件" }),
-        );
-        return;
-      }
-      let grand = 0;
-      for (const it of items) {
-        grand += it.total_amount;
-        amountBox.appendChild(
-          el("div", { class: "amount-row" }, [
-            el("span", { text: it.category_label }),
-            el("span", { text: `${it.count} 件` }),
+          el("div", { class: "amount-row amount-total" }, [
+            el("span", { text: "合計" }),
             el("span", {
               class: "amount-val",
-              text: `$${it.total_amount.toLocaleString()}`,
+              text: `$${grand.toLocaleString()}`,
             }),
           ]),
         );
-      }
-      amountBox.appendChild(
-        el("div", { class: "amount-row amount-total" }, [
-          el("span", { text: "合計" }),
-          el("span", {
-            class: "amount-val",
-            text: `$${grand.toLocaleString()}`,
-          }),
-        ]),
-      );
-    } catch (e) {
-      grid.appendChild(el("p", { class: "error", text: e.message }));
-    }
+      },
+      { label: "載入統計…" },
+    );
   }
 
   // ────────────────────────────────────────────────────────────
@@ -2812,15 +2840,13 @@ pages.users = function () {
       el("h1", { text: "成員管理" }),
     ]),
   );
-  root.appendChild(
-    el("div", { class: "loading-wrap" }, [
-      el("div", { class: "spinner" }),
-      el("div", { class: "loading-text", text: "載入成員…" }),
-    ]),
-  );
-
-  api("/api/users")
-    .then((b) => {
+  // v1.1.34：container 直接掛在 header 下，loading／stale／錯誤全權 loadInto
+  const container = el("div", {});
+  root.appendChild(container);
+  loadInto(
+    container,
+    () => api("/api/users"),
+    (b) => {
       const allUsers = b.data;
       const list = el("div", { class: "user-list" });
       // 權限層級：主管(admin) > 保全/秘書(manager) > 委員(committee) > 待開通(pending)
@@ -2923,20 +2949,17 @@ pages.users = function () {
         remember("usersFilter", filterSelect.value);
         render();
       });
-      clearLoading(root);
-      root.appendChild(
+      container.appendChild(
         el("div", { class: "filter-row" }, [
           el("label", { text: "篩選：" }),
           filterSelect,
         ]),
       );
-      root.appendChild(list);
+      container.appendChild(list);
       render();
-    })
-    .catch((e) => {
-      clearLoading(root);
-      root.appendChild(el("p", { class: "error", text: e.message }));
-    });
+    },
+    { label: "載入成員…" },
+  );
 };
 
 // F7（v1.1.15）訊息模板管理頁（manager/admin）
@@ -3287,17 +3310,11 @@ pages.admin = function () {
   );
 
   function renderVendors() {
-    const thisType = "vendors"; // F2：記錄發起時 tab，避免 stale 覆蓋
-    content.innerHTML = "";
-    content.appendChild(
-      el("div", { class: "loading-wrap" }, [
-        el("div", { class: "spinner" }),
-        el("div", { class: "loading-text", text: "載入中…" }),
-      ]),
-    );
-    api("/api/vendors")
-      .then((b) => {
-        if (currentType !== thisType) return; // F2：tab 已切走，捨棄此回應
+    // stale 守衛與 loading 由 loadInto 的 token 負責（v1.1.34；原 thisType 手寫守衛退場）
+    loadInto(
+      content,
+      () => api("/api/vendors"),
+      (b) => {
         content.innerHTML = "";
         const list = el("div", { class: "option-list" });
         for (const v of b.data) {
@@ -3325,7 +3342,6 @@ pages.admin = function () {
         if (b.data.length === 0) {
           renderEmpty(list, "尚無廠商"); // 空狀態
         }
-        content.innerHTML = "";
         content.appendChild(list);
         const newVendor = el("input", {
           class: "input",
@@ -3353,28 +3369,17 @@ pages.admin = function () {
             }),
           ]),
         );
-      })
-      .catch((e) => {
-        if (currentType === "vendors") {
-          content.innerHTML = "";
-          content.appendChild(el("p", { class: "error", text: e.message }));
-        }
-      });
+      },
+    );
   }
 
   function renderOptions() {
-    const thisType = currentType; // F2：記錄發起時 tab，避免 stale 覆蓋
-    content.innerHTML = "";
-    content.appendChild(
-      el("div", { class: "loading-wrap" }, [
-        el("div", { class: "spinner" }),
-        el("div", { class: "loading-text", text: "載入中…" }),
-      ]),
-    );
-    // P7 用 include_inactive=1（含停用，修停用顯示 bug；限 manager/admin）
-    api("/api/options?type=" + currentType + "&include_inactive=1")
-      .then((b) => {
-        if (currentType !== thisType) return; // F2：tab 已切走，捨棄此回應
+    // stale 守衛與 loading 由 loadInto 的 token 負責（v1.1.34；原 thisType 手寫守衛退場）
+    loadInto(
+      content,
+      () => api("/api/options?type=" + currentType + "&include_inactive=1"), // P7 用 include_inactive=1（含停用，修停用顯示 bug；限 manager/admin）
+      (b) => {
+        content.innerHTML = "";
         const list = el("div", { class: "option-list" });
         for (const o of b.data) {
           const row = el("div", { class: "card option-row" }, [
@@ -3428,15 +3433,9 @@ pages.admin = function () {
         if (b.data.length === 0) {
           renderEmpty(list, "尚無此類選項"); // 空狀態
         }
-        content.innerHTML = "";
         content.appendChild(list);
-      })
-      .catch((e) => {
-        if (currentType === thisType) {
-          content.innerHTML = "";
-          content.appendChild(el("p", { class: "error", text: e.message }));
-        }
-      });
+      },
+    );
   }
 
   // 以類別為中心：點「設定關聯」開 modal，編輯該類別的地點/說明關聯（v1.1.7）

@@ -133,7 +133,7 @@ export async function bootMock(hash: string) {
   win.eval(
     app +
       "\nwindow.initModal = initModal;window.restoreKey = restoreKey;" +
-      "window.remember = remember;",
+      "window.remember = remember;window.loadInto = loadInto;",
   );
   for (let i = 0; i < 12; i++) await new Promise((r) => win.setTimeout(r, 0));
   return { win, doc };
