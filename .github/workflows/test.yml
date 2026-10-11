@@ -16,6 +16,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      # retro 2026-10-11 R2：scripts/sync-npm-lock.js 存在但未接線——CI `npm ci` 讀
+      # package-lock.json、本機 `bun install` 寫 bun.lock，兩鎖不同步時 CI 裝到錯版本卻全綠。
+      # 腳本冪等（同步時零 diff，已實測），drift 即紅並給出修復指令。
+      - name: Check lockfile sync (bun.lock ↔ package-lock.json)
+        run: |
+          node scripts/sync-npm-lock.js
+          git diff --exit-code -- package-lock.json || {
+            echo "::error::package-lock.json 與 bun.lock 不同步——本地跑 node scripts/sync-npm-lock.js 並 commit 輸出";
+            exit 1;
+          }
+
       - run: npm ci
 
       - name: Type check

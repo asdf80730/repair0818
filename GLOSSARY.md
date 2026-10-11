@@ -27,3 +27,4 @@
 
 - **面板載入（loadInto）** — `public/app.js` 的非同步面板載入唯一 seam：D9 防閃 loading、token 認領回應（stale 丟棄）、錯誤上面板三件政策一处；列表「載入更多」的 append 語意為刻意例外。
 - **角色閘門（requireRoles）** — `src/lib/auth.ts` 註冊於全域 `requireAuth()` 之下的角色閘門中間層：只讀 `c.get("user")`、不重複驗簽與 D1 讀；「誰擋這個請求」的宣稱點自 27 個掛載收斂為全域一處。
+- **選項過濾（optionsInCategory）** — `public/app.js` 的下拉規則單一定義：「該類別關聯＋通用（`category_id` null）」；後端權威是 `optionAllowedInCategory`，規則變更須兩處同動。建單／編輯兩頁共用此函式，類別連動以 id（非 label）比對還原。

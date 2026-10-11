@@ -9,7 +9,7 @@
 - script 清單以 `package.json` scripts 為準（typecheck / test / test:local / format / format:check / e2e / setup-hooks），哪種 package 執行器存在就用哪種。
   - **執行引擎**：`bun run <script>` 對 `.bin/*` 走 `node`（沙箱＝18.20.4：缺 `node:sqlite`、Playwright CLI 需 ≥20）→ `test:local` 與 E2E 在沙箱直入 Bun 引擎：`bun node_modules/vitest/dist/cli.js run --config vitest.node.config.ts`、`bun node_modules/playwright/cli.js test`；`typecheck`／`format:check`／`test`（workers pool）用 `bun run` 即可。`npx` 為 Bun shim（只認本地 script）→ 遠端套件改 `bun x <pkg> …`。
   - **環境變數**：`GH_TOKEN`（`gh api` 鑒定）、`CLOUDFLARE_API_TOKEN`（`scripts/check-migration-drift.py` 直查 production D1）；未設時該 script 走 `::warning::` 跳過、不擋 build。
-- CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。沙箱用 `gh run view <id> --log-failed` 前需 `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/work`（gh 內部 git 撞 dubious ownership；`gh api` 不需要）。
+- CI 態：`api.github.com/repos/asdf80730/repair0818/actions/runs`（token 即 origin 內嵌者）；部署態：`https://repair-system-4re.pages.dev/api/hello` 的 `commit` 欄。沙箱用 `gh run view <id> --log-failed` 前需 `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/work`（gh 內部 git 撞 dubious ownership；`gh api` 不需要）。查 run／job 用 `gh api` 直打 endpoint、run id 變數保持單值（串接多 id 會 404）；輪詢收斂用背景 20s sleep 迴圈即可，勿逐輪 `gh run view --log-failed`。
 - 編輯慣例：同檔多個行段一次 read 帶齊（`;` 分隔）再發 edit；eval kernel 的工作目錄＝工作區根，檔名需帶目錄前綴（如 `repair0818/public/app.js`）。
 - 提交守門：`.husky/pre-commit` 跑 `format:check && typecheck && test:local`（~5 秒）；新 clone 先 `bun run setup-hooks` 才會觸發（沙箱若報 `dubious ownership`，改 `git -c safe.directory=/work config --local core.hooksPath .husky`）。
 
@@ -152,4 +152,4 @@ fatal: could not read Username for 'https://github.com': No such device or addre
 single-context：根目錄一份 `GLOSSARY.md` ＋ `docs/adr/`。見 `docs/agents/domain.md`。
 
 ### 擑機 DOM probe（jsdom）
-寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 30 的七條不相容點與 `artifact://` 的時序見 `docs/agents/jsdom-harness.md`。
+寫前端擑機 probe（`?mock=true` 下的 DOM／focus／捲動核對）時，jsdom 的不相容點清單與 `artifact://` 的時序見 `docs/agents/jsdom-harness.md`（條目會增補，以該檔為準、別在此數條數）。
