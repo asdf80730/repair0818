@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
+import { requireRoles } from "../lib/auth";
 import { updateUserSchema, idParam } from "../lib/validate";
 import { nowIso } from "../lib/time";
 import { buildPatch } from "../lib/db";
@@ -12,7 +12,7 @@ import type { Env } from "../lib/env";
 export const userRoutes = new Hono<Env>();
 
 // GET /api/users — admin，列表（含 pending 與停用）（§4.6）
-userRoutes.get("/", requireAuth({ roles: ["admin"] }), async (c) => {
+userRoutes.get("/", requireRoles(["admin"]), async (c) => {
   const rows = await c.env.DB.prepare(
     "SELECT id, display_name, role, active, created_at, approved_at FROM users ORDER BY id",
   ).all();
@@ -22,7 +22,7 @@ userRoutes.get("/", requireAuth({ roles: ["admin"] }), async (c) => {
 // PATCH /api/users/:id — admin，防呆規則見 §4.6（ADMIN_LOCKED）
 userRoutes.patch(
   "/:id",
-  requireAuth({ roles: ["admin"] }),
+  requireRoles(["admin"]),
   zv("param", idParam),
   zv("json", updateUserSchema),
   async (c) => {

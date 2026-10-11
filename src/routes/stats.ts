@@ -3,7 +3,6 @@
 
 import { Hono } from "hono";
 import { ok, fail } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
 import { taipeiMonthRangeIso, isValidDate, taipeiToday } from "../lib/time";
 import type { Env } from "../lib/env";
 import { CLOSED_IN_SQL } from "../lib/ticketStatus";
@@ -13,7 +12,7 @@ export const statsRoutes = new Hono<Env>();
 
 // GET /api/stats/summary — 三角色皆可（D6，§4.7）
 // 支援 ?month=YYYY-MM（缺省為當月）——A4 月份切換（v1.1.14）
-statsRoutes.get("/summary", requireAuth(), async (c) => {
+statsRoutes.get("/summary", async (c) => {
   const month = c.req.query("month"); // YYYY-MM，缺省為當月
   const { startIso, endIso } = taipeiMonthRangeIso(month);
   if (startIso === "")
@@ -65,7 +64,7 @@ statsRoutes.get("/summary", requireAuth(), async (c) => {
 // GET /api/stats/amount-by-category — 三角色皆可（v1.1.12）
 // 各類別金額，以「發包時間（amount_at）」為月份基準，每月統計加總
 // 例：?month=2026-08 → 2026-08 台灣當月發包的案件，各類別 amount 加總
-statsRoutes.get("/amount-by-category", requireAuth(), async (c) => {
+statsRoutes.get("/amount-by-category", async (c) => {
   const month = c.req.query("month"); // YYYY-MM，缺省為當月
   const { startIso, endIso } = taipeiMonthRangeIso(month);
   if (startIso === "")
@@ -90,7 +89,7 @@ statsRoutes.get("/amount-by-category", requireAuth(), async (c) => {
 // 回應形狀 §4.7；組裝邏輯收攏於 src/lib/dailyReport.ts（2026-10-11 B1 深化）——
 // route 職責＝信封：date/category 的 400 系、類別不存在 404、ok()。
 const ALL_CATEGORIES = "all";
-statsRoutes.get("/daily-report", requireAuth(), async (c) => {
+statsRoutes.get("/daily-report", async (c) => {
   const date = c.req.query("date");
   const categoryIdStr = c.req.query("category_id");
 

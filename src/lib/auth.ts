@@ -126,6 +126,29 @@ export function requireAuth(
   });
 }
 
+/**
+ * 角色閘門（v1.1.34 BA1）：註冊於全域 requireAuth() **之下**。
+ * 全域已完成認證（驗簽＋D1 讀＋pending/disabled 閘門與滑動續期都在此做過一次），
+ * 本函式只讀 c.get("user") 驗角色——不再每請求重複驗簽與 D1 讀。
+ * admin 視為萬能（與 requireAuth 及權限矩陣一致）；roles 空陣列＝放行一切已開通者。
+ * user 缺席時（不存在這條路徑——全域閘門在前）回 401 顯性失敗，避免靜默放行。
+ * ⚠ 只可掛在全域 requireAuth() 之下；掛在其上＝未認證直接過角色閘（規則 6 安全邊界）。
+ */
+export function requireRoles(roles: Array<Role>) {
+  return createMiddleware<Env>(async (c, next) => {
+    const user = c.get("user");
+    if (!user) return fail(c, 401, "UNAUTHORIZED", "請重新登入");
+    if (
+      roles.length > 0 &&
+      user.role !== "admin" &&
+      !roles.includes(user.role)
+    ) {
+      return fail(c, 403, "FORBIDDEN", "權限不足");
+    }
+    return next();
+  });
+}
+
 /** 設定 session Cookie（§3.1） */
 export function setSessionCookie(c: AppContext, jwt: string) {
   setCookie(c, SESSION_COOKIE, jwt, {

@@ -10,7 +10,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
+import { requireRoles } from "../lib/auth";
 import type { Env } from "../lib/env";
 import { idParam, listTemplatesQuerySchema } from "../lib/validate";
 import {
@@ -33,7 +33,6 @@ const ALLOWED_LABELS = ["daily"] as const;
 // - 回該類別關聯的模板優先，無則用全域預設（active=1 + 無 option_categories）
 messageTemplateRoutes.get(
   "/",
-  requireAuth(),
   zv("query", listTemplatesQuerySchema),
   async (c) => {
     // 校驗經 zv（§4.0 統一信封）：category_id 必填正整數；label 預設 daily
@@ -48,18 +47,13 @@ messageTemplateRoutes.get(
 );
 
 // GET /api/message-templates/:id — 三角色可讀
-messageTemplateRoutes.get(
-  "/:id",
-  requireAuth(),
-  zv("param", idParam),
-  async (c) => {
-    const { id } = c.req.valid("param");
-    // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
-    const row = await getTemplateById(c, id);
-    if (!row) return fail(c, 404, "NOT_FOUND", "模板不存在");
-    return ok(c, row);
-  },
-);
+messageTemplateRoutes.get("/:id", zv("param", idParam), async (c) => {
+  const { id } = c.req.valid("param");
+  // v1.1.20：type 欄當鍵、label 欄即內容（回應 body 取自 label 欄）
+  const row = await getTemplateById(c, id);
+  if (!row) return fail(c, 404, "NOT_FOUND", "模板不存在");
+  return ok(c, row);
+});
 
 // PUT /api/message-templates/:id — manager/admin（編輯內容 body 或鍵 label）
 // 只能編輯現有模板（F7：不做新增、不做刪除、不做啟用切換）
@@ -75,7 +69,7 @@ const updateTemplateSchema = z
 
 messageTemplateRoutes.put(
   "/:id",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv("json", updateTemplateSchema),
   async (c) => {

@@ -53,12 +53,15 @@
 4. API 回應信封統一走 lib/respond.ts：
    { ok:true, data } / { ok:false, error:{ code, message } }。
 5. 權限：一律經 src/lib/auth.ts 的 resolveUser()/requireAuth()（每請求從 D1 讀 role/active）；
-   禁止只信 JWT 內容；禁止只用前端藏按鈕當權限控制。
+   全域 requireAuth() 之下的角色閘門另掛 requireRoles([...])（只讀 c.get("user")，
+   不再驗簽與 D1 讀——見 lib/auth.ts 說明）；禁止只信 JWT 內容；禁止只用前端藏按鈕當權限控制。
    auth/me、auth/logout 用 requireAuth({ allowPending: true })。
 6. middleware 掛載順序即安全邊界（見 §1.3）：
    可能在無 Cookie 或 pending 狀態被呼叫的端點（share、GET /exports/tickets.csv），
    一律註冊於全域 requireAuth() 之上，並在端點內自驗（呼叫 resolveUser 或驗簽名）；
    禁止在全域 requireAuth() 之上新增未自驗權限的路由。
+   全域之下不得再重複掛 requireAuth()（v1.1.34 BA1：認證由全域單點把關，重複掛＝每請求
+   驗簽＋D1 讀做兩遍）；角色限制一律以 requireRoles([...]) 表達。
 7. mutation 端點一律掛 csrfGuard：驗 X-Requested-With: fetch；
    Sec-Fetch-Site 有送且為 cross-site → 拒絕；沒送 → 僅驗 X-Requested-With（相容舊 WebView）。
 8. 使用者內容（description, note, display_name, option label, vendor name）

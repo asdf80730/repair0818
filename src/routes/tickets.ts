@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
+import { requireRoles } from "../lib/auth";
 import {
   activeOptionLabel,
   activeVendor,
@@ -39,165 +39,155 @@ import type { Env } from "../lib/env";
 export const ticketRoutes = new Hono<Env>();
 
 // POST /api/tickets — 三角色（§4.3）
-ticketRoutes.post(
-  "/",
-  requireAuth(),
-  zv("json", createTicketSchema),
-  async (c) => {
-    const user = c.get("user");
-    const body = c.req.valid("json");
+ticketRoutes.post("/", zv("json", createTicketSchema), async (c) => {
+  const user = c.get("user");
+  const body = c.req.valid("json");
 
-    // 驗證 category/location 是 active 的 option，取 label 快照
-    const categoryLabel = await activeOptionLabel(
-      c,
-      "category",
-      body.category_id,
-    );
-    const locationLabel = await activeOptionLabel(
-      c,
-      "location",
-      body.location_id,
-    );
-    if (!categoryLabel || !locationLabel) {
-      return fail(c, 400, "VALIDATION_ERROR", "類別或地點無效");
+  // 驗證 category/location 是 active 的 option，取 label 快照
+  const categoryLabel = await activeOptionLabel(
+    c,
+    "category",
+    body.category_id,
+  );
+  const locationLabel = await activeOptionLabel(
+    c,
+    "location",
+    body.location_id,
+  );
+  if (!categoryLabel || !locationLabel) {
+    return fail(c, 400, "VALIDATION_ERROR", "類別或地點無效");
+  }
+
+  // 驗證 location 屬於 category 或為通用（v1.1.7 §4.1）
+  const allowed = await optionAllowedInCategory(
+    c,
+    body.location_id,
+    body.category_id,
+  );
+  if (!allowed) {
+    return fail(c, 400, "VALIDATION_ERROR", "此地點不屬於所選類別");
+  }
+
+  // 驗證 photo_ids：每張須 uploaded_by=本人 且 target_id IS NULL（§4.1）
+  const photoIds = body.photo_ids ?? [];
+  if (photoIds.length > 0) {
+    const valid = await validateOwnUnboundPhotos(c, photoIds, user.id);
+    if (!valid) {
+      return fail(c, 400, "VALIDATION_ERROR", "照片無效或已被使用");
     }
+  }
 
-    // 驗證 location 屬於 category 或為通用（v1.1.7 §4.1）
-    const allowed = await optionAllowedInCategory(
-      c,
-      body.location_id,
-      body.category_id,
-    );
-    if (!allowed) {
-      return fail(c, 400, "VALIDATION_ERROR", "此地點不屬於所選類別");
-    }
+  // G1（v1.1.14）：description 空字串/null/undefined 正規化為 null，與 PATCH 一致（避免存 '' 造成顯示/CSV 判斷差異）
+  const description =
+    body.description == null || body.description.trim() === ""
+      ? null
+      : body.description;
 
-    // 驗證 photo_ids：每張須 uploaded_by=本人 且 target_id IS NULL（§4.1）
-    const photoIds = body.photo_ids ?? [];
-    if (photoIds.length > 0) {
-      const valid = await validateOwnUnboundPhotos(c, photoIds, user.id);
-      if (!valid) {
-        return fail(c, 400, "VALIDATION_ERROR", "照片無效或已被使用");
-      }
-    }
+  const now = nowIso();
+  const shareToken = crypto.randomUUID();
 
-    // G1（v1.1.14）：description 空字串/null/undefined 正規化為 null，與 PATCH 一致（避免存 '' 造成顯示/CSV 判斷差異）
-    const description =
-      body.description == null || body.description.trim() === ""
-        ? null
-        : body.description;
-
-    const now = nowIso();
-    const shareToken = crypto.randomUUID();
-
-    // 先 insert ticket 拿 id
-    const insertResult = await c.env.DB.prepare(
-      `INSERT INTO tickets
+  // 先 insert ticket 拿 id
+  const insertResult = await c.env.DB.prepare(
+    `INSERT INTO tickets
       (category_id, category_label, location_id, location_label, description,
        status, share_token, created_by, created_at, last_activity_at)
      VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
+  )
+    .bind(
+      body.category_id,
+      categoryLabel,
+      body.location_id,
+      locationLabel,
+      description,
+      shareToken,
+      user.id,
+      now,
+      now,
     )
-      .bind(
-        body.category_id,
-        categoryLabel,
-        body.location_id,
-        locationLabel,
-        description,
-        shareToken,
-        user.id,
-        now,
-        now,
-      )
-      .run();
-    const ticketId = insertResult.meta.last_row_id;
+    .run();
+  const ticketId = insertResult.meta.last_row_id;
 
-    // 綁定照片（target_type='ticket'，target_id=ticketId）；CAS helper → lib/db
-    if (photoIds.length > 0) {
-      const photoResults = await c.env.DB.batch(
-        photoBindStmts(c, "ticket", ticketId, photoIds),
-      );
-      if (photoCasMissed(photoResults))
-        return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
-    }
+  // 綁定照片（target_type='ticket'，target_id=ticketId）；CAS helper → lib/db
+  if (photoIds.length > 0) {
+    const photoResults = await c.env.DB.batch(
+      photoBindStmts(c, "ticket", ticketId, photoIds),
+    );
+    if (photoCasMissed(photoResults))
+      return fail(c, 400, "VALIDATION_ERROR", PHOTO_RACE_MSG);
+  }
 
-    const title = makeTitle(categoryLabel, locationLabel, ticketId);
-    return ok(c, { id: ticketId, title, share_token: shareToken }, 201);
-  },
-);
+  const title = makeTitle(categoryLabel, locationLabel, ticketId);
+  return ok(c, { id: ticketId, title, share_token: shareToken }, 201);
+});
 
 // GET /api/tickets — 三角色（§4.3）
-ticketRoutes.get(
-  "/",
-  requireAuth(),
-  zv("query", listTicketsQuerySchema),
-  async (c) => {
-    const { status, category_id, page, limit } = c.req.valid("query");
+ticketRoutes.get("/", zv("query", listTicketsQuerySchema), async (c) => {
+  const { status, category_id, page, limit } = c.req.valid("query");
 
-    // status 允許值：active(預設)/open/in_progress/done/void/all
-    // active = open + in_progress（語意單一定義 → lib/ticketStatus）
-    let where = "WHERE 1=1";
-    const binds: unknown[] = [];
-    if (status === "active") {
-      where += ` AND t.status IN ${ACTIVE_IN_SQL}`;
-    } else if (status !== "all") {
-      where += " AND t.status = ?";
-      binds.push(status);
-    }
-    if (category_id) {
-      where += " AND t.category_id = ?";
-      binds.push(category_id);
-    }
+  // status 允許值：active(預設)/open/in_progress/done/void/all
+  // active = open + in_progress（語意單一定義 → lib/ticketStatus）
+  let where = "WHERE 1=1";
+  const binds: unknown[] = [];
+  if (status === "active") {
+    where += ` AND t.status IN ${ACTIVE_IN_SQL}`;
+  } else if (status !== "all") {
+    where += " AND t.status = ?";
+    binds.push(status);
+  }
+  if (category_id) {
+    where += " AND t.category_id = ?";
+    binds.push(category_id);
+  }
 
-    // 查 limit+1 筆判斷 has_more（§4.3）
-    const offset = (page - 1) * limit;
-    const rows = await c.env.DB.prepare(
-      `SELECT t.id, t.category_label, t.location_label, t.status, t.description,
+  // 查 limit+1 筆判斷 has_more（§4.3）
+  const offset = (page - 1) * limit;
+  const rows = await c.env.DB.prepare(
+    `SELECT t.id, t.category_label, t.location_label, t.status, t.description,
             v.name AS vendor_name, v.active AS vendor_active, t.created_at, t.last_activity_at
      FROM tickets t
      LEFT JOIN vendors v ON v.id = t.vendor_id
      ${where}
      ORDER BY t.last_activity_at DESC, t.id DESC
      LIMIT ? OFFSET ?`,
-    )
-      .bind(...binds, limit + 1, offset)
-      .all<{
-        id: number;
-        category_label: string;
-        location_label: string;
-        status: string;
-        description: string | null;
-        vendor_name: string | null;
-        vendor_active: number | null;
-        created_at: string;
-        last_activity_at: string;
-      }>();
+  )
+    .bind(...binds, limit + 1, offset)
+    .all<{
+      id: number;
+      category_label: string;
+      location_label: string;
+      status: string;
+      description: string | null;
+      vendor_name: string | null;
+      vendor_active: number | null;
+      created_at: string;
+      last_activity_at: string;
+    }>();
 
-    const items = rows.results.slice(0, limit).map((r) => ({
-      id: r.id,
-      title: makeTitle(r.category_label, r.location_label, r.id),
-      status: r.status,
-      category_label: r.category_label,
-      location_label: r.location_label,
-      description: r.description, // v1.1.13：卡片顯示維修內容
-      // G4：與詳情端一致，停用廠商後綴「（已停用）」
-      vendor_name: r.vendor_name
-        ? r.vendor_active === 0
-          ? `${r.vendor_name}（已停用）`
-          : r.vendor_name
-        : null,
-      created_at: r.created_at,
-      last_activity_at: r.last_activity_at,
-    }));
+  const items = rows.results.slice(0, limit).map((r) => ({
+    id: r.id,
+    title: makeTitle(r.category_label, r.location_label, r.id),
+    status: r.status,
+    category_label: r.category_label,
+    location_label: r.location_label,
+    description: r.description, // v1.1.13：卡片顯示維修內容
+    // G4：與詳情端一致，停用廠商後綴「（已停用）」
+    vendor_name: r.vendor_name
+      ? r.vendor_active === 0
+        ? `${r.vendor_name}（已停用）`
+        : r.vendor_name
+      : null,
+    created_at: r.created_at,
+    last_activity_at: r.last_activity_at,
+  }));
 
-    const has_more = rows.results.length > limit;
-    return ok(c, { items, page, limit, has_more });
-  },
-);
+  const has_more = rows.results.length > limit;
+  return ok(c, { items, page, limit, has_more });
+});
 
 // GET /api/tickets/:id — 三角色（§4.3）
-ticketRoutes.get("/:id", requireAuth(), zv("param", idParam), async (c) => {
+ticketRoutes.get("/:id", zv("param", idParam), async (c) => {
   const { id } = c.req.valid("param");
-  const user = c.get("user"); // 已掛 requireAuth()，user 必存在（E1 方案B：算 can_edit）
+  const user = c.get("user"); // 全域 requireAuth() 已把關，user 必存在（E1 方案B：算 can_edit）
 
   // A1（v1.1.14）：ticket 本體 + 主照片一次查詢（json_group_array），減少 roundtrip
   // 坑：LEFT JOIN 無照片時 json_group_array 產 [{"id":null}]，用 CASE WHEN COUNT 空陣列防
@@ -316,7 +306,6 @@ ticketRoutes.get("/:id", requireAuth(), zv("param", idParam), async (c) => {
 // PATCH /api/tickets/:id — D7：committee 僅自己建的單；manager/admin 全部（§4.3）
 ticketRoutes.patch(
   "/:id",
-  requireAuth(),
   zv("param", idParam),
   zv("json", updateTicketSchema),
   async (c) => {
@@ -517,7 +506,7 @@ ticketRoutes.patch(
 // POST /api/tickets/:id/updates — manager/admin（§4.3）
 ticketRoutes.post(
   "/:id/updates",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv("json", createUpdateSchema),
   async (c) => {
@@ -610,7 +599,6 @@ ticketRoutes.post(
 // POST /api/tickets/:id/comments — 三角色（D1，§4.3）
 ticketRoutes.post(
   "/:id/comments",
-  requireAuth(),
   zv("param", idParam),
   zv("json", createCommentSchema),
   async (c) => {
@@ -667,7 +655,7 @@ ticketRoutes.post(
 // POST /api/tickets/:id/void — manager/admin（§4.3）
 ticketRoutes.post(
   "/:id/void",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv("json", voidTicketSchema),
   async (c) => {
@@ -714,7 +702,7 @@ ticketRoutes.post(
 // POST /api/tickets/:id/reopen — 僅 admin（D2，§3）
 ticketRoutes.post(
   "/:id/reopen",
-  requireAuth({ roles: ["admin"] }),
+  requireRoles(["admin"]),
   zv("param", idParam),
   zv("json", reopenTicketSchema),
   async (c) => {
@@ -774,7 +762,7 @@ ticketRoutes.post(
 // POST /api/tickets/:id/share-token — manager/admin（§4.3）
 ticketRoutes.post(
   "/:id/share-token",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   async (c) => {
     const { id } = c.req.valid("param");

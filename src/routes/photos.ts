@@ -3,7 +3,6 @@
 
 import { Hono } from "hono";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
 import { nowIso } from "../lib/time";
 import type { Env } from "../lib/env";
 import { idParam } from "../lib/validate";
@@ -44,7 +43,7 @@ function checkMagicBytes(bytes: Uint8Array, contentType: string): boolean {
 }
 
 // POST /api/photos — 三角色，multipart（§4.4）
-photoRoutes.post("/", requireAuth(), async (c) => {
+photoRoutes.post("/", async (c) => {
   const user = c.get("user");
 
   // 解析 multipart form
@@ -102,7 +101,7 @@ photoRoutes.post("/", requireAuth(), async (c) => {
 });
 
 // GET /api/photos/:id — 已開通使用者（§4.4）
-photoRoutes.get("/:id", requireAuth(), zv("param", idParam), async (c) => {
+photoRoutes.get("/:id", zv("param", idParam), async (c) => {
   const { id } = c.req.valid("param");
   const user = c.get("user");
 

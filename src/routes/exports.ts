@@ -4,7 +4,7 @@
 
 import { Hono } from "hono";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth, resolveUser } from "../lib/auth";
+import { requireRoles, resolveUser } from "../lib/auth";
 import { exportQuerySchema } from "../lib/validate";
 import { toTaipeiDisplay, taipeiDate, taipeiDayRangeUtc } from "../lib/time";
 import { ticketNo } from "../lib/db";
@@ -58,7 +58,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 // POST /api/exports/sign — manager/admin，標準 Cookie＋CSRF（§4.8）
 exportRoutes.post(
   "/sign",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("json", exportQuerySchema),
   async (c) => {
     const user = c.get("user");

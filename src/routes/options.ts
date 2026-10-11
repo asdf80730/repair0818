@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
+import { requireRoles } from "../lib/auth";
 import {
   createOptionSchema,
   updateOptionSchema,
@@ -45,29 +45,21 @@ export const optionRoutes = new Hono<Env>();
 // ?type=X&include_inactive=1  → 含停用，附 category_ids（P7 用，限 manager/admin）
 //   type=category             → 每個類別附 location_count/description_count（P7 類別列表）
 //   type=location|description & category_id=N → 回該類別所有項附 associated（P7 modal）
-optionRoutes.get(
-  "/",
-  requireAuth(),
-  zv("query", listOptionsQuerySchema),
-  async (c) => {
-    const q = c.req.valid("query");
-    const user = c.get("user");
+optionRoutes.get("/", zv("query", listOptionsQuerySchema), async (c) => {
+  const q = c.req.valid("query");
+  const user = c.get("user");
 
-    // include_inactive 限 manager/admin（同路由雙權限，handler 內判）
-    if (
-      q.include_inactive &&
-      user.role !== "manager" &&
-      user.role !== "admin"
-    ) {
-      return fail(c, 403, "FORBIDDEN", "權限不足");
-    }
+  // include_inactive 限 manager/admin（同路由雙權限，handler 內判）
+  if (q.include_inactive && user.role !== "manager" && user.role !== "admin") {
+    return fail(c, 403, "FORBIDDEN", "權限不足");
+  }
 
-    const activeClause = q.include_inactive ? "" : " AND o.active = 1";
+  const activeClause = q.include_inactive ? "" : " AND o.active = 1";
 
-    // 模式一：type=category 且 include_inactive → 類別列表附關聯計數（P7）
-    if (q.type === "category" && q.include_inactive) {
-      const rows = await c.env.DB.prepare(
-        `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+  // 模式一：type=category 且 include_inactive → 類別列表附關聯計數（P7）
+  if (q.type === "category" && q.include_inactive) {
+    const rows = await c.env.DB.prepare(
+      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
         (SELECT COUNT(*) FROM option_categories oc
           JOIN options oo ON oo.id = oc.option_id
          WHERE oc.category_id = o.id AND oo.type = 'location') AS location_count,
@@ -76,62 +68,62 @@ optionRoutes.get(
          WHERE oc.category_id = o.id AND oo.type = 'description') AS description_count
        FROM options o WHERE o.type = 'category'${activeClause}
        ORDER BY o.sort_order, o.id`,
-      ).all<{
+    ).all<{
+      id: number;
+      type: string;
+      label: string;
+      sort_order: number;
+      active: number;
+      location_count: number;
+      description_count: number;
+    }>();
+    return ok(c, rows.results);
+  }
+
+  // 模式二：type=location|description & category_id & include_inactive → 該類別所有項附 associated（P7 modal）
+  if (
+    q.type !== "category" &&
+    q.category_id !== undefined &&
+    q.include_inactive
+  ) {
+    // 驗證類別存在
+    const cat = await c.env.DB.prepare(
+      "SELECT id FROM options WHERE id = ? AND type = 'category'",
+    )
+      .bind(q.category_id)
+      .first();
+    if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
+    const rows = await c.env.DB.prepare(
+      `SELECT o.id, o.type, o.label, o.sort_order, o.active,
+        EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?) AS associated
+       FROM options o WHERE o.type = ?${activeClause}
+       ORDER BY o.sort_order, o.id`,
+    )
+      .bind(q.category_id, q.type)
+      .all<{
         id: number;
         type: string;
         label: string;
         sort_order: number;
         active: number;
-        location_count: number;
-        description_count: number;
+        associated: number;
       }>();
-      return ok(c, rows.results);
-    }
+    return ok(c, rows.results);
+  }
 
-    // 模式二：type=location|description & category_id & include_inactive → 該類別所有項附 associated（P7 modal）
-    if (
-      q.type !== "category" &&
-      q.category_id !== undefined &&
-      q.include_inactive
-    ) {
-      // 驗證類別存在
-      const cat = await c.env.DB.prepare(
-        "SELECT id FROM options WHERE id = ? AND type = 'category'",
-      )
-        .bind(q.category_id)
-        .first();
-      if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
-      const rows = await c.env.DB.prepare(
-        `SELECT o.id, o.type, o.label, o.sort_order, o.active,
-        EXISTS (SELECT 1 FROM option_categories oc WHERE oc.option_id = o.id AND oc.category_id = ?) AS associated
-       FROM options o WHERE o.type = ?${activeClause}
-       ORDER BY o.sort_order, o.id`,
-      )
-        .bind(q.category_id, q.type)
-        .all<{
-          id: number;
-          type: string;
-          label: string;
-          sort_order: number;
-          active: number;
-          associated: number;
-        }>();
-      return ok(c, rows.results);
-    }
-
-    // 模式三：建單用過濾（category_id 關聯＋通用）
-    let sql: string;
-    let binds: unknown[];
-    if (q.category_id !== undefined) {
-      // 驗證 category_id 存在且 type=category（不存在 → 400 非回空）
-      const cat = await c.env.DB.prepare(
-        "SELECT id FROM options WHERE id = ? AND type = 'category'",
-      )
-        .bind(q.category_id)
-        .first();
-      if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
-      // 該類別關聯＋通用（EXISTS/NOT EXISTS 防重複列）
-      sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
+  // 模式三：建單用過濾（category_id 關聯＋通用）
+  let sql: string;
+  let binds: unknown[];
+  if (q.category_id !== undefined) {
+    // 驗證 category_id 存在且 type=category（不存在 → 400 非回空）
+    const cat = await c.env.DB.prepare(
+      "SELECT id FROM options WHERE id = ? AND type = 'category'",
+    )
+      .bind(q.category_id)
+      .first();
+    if (!cat) return fail(c, 400, "VALIDATION_ERROR", "類別不存在");
+    // 該類別關聯＋通用（EXISTS/NOT EXISTS 防重複列）
+    sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
       FROM options o
       WHERE o.type = ? AND o.active = 1
         AND (
@@ -141,58 +133,57 @@ optionRoutes.get(
                          WHERE oc2.option_id = o.id)
         )
       ORDER BY o.sort_order, o.id`;
-      binds = [q.type, q.category_id];
-    } else {
-      sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
+    binds = [q.type, q.category_id];
+  } else {
+    sql = `SELECT o.id, o.type, o.label, o.sort_order, o.active
       FROM options o
       WHERE o.type = ?${activeClause}
       ORDER BY o.sort_order, o.id`;
-      binds = [q.type];
-    }
+    binds = [q.type];
+  }
 
-    const rows = await c.env.DB.prepare(sql)
-      .bind(...binds)
-      .all<{
-        id: number;
-        type: string;
-        label: string;
-        sort_order: number;
-        active: number;
-      }>();
+  const rows = await c.env.DB.prepare(sql)
+    .bind(...binds)
+    .all<{
+      id: number;
+      type: string;
+      label: string;
+      sort_order: number;
+      active: number;
+    }>();
 
-    // include_inactive 模式附 category_ids（P7 預先勾選）
-    if (q.include_inactive) {
-      const ids = rows.results.map((r) => r.id);
-      const assoc = new Map<number, number[]>();
-      if (ids.length > 0) {
-        const placeholders = ids.map(() => "?").join(",");
-        const assocRows = await c.env.DB.prepare(
-          `SELECT option_id, category_id FROM option_categories WHERE option_id IN (${placeholders})`,
-        )
-          .bind(...ids)
-          .all<{ option_id: number; category_id: number }>();
-        for (const a of assocRows.results) {
-          if (!assoc.has(a.option_id)) assoc.set(a.option_id, []);
-          assoc.get(a.option_id)!.push(a.category_id);
-        }
+  // include_inactive 模式附 category_ids（P7 預先勾選）
+  if (q.include_inactive) {
+    const ids = rows.results.map((r) => r.id);
+    const assoc = new Map<number, number[]>();
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(",");
+      const assocRows = await c.env.DB.prepare(
+        `SELECT option_id, category_id FROM option_categories WHERE option_id IN (${placeholders})`,
+      )
+        .bind(...ids)
+        .all<{ option_id: number; category_id: number }>();
+      for (const a of assocRows.results) {
+        if (!assoc.has(a.option_id)) assoc.set(a.option_id, []);
+        assoc.get(a.option_id)!.push(a.category_id);
       }
-      return ok(
-        c,
-        rows.results.map((r) => ({
-          ...r,
-          category_ids: assoc.get(r.id) ?? [],
-        })),
-      );
     }
+    return ok(
+      c,
+      rows.results.map((r) => ({
+        ...r,
+        category_ids: assoc.get(r.id) ?? [],
+      })),
+    );
+  }
 
-    return ok(c, rows.results);
-  },
-);
+  return ok(c, rows.results);
+});
 
 // GET /api/options/catalog — 建單用：一次抓完所有選項＋關聯（v1.1.7）
 // 回傳 { categories:[], locations:[{id,label,category_ids}], descriptions:[{id,label,category_ids}] }
 // 前端本地過濾，避免每次換類別都重新請求
-optionRoutes.get("/catalog", requireAuth(), async (c) => {
+optionRoutes.get("/catalog", async (c) => {
   const options = (
     await c.env.DB.prepare(
       "SELECT id, type, label, sort_order FROM options WHERE active = 1 ORDER BY type, sort_order, id",
@@ -236,7 +227,7 @@ optionRoutes.get("/catalog", requireAuth(), async (c) => {
 // upsert：兩階段寫入（先取 id 再寫關聯），為 CLAUDE.md 規則 2 明文例外
 optionRoutes.post(
   "/",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("json", createOptionSchema),
   async (c) => {
     const body = c.req.valid("json");
@@ -284,7 +275,7 @@ optionRoutes.post(
 // 全量覆寫該類別對該 type 的關聯（P7 類別 modal 用）
 optionRoutes.post(
   "/:id/assoc",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv(
     "json",
@@ -353,7 +344,7 @@ optionRoutes.post(
 // PATCH /api/options/:id — manager/admin（§4.6）
 optionRoutes.patch(
   "/:id",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv("json", updateOptionSchema),
   async (c) => {

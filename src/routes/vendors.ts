@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { ok, fail, zv } from "../lib/respond";
-import { requireAuth } from "../lib/auth";
+import { requireRoles } from "../lib/auth";
 import {
   createVendorSchema,
   updateVendorSchema,
@@ -17,21 +17,17 @@ export const vendorRoutes = new Hono<Env>();
 
 // GET /api/vendors — manager/admin，列表（含停用）（§4.6）
 // 排序：啟用在前、停用在後；同狀態依 sort_order 再依 id（v1.1.13，與 options.sort_order 同模式）
-vendorRoutes.get(
-  "/",
-  requireAuth({ roles: ["manager", "admin"] }),
-  async (c) => {
-    const rows = await c.env.DB.prepare(
-      "SELECT id, name, sort_order, active, created_at FROM vendors ORDER BY active DESC, sort_order, id",
-    ).all();
-    return ok(c, rows.results);
-  },
-);
+vendorRoutes.get("/", requireRoles(["manager", "admin"]), async (c) => {
+  const rows = await c.env.DB.prepare(
+    "SELECT id, name, sort_order, active, created_at FROM vendors ORDER BY active DESC, sort_order, id",
+  ).all();
+  return ok(c, rows.results);
+});
 
 // POST /api/vendors — manager/admin（§4.6）
 vendorRoutes.post(
   "/",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("json", createVendorSchema),
   async (c) => {
     const body = c.req.valid("json");
@@ -47,7 +43,7 @@ vendorRoutes.post(
 // PATCH /api/vendors/:id — manager/admin（§4.6）
 vendorRoutes.patch(
   "/:id",
-  requireAuth({ roles: ["manager", "admin"] }),
+  requireRoles(["manager", "admin"]),
   zv("param", idParam),
   zv("json", updateVendorSchema),
   async (c) => {
